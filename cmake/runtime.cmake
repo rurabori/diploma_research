@@ -1,9 +1,4 @@
-# Link with static runtime on windows by default.
-if(WIN32)
-  option(use_static_cpp_runtime "Link runtime statically" ON)
-else()
-  option(use_static_cpp_runtime "Link runtime statically" OFF)
-endif()
+option(use_static_cpp_runtime "Link runtime statically" OFF)
 
 function(windows_set_runtime target static)
   set_property(
