@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(small_vector VERSION 1.0.0)
+project(small_vector VERSION 1.0.0 LANGUAGES C CXX)
 
 # default project settings.
 include(cmake/default_settings.cmake)

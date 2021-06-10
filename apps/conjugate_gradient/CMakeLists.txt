@@ -1,0 +1,2 @@
+brr_add_executable(conjugate_gradient)
+target_link_libraries(conjugate_gradient PRIVATE mmio)
