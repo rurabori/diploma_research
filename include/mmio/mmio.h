@@ -134,7 +134,7 @@ int mm_read_unsymmetric_sparse(const char *fname, int *M_, int *N_, int *nz_,
 
 
 #ifdef __cplusplus
-extern "C" {
+}
 #endif
 
 #endif
