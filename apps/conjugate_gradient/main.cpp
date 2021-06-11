@@ -4,7 +4,7 @@
 
 #include <mmio/mmio.h>
 
-#include <anonymouslib_avx512.h>
+#include <anonymouslib_avx2.h>
 
 struct file_deleter_t
 {
