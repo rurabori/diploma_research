@@ -19,8 +19,11 @@ include(GNUInstallDirs)
 add_subdirectory(libs)
 add_subdirectory(apps)
 
+# third-party dependencies
+add_subdirectory(third-party)
+
 include(CTest)
 add_subdirectory(tests)
-add_subdirectory(benchmarks)
+#add_subdirectory(benchmarks)
 
 include(CPack)
