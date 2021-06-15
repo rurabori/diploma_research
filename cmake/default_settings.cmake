@@ -10,10 +10,13 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
                                                "MinSizeRel" "RelWithDebInfo")
 endif()
 
-# default the standard to 17.
+# default the standard to 20.
 set(CMAKE_CXX_STANDARD
-    17
+    20
     CACHE STRING "C++ standard")
+
+# so that we get AVX (TODO: CMakePreset or toolchain should probably set this.)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mavx -mavx2 ")
 
 # Generate compile_commands.json to make it easier to work with clang based
 # tools

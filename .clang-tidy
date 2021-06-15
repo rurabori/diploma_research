@@ -16,7 +16,8 @@ Checks:          '*,-google-runtime-references,
                     -llvm-header-guard,
                     -llvm-include-order,
                     -readability-static-accessed-through-instance,
-                    -google-readability-todo'
+                    -google-readability-todo,
+                    -altera-struct-pack-*'
 HeaderFilterRegex: '^((?!third-party).)*$'
 AnalyzeTemporaryDtors: false
 FormatStyle:     file
