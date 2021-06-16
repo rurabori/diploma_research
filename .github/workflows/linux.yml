@@ -34,7 +34,7 @@ jobs:
 
       - name: Instal OpenMP
         run: |
-          sudo echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-12 main" >> /etc/apt/sources.list
+          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-12 main" | sudo tee -a /etc/apt/sources.list
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
           sudo apt update
           sudo apt install libomp-12-dev
