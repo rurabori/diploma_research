@@ -1,4 +1,4 @@
-find_package(OpenMP REQUIRED)
+find_package(OpenMP REQUIRED COMPONENTS CXX)
 
 add_library(csr5 INTERFACE include/anonymouslib_avx2.h)
 # include as system for now to suppress warnings, fix in future.

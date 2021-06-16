@@ -1,4 +1,4 @@
-find_package(OpenMP REQUIRED)
+find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(fmt REQUIRED)
 find_package(fire-hpp REQUIRED)
 
