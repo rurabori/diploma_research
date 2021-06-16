@@ -30,7 +30,7 @@ jobs:
 
       - name: Install conan packages
         working-directory: ${{github.workspace}}
-        run: conan install . -if build -s build_type=${{env.BUILD_TYPE}} -s compiler.cppstd=20 -s compiler=clang -s compiler.version=12 -s  --build missing
+        run: conan install . -if build -s build_type=${{env.BUILD_TYPE}} -s compiler.cppstd=20 -s compiler=clang -s compiler.version=12 --build missing
 
       - name: Configure CMake
         run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
