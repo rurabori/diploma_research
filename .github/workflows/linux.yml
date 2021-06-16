@@ -19,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      CXX: clang++-12
-      CC: clang-12
+      CXX: clang++-11
+      CC: clang-11
 
     steps:
       - uses: actions/checkout@v2
@@ -30,7 +30,7 @@ jobs:
 
       - name: Install conan packages
         working-directory: ${{github.workspace}}
-        run: conan install . -if build -s build_type=${{env.BUILD_TYPE}} -s compiler.cppstd=20 -s compiler=clang -s compiler.version=12 --build missing
+        run: conan install . -if build -s build_type=${{env.BUILD_TYPE}} -s compiler.cppstd=20 -s compiler=clang -s compiler.version=11 --build missing
 
       - name: Instal OpenMP
         run: sudo apt install libomp-dev
