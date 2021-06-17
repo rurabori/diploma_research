@@ -34,16 +34,18 @@ struct file_deleter_t
 
 using file_t = std::unique_ptr<FILE, file_deleter_t>;
 
-void print_mm_info(const MM_typecode& typecode) {
+void print_mm_info(const MM_typecode& typecode, cg::dimensions_t dimensions, size_t non_zero) {
     fmt::print("Matrix info:\n"
+               "  dimensions: {}x{}\n"
+               "num elements: {}\n"
                "     complex: {}\n"
                "     pattern: {}\n"
                "        real: {}\n"
                "     integer: {}\n"
                "   symmetric: {}\n"
                "   hermitian: {}\n",
-               mm_is_complex(typecode), mm_is_pattern(typecode), mm_is_real(typecode), mm_is_integer(typecode),
-               mm_is_symmetric(typecode), mm_is_hermitian(typecode));
+               dimensions.rows, dimensions.cols, non_zero, mm_is_complex(typecode), mm_is_pattern(typecode),
+               mm_is_real(typecode), mm_is_integer(typecode), mm_is_symmetric(typecode), mm_is_hermitian(typecode));
 }
 
 template<typename Ty>
@@ -103,9 +105,8 @@ struct csr_matrix
         mm_read_banner(file.get(), &typecode);
         if (!mm_is_coordinate(typecode)) throw std::runtime_error{"Only coordinate matrix loading is implemented."};
 
-        print_mm_info(typecode);
-
         auto [dimensions, non_zero] = read_matrix_size(file.get());
+        print_mm_info(typecode, dimensions, non_zero);
 
         const auto coo = read_coo(file.get(), dimensions, static_cast<size_t>(non_zero));
 
