@@ -20,7 +20,7 @@ struct cache_aligned_allocator_t
     using value_type = ValueType;
 
     ValueType* allocate(size_t n) {
-        return reinterpret_cast<ValueType*>(_mm_malloc(n + sizeof(ValueType), hardware_destructive_interference_size));
+        return reinterpret_cast<ValueType*>(_mm_malloc(n * sizeof(ValueType), hardware_destructive_interference_size));
     }
 
     void deallocate(ValueType* ptr, size_t /*n*/) { _mm_free(ptr); }
