@@ -9,6 +9,9 @@
 #include <new>
 #include <numeric>
 #include <stdexcept>
+#include <tclap/Arg.h>
+#include <tclap/SwitchArg.h>
+#include <tclap/ValueArg.h>
 #include <vector>
 #include <filesystem>
 #include <span>
@@ -22,10 +25,12 @@
 #include <fmt/format.h>
 
 #include <anonymouslib_avx2.h>
-#include <fire-hpp/fire.hpp>
+#include <tclap/CmdLine.h>
 
 #include "cache_aligned_allocator.h"
 #include "matrix_storage_formats.h"
+
+#include "version.h"
 
 struct file_deleter_t
 {
@@ -158,8 +163,31 @@ auto report_timed_section(std::string_view name, Callable&& callable) {
     fmt::print(FMT_STRING("{} took: {}ns\n"), name, duration_cast<nanoseconds>(duration).count());
 }
 
-int fired_main(const std::string& matrix_path = fire::arg("-m"), bool debug = fire::arg("-d")) {
-    auto matrix = csr_matrix<double>::from_matrix_market(matrix_path);
+struct arguments
+{
+    std::filesystem::path matrix_file{};
+    bool debug{};
+
+    static arguments from_main(int argc, const char* argv[]) {
+        TCLAP::CmdLine commandline{"Conjugate Gradient.", ' ', conjugate_gradient_VER};
+
+        TCLAP::ValueArg<std::string> matrix_name_arg{"m", "matrix-path", "Path to matrix", true, "", "string"};
+        commandline.add(matrix_name_arg);
+
+        TCLAP::SwitchArg debug_arg{"d", "debug", "Enable debug output", false};
+        commandline.add(debug_arg);
+
+        commandline.parse(argc, argv);
+
+        return arguments{.matrix_file = matrix_name_arg.getValue(), .debug = debug_arg.getValue()};
+    }
+};
+
+// TODO: a better commandline parser, fire-hpp seems to be broken on newer clang.
+int main(int argc, const char* argv[]) {
+    auto arguments = arguments::from_main(argc, argv);
+
+    auto matrix = csr_matrix<double>::from_matrix_market(arguments.matrix_file);
     auto x = generate_random_vector(matrix.dimensions.cols);
 
     // do sequential algo for reference.
@@ -178,7 +206,6 @@ int fired_main(const std::string& matrix_path = fire::arg("-m"), bool debug = fi
             y_ref[i] = sum;
         }
     });
-
     // careful, this shuffles x around making it unusable for calculations.
     matrix.inputCSR();
     matrix.A.setX(x.data());
@@ -197,7 +224,7 @@ int fired_main(const std::string& matrix_path = fire::arg("-m"), bool debug = fi
     auto are_same = std::ranges::equal(Y, y_ref, comparator);
 
     fmt::print("SPMV correct : {}\n", are_same);
-    if (!are_same && debug) {
+    if (!are_same && arguments.debug) {
         for (size_t i = 0; i < matrix.dimensions.rows; ++i) {
             auto val = Y[i];
             auto ref = y_ref[i];
@@ -207,6 +234,3 @@ int fired_main(const std::string& matrix_path = fire::arg("-m"), bool debug = fi
 
     matrix.A.destroy();
 }
-
-// NOLINTNEXTLINE - macro is intentional.
-FIRE(fired_main);

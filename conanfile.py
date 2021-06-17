@@ -16,7 +16,7 @@ class CSPConan(ConanFile):
         "revision": "auto"
     }
 
-    requires = ['doctest/2.4.0', 'benchmark/1.5.2', 'fmt/7.1.3', 'fire-hpp/0.2']
+    requires = ['doctest/2.4.0', 'benchmark/1.5.2', 'fmt/7.1.3', 'tclap/1.2.3']
 
     def _configure_cmake(self):
         cmake = CMake(self)
