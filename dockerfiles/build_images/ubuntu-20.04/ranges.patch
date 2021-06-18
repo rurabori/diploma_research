@@ -1,0 +1,11 @@
+--- ranges	2021-06-18 23:07:26.076045360 +0000
++++ /usr/include/c++/11/ranges	2021-04-28 07:04:25.000000000 +0000
+@@ -3389,7 +3389,7 @@
+ 	  static auto _S_iter_cat()
+ 	  {
+ 	    using _Base = elements_view::_Base<_Const>;
+-	    using _Cat = typename iterator_traits<iterator_t<_Base>>::iterator_category;
++	    using _Cat = iterator_traits<iterator_t<_Base>>::iterator_category;
+ 	    using _Res = decltype((std::get<_Nm>(*std::declval<iterator_t<_Base>>())));
+ 	    if constexpr (!is_lvalue_reference_v<_Res>)
+ 	      return input_iterator_tag{};
