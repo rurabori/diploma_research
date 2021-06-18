@@ -32,3 +32,8 @@ RUN curl -L "https://github.com/Kitware/CMake/releases/download/v3.20.4/cmake-3.
 
 # add cmake to path.
 ENV PATH="/usr/local/cmake-3.20.4-linux-x86_64/bin:${PATH}"
+
+# stdlibc++ has broken <ranges> header in this release (fixed in master). After the fixed is released we can remove this.
+COPY dockerfiles/build_images/ubuntu-20.04/ranges.patch /patches/ranges.patch
+RUN patch -R /usr/include/c++/11/ranges /patches/ranges.patch
+
