@@ -27,9 +27,17 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Build
+      - name: Install conan packages
+        run: conan install . -if ${{github.workspace}}/build -s build_type=${{env.BUILD_TYPE}} -s compiler.cppstd=20 -s compiler=clang -s compiler.version=12 --build missing
+
+      - name: Configure CMake
         run: |
-          conan install . -if build -s build_type=${{env.BUILD_TYPE}} -s compiler.cppstd=20 -s compiler=clang -s compiler.version=12 --build missing
+          cat ${{github.workspace}}/build/*.cmake
           cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_PREFIX_PATH="${{github.workspace}}/build" -G "Ninja"
-          cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-          ctest -C ${{env.BUILD_TYPE}}
+
+      - name: Build
+        run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+      - name: Test
+        working-directory: ${{github.workspace}}/build
+        run: ctest -C ${{env.BUILD_TYPE}}
