@@ -2,6 +2,7 @@
 #define APPS_CONJUGATE_GRADIENT_SPMV_ALGOS
 
 #include "cache_aligned_allocator.h"
+#include "cuda_algo_facade.h"
 #include "matrix_storage_formats.h"
 #include <anonymouslib_avx2.h>
 #include <numeric>
@@ -57,6 +58,13 @@ void cpu_avx2(matrix_storage_formats::csr<ValueType, matrix_storage_formats::cac
     handle.asCSR5();
 
     cpu_avx2(handle, rhs, output);
+}
+
+void cuda_complete_bench(matrix_storage_formats::csr<double, matrix_storage_formats::cache_aligned_vector>& matrix,
+                         std::span<double> rhs, std::span<double> output) {
+    bench_csr5_cuda(static_cast<int>(matrix.dimensions.rows), static_cast<int>(matrix.dimensions.cols),
+                    static_cast<int>(matrix.values.size()), reinterpret_cast<int*>(matrix.row_start_offsets.data()),
+                    reinterpret_cast<int*>(matrix.col_indices.data()), matrix.values.data(), rhs.data(), output.data());
 }
 
 } // namespace cg::spmv_algos

@@ -1,5 +1,5 @@
-#ifndef UTILS_CUDA_H
-#define UTILS_CUDA_H
+#ifndef THIRD_PARTY_CSR5_CUDA_INCLUDE_DETAIL_CUDA_UTILS_CUDA
+#define THIRD_PARTY_CSR5_CUDA_INCLUDE_DETAIL_CUDA_UTILS_CUDA
 
 #include "common_cuda.h"
 
@@ -62,7 +62,7 @@ template<typename vT>
 __forceinline__ __device__ vT sum_32_shfl(vT sum) {
     //    #pragma unroll
     //    for (int offset = ANONYMOUSLIB_CSR5_OMEGA / 2; offset > 0; offset >>= 1)
-    //        sum += __shfl_down(sum, offset);
+    //        sum += __shfl_down_sync(sum, offset);
 
 #pragma unroll
     for (int mask = ANONYMOUSLIB_CSR5_OMEGA / 2; mask > 0; mask >>= 1) sum += __shfl_xor(sum, mask);
@@ -153,19 +153,19 @@ __forceinline__ __device__ T scan_32_shfl(T x, const int local_id) {
     //    #pragma unroll
     //    for( int offset = 1 ; offset < ANONYMOUSLIB_CSR5_OMEGA ; offset <<= 1 )
     //    {
-    //        T y = __shfl_up(x, offset);
+    //        T y = __shfl_up_sync(x, offset);
     //        x = local_id >= offset ? x + y : x;
     //    }
 
-    T y = __shfl_up(x, 1);
+    T y = __shfl_up_sync(0xFFFFFFFF, x, 1);
     x = local_id >= 1 ? x + y : x;
-    y = __shfl_up(x, 2);
+    y = __shfl_up_sync(0xFFFFFFFF, x, 2);
     x = local_id >= 2 ? x + y : x;
-    y = __shfl_up(x, 4);
+    y = __shfl_up_sync(0xFFFFFFFF, x, 4);
     x = local_id >= 4 ? x + y : x;
-    y = __shfl_up(x, 8);
+    y = __shfl_up_sync(0xFFFFFFFF, x, 8);
     x = local_id >= 8 ? x + y : x;
-    y = __shfl_up(x, 16);
+    y = __shfl_up_sync(0xFFFFFFFF, x, 16);
     x = local_id >= 16 ? x + y : x;
 
     return x;
@@ -282,7 +282,7 @@ __inline__ __device__ T scan_plus1_shfl(volatile T* s_scan, const int local_id, 
 
     if (lane_id == ANONYMOUSLIB_THREAD_BUNCH - 1) s_scan[seg_id] = r_scan;
 
-    r_scan = __shfl_up(r_scan, 1);
+    r_scan = __shfl_up_sync(0xFFFFFFFF, r_scan, 1);
     r_scan = lane_id ? r_scan : 0;
     //}
 
@@ -430,4 +430,4 @@ __global__ void warmup_kernel(int* d_scan) {
     if (!blockIdx.x) d_scan[threadIdx.x] = s_scan[threadIdx.x];
 }
 
-#endif // UTILS_CUDA_H
+#endif /* THIRD_PARTY_CSR5_CUDA_INCLUDE_DETAIL_CUDA_UTILS_CUDA */

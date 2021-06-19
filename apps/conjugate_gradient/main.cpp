@@ -27,6 +27,7 @@
 #include "cache_aligned_allocator.h"
 #include "matrix_storage_formats.h"
 #include "spmv_algos.hpp"
+#include "timed_section.h"
 
 #include "version.h"
 
@@ -102,28 +103,13 @@ auto load_matrix(const std::filesystem::path& path) {
     return cg::matrix_storage_formats::csr<double>::from_coo(coo);
 }
 
-template<typename Callable>
-auto timed_section(Callable&& callable) {
-    auto begin = std::chrono::steady_clock::now();
-    std::forward<Callable>(callable)();
-    return std::chrono::steady_clock::now() - begin;
-}
-
-template<typename Callable>
-auto report_timed_section(std::string_view name, Callable&& callable) {
-    using std::chrono::duration_cast;
-    using std::chrono::nanoseconds;
-
-    auto duration = timed_section(std::forward<Callable>(callable));
-    fmt::print(FMT_STRING("{} took: {}ns\n"), name, duration_cast<nanoseconds>(duration).count());
-}
-
 struct arguments
 {
     enum class algorithm_t
     {
         cpu_sequential,
         cpu_avx2,
+        cuda,
     };
 
     std::filesystem::path matrix_file{};
@@ -146,7 +132,7 @@ struct arguments
         commandline.add(debug_arg);
 
         TCLAP::ValueArg<std::string> algorithm_arg{"a",   "algorithm",      "Algorithm to use for SpMV",
-                                                   false, "cpu_sequential", "one of [cpu_sequential, cpu_avx2]"};
+                                                   false, "cpu_sequential", "one of [cpu_sequential, cpu_avx2, cuda]"};
         commandline.add(algorithm_arg);
 
         commandline.parse(argc, argv);
@@ -164,22 +150,31 @@ int main(int argc, const char* argv[]) {
 
     auto x = generate_random_vector(dimensions.cols);
 
+    auto Y_ref = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
+    report_timed_section("Reference sequential SpMV",
+                         [&] { cg::spmv_algos::cpu_sequential(matrix, std::span{x}, std::span{Y_ref}); });
+
+    auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
     switch (arguments.algorithm) {
         case arguments::algorithm_t::cpu_sequential: {
-            auto y_ref = std::vector<double>(dimensions.rows, 0.);
             report_timed_section("Sequential SpMV",
-                                 [&] { cg::spmv_algos::cpu_sequential(matrix, std::span{x}, std::span{y_ref}); });
+                                 [&] { cg::spmv_algos::cpu_sequential(matrix, std::span{x}, std::span{Y}); });
             break;
         }
         case arguments::algorithm_t::cpu_avx2: {
             auto handle = cg::spmv_algos::create_csr5_handle(matrix);
-
-            // make output buff.
-            auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
             report_timed_section("CSR5 SpMV", [&] { cg::spmv_algos::cpu_avx2(handle, std::span{x}, std::span{Y}); });
-
             handle.destroy();
             break;
         }
+        case arguments::algorithm_t::cuda: {
+            cg::spmv_algos::cuda_complete_bench(matrix, std::span{x}, std::span{Y});
+            break;
+        }
     }
+
+    constexpr auto comparator = [](auto lhs, auto rhs) { return !(std::abs(lhs - rhs) > 0.01 * std::abs(lhs)); };
+    auto are_same = std::ranges::equal(Y, Y_ref, comparator);
+
+    fmt::print("SPMV correct : {}\n", are_same);
 }

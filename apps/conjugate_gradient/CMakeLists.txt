@@ -12,4 +12,5 @@ target_link_libraries(
           fmt::fmt
           tclap::tclap
           csr5_cuda
-          magic_enum::magic_enum)
+          magic_enum::magic_enum
+          cui)
