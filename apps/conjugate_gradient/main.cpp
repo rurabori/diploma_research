@@ -23,6 +23,7 @@
 
 #include "cache_aligned_allocator.h"
 #include "matrix_storage_formats.h"
+#include "spmv_algos.hpp"
 
 #include "version.h"
 
@@ -64,17 +65,16 @@ template<typename ValueType = double>
 struct csr_matrix
 {
     // TODO: better structure layout.
-    cg::dimensions_t dimensions{};
-    size_t num_non_zero{};
-    cache_aligned_vector<ValueType> values;
-    cache_aligned_vector<int> rid;
-    cache_aligned_vector<int> cid;
+    cg::matrix_storage_formats::csr<ValueType> csr;
     anonymouslibHandle<int, unsigned int, ValueType> A;
 
-    void inputCSR() { A.inputCSR(static_cast<int>(num_non_zero), rid.data(), cid.data(), values.data()); }
+    void inputCSR() {
+        A.inputCSR(static_cast<int>(csr.values.size()), reinterpret_cast<int*>(csr.row_start_offsets.data()),
+                   reinterpret_cast<int*>(csr.col_indices.data()), csr.values.data());
+    }
 
     static auto read_coo(FILE* file, cg::dimensions_t dimensions, size_t non_zero) {
-        auto retval = cg::matrix_storage_formats::coo<ValueType>::create(dimensions, non_zero);
+        auto retval = cg::matrix_storage_formats::coo<ValueType>{dimensions, non_zero};
 
         for (size_t i = 0; i < non_zero; ++i) {
             std::fscanf(file, "%d %d %lg", &retval.row_indices[i], &retval.col_indices[i], &retval.values[i]);
@@ -109,34 +109,7 @@ struct csr_matrix
 
         const auto coo = read_coo(file.get(), dimensions, static_cast<size_t>(non_zero));
 
-        // count occurences of rows.
-        std::vector<int> csr_row_counter(dimensions.rows + 1, 0);
-        for (auto row_id : coo.row_indices) ++csr_row_counter[row_id];
-
-        // prefix scan to get the starting indices of cols in a row.
-        auto rid = cache_aligned_vector<int>(dimensions.rows + 1, 0);
-        std::exclusive_scan(csr_row_counter.begin(), csr_row_counter.end(), rid.begin(), 0);
-
-        // reuse the csr_row_counter as offset counter for rows.
-        std::ranges::fill(csr_row_counter, 0);
-
-        // transform to CSR.
-        auto values = cache_aligned_vector<double>(non_zero, 0);
-        auto cid = cache_aligned_vector<int>(non_zero, 0);
-        for (size_t i = 0; i < non_zero; ++i) {
-            const auto row = coo.row_indices[i];
-            const auto row_start = rid[row];
-            const auto offset = row_start + csr_row_counter[row]++;
-
-            cid[offset] = coo.col_indices[i];
-            values[offset] = coo.values[i];
-        }
-
-        return csr_matrix{.dimensions = dimensions,
-                          .num_non_zero = non_zero,
-                          .values = std::move(values),
-                          .rid = std::move(rid),
-                          .cid = std::move(cid),
+        return csr_matrix{.csr = decltype(csr)::from_coo(coo),
                           .A = {static_cast<int>(dimensions.rows), static_cast<int>(dimensions.cols)}};
     }
 };
@@ -182,24 +155,14 @@ int main(int argc, const char* argv[]) {
     auto arguments = arguments::from_main(argc, argv);
 
     auto matrix = csr_matrix<double>::from_matrix_market(arguments.matrix_file);
-    auto x = generate_random_vector(matrix.dimensions.cols);
+
+    auto dimensions = matrix.csr.dimensions;
+
+    auto x = generate_random_vector(dimensions.cols);
 
     // do sequential algo for reference.
-    auto y_ref = std::vector<double>(matrix.dimensions.rows, 0.);
-    report_timed_section("Sequential SpMV", [&] {
-        for (size_t i = 0; i < matrix.dimensions.rows; ++i) {
-            const auto row_start = matrix.rid[i];
-            const auto row_end = matrix.rid[i + 1];
-            double sum{};
-            for (auto j = row_start; j < row_end; ++j) {
-                const auto column = matrix.cid[j];
-                const auto value = matrix.values[j];
-                sum += x[column] * value * 1.0;
-            }
-
-            y_ref[i] = sum;
-        }
-    });
+    auto y_ref = std::vector<double>(dimensions.rows, 0.);
+    report_timed_section("Sequential SpMV", [&] { cg::spmv_algos::cpu_sequential(matrix.csr, std::span{x}, std::span{y_ref}); });
     // careful, this shuffles x around making it unusable for calculations.
     matrix.inputCSR();
     matrix.A.setX(x.data());
@@ -210,7 +173,7 @@ int main(int argc, const char* argv[]) {
     });
 
     // make output buff.
-    auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
+    auto Y = cache_aligned_vector<double>(matrix.csr.dimensions.rows, 0.);
     report_timed_section("CSR5 SpMV", [&] { matrix.A.spmv(1.0, Y.data()); });
 
     constexpr auto comparator = [](auto lhs, auto rhs) { return !(std::abs(lhs - rhs) > 0.01 * std::abs(lhs)); };
@@ -219,7 +182,7 @@ int main(int argc, const char* argv[]) {
 
     fmt::print("SPMV correct : {}\n", are_same);
     if (!are_same && arguments.debug) {
-        for (size_t i = 0; i < matrix.dimensions.rows; ++i) {
+        for (size_t i = 0; i < matrix.csr.dimensions.rows; ++i) {
             auto val = Y[i];
             auto ref = y_ref[i];
             if (!comparator(val, ref)) fmt::print("{}: {} {}\n", i, val, ref);
