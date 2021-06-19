@@ -27,6 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Get Conan
+        uses: turtlebrowser/get-conan@v1.0
+
       - name: Install conan packages
         working-directory: ${{github.workspace}}
         run: conan install . -if build -s build_type=${{env.BUILD_TYPE}} -s compiler.cppstd=20 -s compiler=clang -s compiler.version=12 --build missing
