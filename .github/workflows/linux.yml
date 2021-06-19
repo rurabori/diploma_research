@@ -17,6 +17,7 @@ jobs:
     # cross-platform coverage.
     # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
     runs-on: ubuntu-latest
+    container: rurabori/diploma:ubuntu-20.04
 
     env:
       CXX: clang++-12
@@ -25,19 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Get Conan
-        uses: turtlebrowser/get-conan@v1.0
-
       - name: Install conan packages
         working-directory: ${{github.workspace}}
         run: conan install . -if build -s build_type=${{env.BUILD_TYPE}} -s compiler.cppstd=20 -s compiler=clang -s compiler.version=12 --build missing
-
-      - name: Instal OpenMP
-        run: |
-          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-12 main" | sudo tee -a /etc/apt/sources.list
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
-          sudo apt update
-          sudo apt install libomp-12-dev
 
       - name: Configure CMake
         run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
