@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.15)
-project(small_vector VERSION 1.0.0 LANGUAGES C CXX)
+project(
+  small_vector
+  VERSION 1.0.0
+  LANGUAGES C CXX CUDA)
 
 # default project settings.
 include(cmake/default_settings.cmake)
@@ -24,6 +27,6 @@ add_subdirectory(third-party)
 
 include(CTest)
 add_subdirectory(tests)
-#add_subdirectory(benchmarks)
+# add_subdirectory(benchmarks)
 
 include(CPack)

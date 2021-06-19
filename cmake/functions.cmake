@@ -1,6 +1,14 @@
 # globs sources in a given directory and appends them to the list of sources.
 macro(glob_dir directory)
-  file(GLOB __tmp CONFIGURE_DEPENDS ${directory}/*.c ${directory}/*.cpp ${directory}/*.h)
+  file(
+    GLOB
+    __tmp
+    CONFIGURE_DEPENDS
+    ${directory}/*.c
+    ${directory}/*.cpp
+    ${directory}/*.cu
+    ${directory}/*.cuh
+    ${directory}/*.h)
   list(APPEND sources ${__tmp})
 endmacro()
 
@@ -9,7 +17,15 @@ endmacro()
 # directory `darwin` on macos.
 macro(glob_sources)
   # common sources.
-  file(GLOB sources CONFIGURE_DEPENDS *.c *.cpp *.h)
+  file(
+    GLOB
+    sources
+    CONFIGURE_DEPENDS
+    *.c
+    *.cpp
+    *.h
+    *.cu
+    *.cuh)
 
   if(WIN32)
     # windows specific stuff.
