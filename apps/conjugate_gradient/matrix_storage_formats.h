@@ -2,6 +2,7 @@
 #define APPS_CONJUGATE_GRADIENT_MATRIX_STORAGE_FORMATS
 
 #include "cache_aligned_allocator.h"
+#include <algorithm>
 #include <cstdint>
 #include <numeric>
 #include <ranges>
