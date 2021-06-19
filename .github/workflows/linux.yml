@@ -22,6 +22,7 @@ jobs:
     env:
       CXX: clang++-12
       CC: clang-12
+      CONAN_USER_HOME: ${{github.workspace}}
 
     steps:
       - uses: actions/checkout@v2
