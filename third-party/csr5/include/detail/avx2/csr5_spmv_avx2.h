@@ -4,6 +4,8 @@
 #include "common_avx2.h"
 #include "utils_avx2.h"
 
+namespace csr5::avx2 {
+
 template<typename iT, typename vT>
 inline void partition_fast_track(const vT* d_value_partition, const vT* d_x, const iT* d_column_index_partition,
                                  vT* d_calibrator, vT* d_y, const iT row_start, const iT par_id, const int tid,
@@ -357,4 +359,5 @@ int csr5_spmv(const int sigma, const ANONYMOUSLIB_IT p, const ANONYMOUSLIB_IT m,
     return err;
 }
 
+} // namespace csr5::avx2
 #endif // CSR5_SPMV_AVX2_H

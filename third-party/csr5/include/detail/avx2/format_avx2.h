@@ -4,17 +4,13 @@
 #include "common_avx2.h"
 #include "utils_avx2.h"
 
+namespace csr5::avx2 {
+
 template<typename iT, typename uiT>
-void generate_partition_pointer_s1_kernel(const iT     *d_row_pointer,
-                                          uiT          *d_partition_pointer,
-                                          const int     sigma,
-                                          const iT      p,
-                                          const iT      m,
-                                          const iT      nnz)
-{
-    #pragma omp parallel for
-    for (iT global_id = 0; global_id <= p; global_id++)
-    {
+void generate_partition_pointer_s1_kernel(const iT* d_row_pointer, uiT* d_partition_pointer, const int sigma,
+                                          const iT p, const iT m, const iT nnz) {
+#pragma omp parallel for
+    for (iT global_id = 0; global_id <= p; global_id++) {
         // compute partition boundaries by partition of size sigma * omega
         iT boundary = global_id * sigma * ANONYMOUSLIB_CSR5_OMEGA;
 
@@ -27,35 +23,27 @@ void generate_partition_pointer_s1_kernel(const iT     *d_row_pointer,
 }
 
 template<typename iT, typename uiT>
-void generate_partition_pointer_s2_kernel(const iT   *d_row_pointer,
-                                          uiT        *d_partition_pointer,
-                                          const iT    p)
-{
-    #pragma omp parallel for
-    for (iT group_id = 0; group_id < p; group_id++)
-    {
+void generate_partition_pointer_s2_kernel(const iT* d_row_pointer, uiT* d_partition_pointer, const iT p) {
+#pragma omp parallel for
+    for (iT group_id = 0; group_id < p; group_id++) {
         int dirty = 0;
 
         uiT start = d_partition_pointer[group_id];
-        uiT stop  = d_partition_pointer[group_id+1];
+        uiT stop = d_partition_pointer[group_id + 1];
 
         start = (start << 1) >> 1;
-        stop  = (stop << 1) >> 1;
+        stop = (stop << 1) >> 1;
 
-        if(start == stop)
-            continue;
+        if (start == stop) continue;
 
-        for (iT row_idx = start; row_idx <= stop; row_idx++)
-        {
-            if (d_row_pointer[row_idx] == d_row_pointer[row_idx+1])
-            {
+        for (iT row_idx = start; row_idx <= stop; row_idx++) {
+            if (d_row_pointer[row_idx] == d_row_pointer[row_idx + 1]) {
                 dirty = 1;
                 break;
             }
         }
 
-        if (dirty)
-        {
+        if (dirty) {
             start |= sizeof(uiT) == 4 ? 0x80000000 : 0x8000000000000000;
             d_partition_pointer[group_id] = start;
         }
@@ -63,51 +51,37 @@ void generate_partition_pointer_s2_kernel(const iT   *d_row_pointer,
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
-int generate_partition_pointer(const int           sigma,
-                               const ANONYMOUSLIB_IT   p,
-                               const ANONYMOUSLIB_IT   m,
-                               const ANONYMOUSLIB_IT   nnz,
-                               ANONYMOUSLIB_UIT       *partition_pointer,
-                               const ANONYMOUSLIB_IT  *row_pointer)
-{
+int generate_partition_pointer(const int sigma, const ANONYMOUSLIB_IT p, const ANONYMOUSLIB_IT m,
+                               const ANONYMOUSLIB_IT nnz, ANONYMOUSLIB_UIT* partition_pointer,
+                               const ANONYMOUSLIB_IT* row_pointer) {
     // step 1. binary search row pointer
-    generate_partition_pointer_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>
-            (row_pointer, partition_pointer, sigma, p, m, nnz);
+    generate_partition_pointer_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer, partition_pointer, sigma, p, m,
+                                                                            nnz);
 
     // step 2. check empty rows
-    generate_partition_pointer_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>
-            (row_pointer, partition_pointer, p);
+    generate_partition_pointer_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer, partition_pointer, p);
 
-//    // print for debug
-//    cout << "partition_pointer = ";
-//    print_1darray<ANONYMOUSLIB_UIT>(partition_pointer, p+1);
+    //    // print for debug
+    //    cout << "partition_pointer = ";
+    //    print_1darray<ANONYMOUSLIB_UIT>(partition_pointer, p+1);
 
     return ANONYMOUSLIB_SUCCESS;
 }
 
 template<typename iT, typename uiT>
-void generate_partition_descriptor_s1_kernel(const iT    *d_row_pointer,
-                                             const uiT   *d_partition_pointer,
-                                             uiT         *d_partition_descriptor,
-                                             const iT     m,
-                                             const iT     p,
-                                             const int    sigma,
-                                             const int    bit_all_offset,
-                                             const int    num_packet)
-{
-    #pragma omp parallel for
-    for (int par_id = 0; par_id < p-1; par_id++)
-    {
-        const iT row_start = d_partition_pointer[par_id]     & 0x7FFFFFFF;
-        const iT row_stop  = d_partition_pointer[par_id + 1] & 0x7FFFFFFF;
+void generate_partition_descriptor_s1_kernel(const iT* d_row_pointer, const uiT* d_partition_pointer,
+                                             uiT* d_partition_descriptor, const iT m, const iT p, const int sigma,
+                                             const int bit_all_offset, const int num_packet) {
+#pragma omp parallel for
+    for (int par_id = 0; par_id < p - 1; par_id++) {
+        const iT row_start = d_partition_pointer[par_id] & 0x7FFFFFFF;
+        const iT row_stop = d_partition_pointer[par_id + 1] & 0x7FFFFFFF;
 
-        for (int rid = row_start; rid <= row_stop; rid++)
-        {
+        for (int rid = row_start; rid <= row_stop; rid++) {
             int ptr = d_row_pointer[rid];
             int pid = ptr / (ANONYMOUSLIB_CSR5_OMEGA * sigma);
 
-            if (pid == par_id)
-            {
+            if (pid == par_id) {
                 int lx = (ptr / sigma) % ANONYMOUSLIB_CSR5_OMEGA;
 
                 const int glid = ptr % sigma + bit_all_offset;
@@ -124,43 +98,36 @@ void generate_partition_descriptor_s1_kernel(const iT    *d_row_pointer,
 }
 
 template<typename iT, typename uiT>
-void generate_partition_descriptor_s2_kernel(const uiT    *d_partition_pointer,
-                                             uiT          *d_partition_descriptor,
-                                             iT           *d_partition_descriptor_offset_pointer,
-                                             const int     sigma,
-                                             const int     num_packet,
-                                             const int     bit_y_offset,
-                                             const int     bit_scansum_offset,
-                                             const iT      p)
-{
+void generate_partition_descriptor_s2_kernel(const uiT* d_partition_pointer, uiT* d_partition_descriptor,
+                                             iT* d_partition_descriptor_offset_pointer, const int sigma,
+                                             const int num_packet, const int bit_y_offset, const int bit_scansum_offset,
+                                             const iT p) {
     int num_thread = omp_get_max_threads();
-    int *s_segn_scan_all = (int *)_mm_malloc(2 * ANONYMOUSLIB_CSR5_OMEGA * sizeof(int) * num_thread, ANONYMOUSLIB_X86_CACHELINE);
-    int *s_present_all   = (int *)_mm_malloc(2 * ANONYMOUSLIB_CSR5_OMEGA * sizeof(int) * num_thread, ANONYMOUSLIB_X86_CACHELINE);
-    for (int i = 0; i < num_thread; i++)
-        s_present_all[i * 2 * ANONYMOUSLIB_CSR5_OMEGA + ANONYMOUSLIB_CSR5_OMEGA] = 1;
+    int* s_segn_scan_all
+      = (int*)_mm_malloc(2 * ANONYMOUSLIB_CSR5_OMEGA * sizeof(int) * num_thread, ANONYMOUSLIB_X86_CACHELINE);
+    int* s_present_all
+      = (int*)_mm_malloc(2 * ANONYMOUSLIB_CSR5_OMEGA * sizeof(int) * num_thread, ANONYMOUSLIB_X86_CACHELINE);
+    for (int i = 0; i < num_thread; i++) s_present_all[i * 2 * ANONYMOUSLIB_CSR5_OMEGA + ANONYMOUSLIB_CSR5_OMEGA] = 1;
 
     const int bit_all_offset = bit_y_offset + bit_scansum_offset;
 
-    #pragma omp parallel for
-    for (int par_id = 0; par_id < p-1; par_id++)
-    {
+#pragma omp parallel for
+    for (int par_id = 0; par_id < p - 1; par_id++) {
         int tid = omp_get_thread_num();
-        int *s_segn_scan = &s_segn_scan_all[tid * 2 * ANONYMOUSLIB_CSR5_OMEGA];
-        int *s_present = &s_present_all[tid * 2 * ANONYMOUSLIB_CSR5_OMEGA];
+        int* s_segn_scan = &s_segn_scan_all[tid * 2 * ANONYMOUSLIB_CSR5_OMEGA];
+        int* s_present = &s_present_all[tid * 2 * ANONYMOUSLIB_CSR5_OMEGA];
 
         memset(s_segn_scan, 0, (ANONYMOUSLIB_CSR5_OMEGA + 1) * sizeof(int));
         memset(s_present, 0, ANONYMOUSLIB_CSR5_OMEGA * sizeof(int));
 
         bool with_empty_rows = (d_partition_pointer[par_id] >> 31) & 0x1;
-        iT row_start       = d_partition_pointer[par_id]     & 0x7FFFFFFF;
-        const iT row_stop  = d_partition_pointer[par_id + 1] & 0x7FFFFFFF;
+        iT row_start = d_partition_pointer[par_id] & 0x7FFFFFFF;
+        const iT row_stop = d_partition_pointer[par_id + 1] & 0x7FFFFFFF;
 
-        if (row_start == row_stop)
-            continue;
+        if (row_start == row_stop) continue;
 
-        #pragma omp simd
-        for (int lane_id = 0; lane_id < ANONYMOUSLIB_CSR5_OMEGA; lane_id++)
-        {
+#pragma omp simd
+        for (int lane_id = 0; lane_id < ANONYMOUSLIB_CSR5_OMEGA; lane_id++) {
             int start = 0, stop = 0, segn = 0;
             bool present = 0;
             uiT bitflag = 0;
@@ -174,15 +141,14 @@ void generate_partition_descriptor_s2_kernel(const uiT    *d_partition_pointer,
             start = !((bitflag >> 31) & 0x1);
             present |= (bitflag >> 31) & 0x1;
 
-            for (int i = 1; i < sigma; i++)
-            {
-                if ((!ly && i == 32 - bit_all_offset) || (ly && (i - (32 - bit_all_offset)) % 32 == 0))
-                {
+            for (int i = 1; i < sigma; i++) {
+                if ((!ly && i == 32 - bit_all_offset) || (ly && (i - (32 - bit_all_offset)) % 32 == 0)) {
                     ly++;
-                    bitflag = d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + ly * ANONYMOUSLIB_CSR5_OMEGA + lane_id];
+                    bitflag = d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet
+                                                     + ly * ANONYMOUSLIB_CSR5_OMEGA + lane_id];
                 }
                 const int norm_i = !ly ? i : i - (32 - bit_all_offset);
-                stop += (bitflag >> (31 - norm_i % 32) ) & 0x1;
+                stop += (bitflag >> (31 - norm_i % 32)) & 0x1;
                 present |= (bitflag >> (31 - norm_i % 32)) & 0x1;
             }
 
@@ -198,23 +164,19 @@ void generate_partition_descriptor_s2_kernel(const uiT    *d_partition_pointer,
 
         scan_single<int>(s_segn_scan, ANONYMOUSLIB_CSR5_OMEGA + 1);
 
-        if (with_empty_rows)
-        {
+        if (with_empty_rows) {
             d_partition_descriptor_offset_pointer[par_id] = s_segn_scan[ANONYMOUSLIB_CSR5_OMEGA];
             d_partition_descriptor_offset_pointer[p] += s_segn_scan[ANONYMOUSLIB_CSR5_OMEGA];
         }
 
-        #pragma omp simd
-        for (int lane_id = 0; lane_id < ANONYMOUSLIB_CSR5_OMEGA; lane_id++)
-        {
+#pragma omp simd
+        for (int lane_id = 0; lane_id < ANONYMOUSLIB_CSR5_OMEGA; lane_id++) {
             int y_offset = s_segn_scan[lane_id];
 
             int scansum_offset = 0;
             int next1 = lane_id + 1;
-            if (s_present[lane_id])
-            {
-                while (!s_present[next1] && next1 < ANONYMOUSLIB_CSR5_OMEGA)
-                {
+            if (s_present[lane_id]) {
+                while (!s_present[next1] && next1 < ANONYMOUSLIB_CSR5_OMEGA) {
                     scansum_offset++;
                     next1++;
                 }
@@ -235,72 +197,57 @@ void generate_partition_descriptor_s2_kernel(const uiT    *d_partition_pointer,
     _mm_free(s_present_all);
 }
 
-
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
-int generate_partition_descriptor(const int           sigma,
-                                  const ANONYMOUSLIB_IT   p,
-                                  const ANONYMOUSLIB_IT   m,
-                                  const int           bit_y_offset,
-                                  const int           bit_scansum_offset,
-                                  const int           num_packet,
-                                  const ANONYMOUSLIB_IT  *row_pointer,
-                                  const ANONYMOUSLIB_UIT *partition_pointer,
-                                  ANONYMOUSLIB_UIT       *partition_descriptor,
-                                  ANONYMOUSLIB_IT        *partition_descriptor_offset_pointer,
-                                  ANONYMOUSLIB_IT        *_num_offsets)
-{
+int generate_partition_descriptor(const int sigma, const ANONYMOUSLIB_IT p, const ANONYMOUSLIB_IT m,
+                                  const int bit_y_offset, const int bit_scansum_offset, const int num_packet,
+                                  const ANONYMOUSLIB_IT* row_pointer, const ANONYMOUSLIB_UIT* partition_pointer,
+                                  ANONYMOUSLIB_UIT* partition_descriptor,
+                                  ANONYMOUSLIB_IT* partition_descriptor_offset_pointer, ANONYMOUSLIB_IT* _num_offsets) {
     int bit_all_offset = bit_y_offset + bit_scansum_offset;
 
-    generate_partition_descriptor_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>
-            (row_pointer, partition_pointer, partition_descriptor, m, p, sigma, bit_all_offset, num_packet);
+    generate_partition_descriptor_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
+      row_pointer, partition_pointer, partition_descriptor, m, p, sigma, bit_all_offset, num_packet);
 
-    generate_partition_descriptor_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>
-            (partition_pointer, partition_descriptor, partition_descriptor_offset_pointer,
-             sigma, num_packet, bit_y_offset, bit_scansum_offset, p);
+    generate_partition_descriptor_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
+      partition_pointer, partition_descriptor, partition_descriptor_offset_pointer, sigma, num_packet, bit_y_offset,
+      bit_scansum_offset, p);
 
     if (partition_descriptor_offset_pointer[p])
-        scan_single<ANONYMOUSLIB_IT>(partition_descriptor_offset_pointer, p+1);
+        scan_single<ANONYMOUSLIB_IT>(partition_descriptor_offset_pointer, p + 1);
 
     *_num_offsets = partition_descriptor_offset_pointer[p];
 
     // print for debug
-//    cout << "partition_descriptor(1) = " << endl;
-//    print_tile<ANONYMOUSLIB_UIT>(partition_descriptor, num_packet, ANONYMOUSLIB_CSR5_OMEGA);
-//    cout << "partition_descriptor(2) = " << endl;
-//    print_tile<ANONYMOUSLIB_UIT>(&partition_descriptor[num_packet * ANONYMOUSLIB_CSR5_OMEGA], num_packet, ANONYMOUSLIB_CSR5_OMEGA);
+    //    cout << "partition_descriptor(1) = " << endl;
+    //    print_tile<ANONYMOUSLIB_UIT>(partition_descriptor, num_packet, ANONYMOUSLIB_CSR5_OMEGA);
+    //    cout << "partition_descriptor(2) = " << endl;
+    //    print_tile<ANONYMOUSLIB_UIT>(&partition_descriptor[num_packet * ANONYMOUSLIB_CSR5_OMEGA], num_packet,
+    //    ANONYMOUSLIB_CSR5_OMEGA);
 
     return ANONYMOUSLIB_SUCCESS;
 }
 
 template<typename iT, typename uiT>
-void generate_partition_descriptor_offset_kernel(const iT           *d_row_pointer,
-                                                 const uiT          *d_partition_pointer,
-                                                 const uiT          *d_partition_descriptor,
-                                                 const iT           *d_partition_descriptor_offset_pointer,
-                                                 iT                 *d_partition_descriptor_offset,
-                                                 const iT            p,
-                                                 const int           num_packet,
-                                                 const int           bit_y_offset,
-                                                 const int           bit_scansum_offset,
-                                                 const int           c_sigma)
-{
+void generate_partition_descriptor_offset_kernel(const iT* d_row_pointer, const uiT* d_partition_pointer,
+                                                 const uiT* d_partition_descriptor,
+                                                 const iT* d_partition_descriptor_offset_pointer,
+                                                 iT* d_partition_descriptor_offset, const iT p, const int num_packet,
+                                                 const int bit_y_offset, const int bit_scansum_offset,
+                                                 const int c_sigma) {
     const int bit_all_offset = bit_y_offset + bit_scansum_offset;
     const int bit_bitflag = 32 - bit_all_offset;
 
-    #pragma omp parallel for
-    for (int par_id = 0; par_id < p-1; par_id++)
-    {
+#pragma omp parallel for
+    for (int par_id = 0; par_id < p - 1; par_id++) {
         bool with_empty_rows = (d_partition_pointer[par_id] >> 31) & 0x1;
-        if (!with_empty_rows)
-            continue;
+        if (!with_empty_rows) continue;
 
-        iT row_start       = d_partition_pointer[par_id]     & 0x7FFFFFFF;
-        const iT row_stop  = d_partition_pointer[par_id + 1] & 0x7FFFFFFF;
+        iT row_start = d_partition_pointer[par_id] & 0x7FFFFFFF;
+        const iT row_stop = d_partition_pointer[par_id + 1] & 0x7FFFFFFF;
 
         int offset_pointer = d_partition_descriptor_offset_pointer[par_id];
-        #pragma omp simd
-        for (int lane_id = 0; lane_id < ANONYMOUSLIB_CSR5_OMEGA; lane_id++)
-        {
+#pragma omp simd
+        for (int lane_id = 0; lane_id < ANONYMOUSLIB_CSR5_OMEGA; lane_id++) {
             bool local_bit;
 
             // extract the first bit-flag packet
@@ -313,32 +260,33 @@ void generate_partition_descriptor_offset_kernel(const iT           *d_row_point
 
             local_bit = (descriptor >> 31) & 0x1;
 
-            if (local_bit && lane_id)
-            {
+            if (local_bit && lane_id) {
                 const iT idx = par_id * ANONYMOUSLIB_CSR5_OMEGA * c_sigma + lane_id * c_sigma;
-                const iT y_index = binary_search_right_boundary_kernel<iT>(&d_row_pointer[row_start+1], idx, row_stop - row_start) - 1;
-                //printf("threadid = %i, i = %i, y_idx = %i, y_offset = %i\n", lane_id, 0, y_index, y_offset);
+                const iT y_index
+                  = binary_search_right_boundary_kernel<iT>(&d_row_pointer[row_start + 1], idx, row_stop - row_start)
+                    - 1;
+                // printf("threadid = %i, i = %i, y_idx = %i, y_offset = %i\n", lane_id, 0, y_index, y_offset);
                 d_partition_descriptor_offset[offset_pointer + y_offset] = y_index;
 
                 y_offset++;
             }
 
-            for (int i = 1; i < c_sigma; i++)
-            {
-                if ((!ly && i == bit_bitflag) || (ly && !(31 & (i - bit_bitflag))))
-                {
+            for (int i = 1; i < c_sigma; i++) {
+                if ((!ly && i == bit_bitflag) || (ly && !(31 & (i - bit_bitflag)))) {
                     ly++;
-                    descriptor = d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + ly * ANONYMOUSLIB_CSR5_OMEGA + lane_id];
+                    descriptor = d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet
+                                                        + ly * ANONYMOUSLIB_CSR5_OMEGA + lane_id];
                 }
                 const int norm_i = 31 & (!ly ? i : i - bit_bitflag);
 
                 local_bit = (descriptor >> (31 - norm_i)) & 0x1;
 
-                if (local_bit)
-                {
+                if (local_bit) {
                     const iT idx = par_id * ANONYMOUSLIB_CSR5_OMEGA * c_sigma + lane_id * c_sigma + i;
-                    const iT y_index = binary_search_right_boundary_kernel<iT>(&d_row_pointer[row_start+1], idx, row_stop - row_start) - 1;
-                    //printf("threadid = %i, i = %i, y_idx = %i, y_offset = %i\n", lane_id, i, y_index, y_offset);
+                    const iT y_index = binary_search_right_boundary_kernel<iT>(&d_row_pointer[row_start + 1], idx,
+                                                                               row_stop - row_start)
+                                       - 1;
+                    // printf("threadid = %i, i = %i, y_idx = %i, y_offset = %i\n", lane_id, i, y_index, y_offset);
                     d_partition_descriptor_offset[offset_pointer + y_offset] = y_index;
 
                     y_offset++;
@@ -349,59 +297,45 @@ void generate_partition_descriptor_offset_kernel(const iT           *d_row_point
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
-int generate_partition_descriptor_offset(const int           sigma,
-                                         const ANONYMOUSLIB_IT   p,
-                                         const int           bit_y_offset,
-                                         const int           bit_scansum_offset,
-                                         const int           num_packet,
-                                         const ANONYMOUSLIB_IT  *row_pointer,
-                                         const ANONYMOUSLIB_UIT *partition_pointer,
-                                         ANONYMOUSLIB_UIT       *partition_descriptor,
-                                         ANONYMOUSLIB_IT        *partition_descriptor_offset_pointer,
-                                         ANONYMOUSLIB_IT        *partition_descriptor_offset)
-{
-    generate_partition_descriptor_offset_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>
-            (row_pointer, partition_pointer,
-             partition_descriptor, partition_descriptor_offset_pointer, partition_descriptor_offset,
-             p, num_packet, bit_y_offset, bit_scansum_offset, sigma);
+int generate_partition_descriptor_offset(const int sigma, const ANONYMOUSLIB_IT p, const int bit_y_offset,
+                                         const int bit_scansum_offset, const int num_packet,
+                                         const ANONYMOUSLIB_IT* row_pointer, const ANONYMOUSLIB_UIT* partition_pointer,
+                                         ANONYMOUSLIB_UIT* partition_descriptor,
+                                         ANONYMOUSLIB_IT* partition_descriptor_offset_pointer,
+                                         ANONYMOUSLIB_IT* partition_descriptor_offset) {
+    generate_partition_descriptor_offset_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
+      row_pointer, partition_pointer, partition_descriptor, partition_descriptor_offset_pointer,
+      partition_descriptor_offset, p, num_packet, bit_y_offset, bit_scansum_offset, sigma);
 
     return ANONYMOUSLIB_SUCCESS;
 }
 
 template<typename T, typename uiT>
-void aosoa_transpose_kernel_smem(T         *d_data,
-                                 const uiT *d_partition_pointer,
-                                 const int  nnz,
-                                 const int  sigma,
+void aosoa_transpose_kernel_smem(T* d_data, const uiT* d_partition_pointer, const int nnz, const int sigma,
                                  const bool R2C) // R2C==true means CSR->CSR5, otherwise CSR5->CSR
 {
     int num_p = ceil((double)nnz / (double)(ANONYMOUSLIB_CSR5_OMEGA * sigma)) - 1;
 
     int num_thread = omp_get_max_threads();
-    T *s_data_all = (T *)_mm_malloc(sigma * ANONYMOUSLIB_CSR5_OMEGA * sizeof(T) * num_thread, ANONYMOUSLIB_X86_CACHELINE);
+    T* s_data_all
+      = (T*)_mm_malloc(sigma * ANONYMOUSLIB_CSR5_OMEGA * sizeof(T) * num_thread, ANONYMOUSLIB_X86_CACHELINE);
 
-    #pragma omp parallel for
-    for (int par_id = 0; par_id < num_p; par_id++)
-    {
+#pragma omp parallel for
+    for (int par_id = 0; par_id < num_p; par_id++) {
         int tid = omp_get_thread_num();
-        T *s_data = &s_data_all[sigma * ANONYMOUSLIB_CSR5_OMEGA * tid];
+        T* s_data = &s_data_all[sigma * ANONYMOUSLIB_CSR5_OMEGA * tid];
 
         // if this is fast track partition, do not transpose it
-        if (d_partition_pointer[par_id] == d_partition_pointer[par_id + 1])
-            continue;
+        if (d_partition_pointer[par_id] == d_partition_pointer[par_id + 1]) continue;
 
         // load global data to shared mem
         int idx_y, idx_x;
-        #pragma omp simd
-        for (int idx = 0; idx < ANONYMOUSLIB_CSR5_OMEGA * sigma; idx++)
-        {
-            if (R2C)
-            {
+#pragma omp simd
+        for (int idx = 0; idx < ANONYMOUSLIB_CSR5_OMEGA * sigma; idx++) {
+            if (R2C) {
                 idx_y = idx % sigma;
                 idx_x = idx / sigma;
-            }
-            else
-            {
+            } else {
                 idx_x = idx % ANONYMOUSLIB_CSR5_OMEGA;
                 idx_y = idx / ANONYMOUSLIB_CSR5_OMEGA;
             }
@@ -409,17 +343,13 @@ void aosoa_transpose_kernel_smem(T         *d_data,
             s_data[idx_y * ANONYMOUSLIB_CSR5_OMEGA + idx_x] = d_data[par_id * ANONYMOUSLIB_CSR5_OMEGA * sigma + idx];
         }
 
-        // store transposed shared mem data to global
-        #pragma omp simd
-        for (int idx = 0; idx < ANONYMOUSLIB_CSR5_OMEGA * sigma; idx++)
-        {
-            if (R2C)
-            {
+// store transposed shared mem data to global
+#pragma omp simd
+        for (int idx = 0; idx < ANONYMOUSLIB_CSR5_OMEGA * sigma; idx++) {
+            if (R2C) {
                 idx_x = idx % ANONYMOUSLIB_CSR5_OMEGA;
                 idx_y = idx / ANONYMOUSLIB_CSR5_OMEGA;
-            }
-            else
-            {
+            } else {
                 idx_y = idx % sigma;
                 idx_x = idx / sigma;
             }
@@ -432,29 +362,26 @@ void aosoa_transpose_kernel_smem(T         *d_data,
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT, typename ANONYMOUSLIB_VT>
-int aosoa_transpose(const int           sigma,
-                    const int           nnz,
-                    const ANONYMOUSLIB_UIT *partition_pointer,
-                    ANONYMOUSLIB_IT        *column_index,
-                    ANONYMOUSLIB_VT        *value,
-                    bool                R2C)
-{
+int aosoa_transpose(const int sigma, const int nnz, const ANONYMOUSLIB_UIT* partition_pointer,
+                    ANONYMOUSLIB_IT* column_index, ANONYMOUSLIB_VT* value, bool R2C) {
     aosoa_transpose_kernel_smem<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(column_index, partition_pointer, nnz, sigma, R2C);
     aosoa_transpose_kernel_smem<ANONYMOUSLIB_VT, ANONYMOUSLIB_UIT>(value, partition_pointer, nnz, sigma, R2C);
 
-//    // print for debug
-//    cout << "column_index(1) = " << endl;
-//    print_tile<ANONYMOUSLIB_IT>(column_index, sigma, ANONYMOUSLIB_CSR5_OMEGA);
-//    cout << "column_index(2) = " << endl;
-//    print_tile<ANONYMOUSLIB_IT>(&column_index[sigma * ANONYMOUSLIB_CSR5_OMEGA], sigma, ANONYMOUSLIB_CSR5_OMEGA);
+    //    // print for debug
+    //    cout << "column_index(1) = " << endl;
+    //    print_tile<ANONYMOUSLIB_IT>(column_index, sigma, ANONYMOUSLIB_CSR5_OMEGA);
+    //    cout << "column_index(2) = " << endl;
+    //    print_tile<ANONYMOUSLIB_IT>(&column_index[sigma * ANONYMOUSLIB_CSR5_OMEGA], sigma, ANONYMOUSLIB_CSR5_OMEGA);
 
-//    // print for debug
-//    cout << "value(1) = " << endl;
-//    print_tile<ANONYMOUSLIB_VT>(value, sigma, ANONYMOUSLIB_CSR5_OMEGA);
-//    cout << "value(2) = " << endl;
-//    print_tile<ANONYMOUSLIB_VT>(&value[sigma * ANONYMOUSLIB_CSR5_OMEGA], sigma, ANONYMOUSLIB_CSR5_OMEGA);
+    //    // print for debug
+    //    cout << "value(1) = " << endl;
+    //    print_tile<ANONYMOUSLIB_VT>(value, sigma, ANONYMOUSLIB_CSR5_OMEGA);
+    //    cout << "value(2) = " << endl;
+    //    print_tile<ANONYMOUSLIB_VT>(&value[sigma * ANONYMOUSLIB_CSR5_OMEGA], sigma, ANONYMOUSLIB_CSR5_OMEGA);
 
     return ANONYMOUSLIB_SUCCESS;
 }
+
+} // namespace csr5::avx2
 
 #endif /* THIRD_PARTY_CSR5_INCLUDE_DETAIL_AVX2_FORMAT_AVX2 */

@@ -66,7 +66,7 @@ struct csr_matrix
 {
     // TODO: better structure layout.
     cg::matrix_storage_formats::csr<ValueType> csr;
-    anonymouslibHandle<int, unsigned int, ValueType> A;
+    csr5::avx2::anonymouslibHandle<int, unsigned int, ValueType> A;
 
     void inputCSR() {
         A.inputCSR(static_cast<int>(csr.values.size()), reinterpret_cast<int*>(csr.row_start_offsets.data()),
@@ -162,11 +162,13 @@ int main(int argc, const char* argv[]) {
 
     // do sequential algo for reference.
     auto y_ref = std::vector<double>(dimensions.rows, 0.);
-    report_timed_section("Sequential SpMV", [&] { cg::spmv_algos::cpu_sequential(matrix.csr, std::span{x}, std::span{y_ref}); });
+    report_timed_section("Sequential SpMV",
+                         [&] { cg::spmv_algos::cpu_sequential(matrix.csr, std::span{x}, std::span{y_ref}); });
+
     // careful, this shuffles x around making it unusable for calculations.
     matrix.inputCSR();
     matrix.A.setX(x.data());
-    matrix.A.setSigma(ANONYMOUSLIB_CSR5_SIGMA);
+    matrix.A.setSigma(csr5::avx2::ANONYMOUSLIB_CSR5_SIGMA);
     report_timed_section("CSR5 conversion", [&] {
         matrix.A.asCSR();
         matrix.A.asCSR5();
