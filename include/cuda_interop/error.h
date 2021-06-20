@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cuda_interop/annotations.h>
 #include <driver_types.h>
 
 namespace cui {
@@ -10,7 +11,7 @@ struct error_handler
     const char* function{};
     const size_t line{};
 
-    void operator+(cudaError error) const;
+    __host__ void operator+(cudaError error) const;
 };
 
 } // namespace cui
