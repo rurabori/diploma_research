@@ -93,10 +93,11 @@ auto load_matrix(const std::filesystem::path& path) {
 
     MM_typecode typecode{};
     mm_read_banner(file.get(), &typecode);
-    if (!mm_is_coordinate(typecode)) throw std::runtime_error{"Only coordinate matrix loading is implemented."};
 
     auto [dimensions, non_zero] = read_matrix_size(file.get());
     print_mm_info(typecode, dimensions, non_zero);
+
+    if (!mm_is_coordinate(typecode)) throw std::runtime_error{"Only coordinate matrix loading is implemented."};
 
     const auto coo = read_coo<double>(file.get(), dimensions, static_cast<size_t>(non_zero));
 
@@ -157,13 +158,12 @@ int main(int argc, const char* argv[]) {
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
     switch (arguments.algorithm) {
         case arguments::algorithm_t::cpu_sequential: {
-            report_timed_section("Sequential SpMV",
-                                 [&] { cg::spmv_algos::cpu_sequential(matrix, std::span{x}, std::span{Y}); });
+            report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_sequential(matrix, std::span{x}, std::span{Y}); });
             break;
         }
         case arguments::algorithm_t::cpu_avx2: {
             auto handle = cg::spmv_algos::create_csr5_handle(matrix);
-            report_timed_section("CSR5 SpMV", [&] { cg::spmv_algos::cpu_avx2(handle, std::span{x}, std::span{Y}); });
+            report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_avx2(handle, std::span{x}, std::span{Y}); });
             handle.destroy();
             break;
         }

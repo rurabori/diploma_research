@@ -17,7 +17,7 @@ auto report_timed_section(std::string_view name, Callable&& callable) {
     using std::chrono::nanoseconds;
 
     auto duration = timed_section(std::forward<Callable>(callable));
-    fmt::print(FMT_STRING("{} took: {}ns\n"), name, duration_cast<nanoseconds>(duration).count());
+    fmt::print(FMT_STRING("{}={}ns\n"), name, duration_cast<nanoseconds>(duration).count());
 }
 
 #endif /* APPS_CONJUGATE_GRADIENT_TIMED_SECTION */

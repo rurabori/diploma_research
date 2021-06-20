@@ -29,13 +29,13 @@ __host__ void bench_csr5_cuda(int rows, int cols, int non_zero, int* row_start_o
     anonymouslib_timer asCSR5_timer;
     asCSR5_timer.start();
     A.asCSR5();
-    fmt::print("CSR->CSR5 time = {}ms.\n", asCSR5_timer.stop());
+    fmt::print("CSR5={}ns\n", asCSR5_timer.stop() * 1000000);
 
     auto d_y = cui::alloc<double>(rows);
     anonymouslib_timer spmv_timer;
     spmv_timer.start();
     A.spmv(1.0, d_y.get());
-    fmt::print("SpMV time = {}ms.\n", spmv_timer.stop());
+    fmt::print("SpMV={}ns\n", spmv_timer.stop() * 1000000);
 
     cui::memcpy(output, d_y.get(), rows, cudaMemcpyDeviceToHost);
 }
