@@ -9,13 +9,13 @@ option(
 
 if(${invoke_conan})
   set(__conan_config_files_dir ${CMAKE_BINARY_DIR}/__conan_config_files)
-  set(env{CC} ${CMAKE_C_COMPILER})
-  set(env{CXX} ${CMAKE_CXX_COMPILER})
   # cmake-format: off
   conan_cmake_run(
     CONANFILE conanfile.py
     SETTINGS compiler.cppstd=${CMAKE_CXX_STANDARD}
     INSTALL_FOLDER ${__conan_config_files_dir}
+    ENV CC=${CMAKE_C_COMPILER}
+    ENV CXX=${CMAKE_CXX_COMPILER}
     BUILD missing)
   # cmake-format: on
   list(APPEND CMAKE_PREFIX_PATH ${__conan_config_files_dir})
