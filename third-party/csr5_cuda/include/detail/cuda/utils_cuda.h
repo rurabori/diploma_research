@@ -65,7 +65,7 @@ __forceinline__ __device__ vT sum_32_shfl(vT sum) {
     //        sum += __shfl_down_sync(sum, offset);
 
 #pragma unroll
-    for (int mask = ANONYMOUSLIB_CSR5_OMEGA / 2; mask > 0; mask >>= 1) sum += __shfl_xor(sum, mask);
+    for (int mask = ANONYMOUSLIB_CSR5_OMEGA / 2; mask > 0; mask >>= 1) sum += __shfl_xor_sync(0xFFFFFFFF, sum, mask);
 
     return sum;
 }
@@ -190,8 +190,8 @@ __forceinline__ __device__ double scan_32_shfl(double x) {
             "  .reg .s32 hi;"
             "  .reg .pred p;"
             "  mov.b64 {lo, hi}, %1;"
-            "  shfl.up.b32 lo|p, lo, %2, %3;"
-            "  shfl.up.b32 hi|p, hi, %2, %3;"
+            "  shfl.sync.up.b32 lo|p, lo, %2, %3, 0xffffffff;"
+            "  shfl.sync.up.b32 hi|p, hi, %2, %3, 0xffffffff;"
             "  mov.b64 %0, {lo, hi};"
             "  @p add.f64 %0, %0, %1;"
             "}"

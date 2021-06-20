@@ -1,5 +1,5 @@
-#ifndef THIRD_PARTY_CSR5_CUDA_DETAIL_CUDA_CSR5_SPMV_CUDA
-#define THIRD_PARTY_CSR5_CUDA_DETAIL_CUDA_CSR5_SPMV_CUDA
+#ifndef THIRD_PARTY_CSR5_CUDA_INCLUDE_DETAIL_CUDA_CSR5_SPMV_CUDA
+#define THIRD_PARTY_CSR5_CUDA_INCLUDE_DETAIL_CUDA_CSR5_SPMV_CUDA
 
 #include "common_cuda.h"
 #include "utils_cuda.h"
@@ -70,12 +70,8 @@ __inline__ __device__ void
   partition_normal_track(const iT* d_column_index_partition, const vT* d_value_partition, const vT* d_x,
                          cudaTextureObject_t d_x_tex, const uiT* d_partition_descriptor,
                          const iT* d_partition_descriptor_offset_pointer, const iT* d_partition_descriptor_offset,
-                         vT* d_calibrator, vT* d_y,
-#if __CUDA_ARCH__ < 300
-                         volatile vT* s_sum, volatile int* s_scan,
-#endif
-                         const iT par_id, const int lane_id, const int bit_y_offset, const int bit_scansum_offset,
-                         iT row_start, const bool empty_rows, const vT alpha) {
+                         vT* d_calibrator, vT* d_y, const iT par_id, const int lane_id, const int bit_y_offset,
+                         const int bit_scansum_offset, iT row_start, const bool empty_rows, const vT alpha) {
     int start = 0;
     int stop = 0;
 
@@ -144,11 +140,7 @@ __inline__ __device__ void
     // step 2. segmented sum
     sum = start ? first_sum : 0;
 
-#if __CUDA_ARCH__ >= 300
     sum = segmented_sum_shfl<vT>(sum, scansum_offset, lane_id);
-#else
-    sum = segmented_sum<vT>(sum, s_sum, scansum_offset, lane_id);
-#endif
 
     // step 3-1. add s_sum to position stop
     last_sum += (start <= stop) ? sum : 0;
@@ -167,35 +159,16 @@ __inline__ __device__ void
                  const uiT* d_partition_descriptor, const iT* d_partition_descriptor_offset_pointer,
                  const iT* d_partition_descriptor_offset, vT* d_calibrator, vT* d_y, const iT par_id, const int lane_id,
                  const int bunch_id, const int bit_y_offset, const int bit_scansum_offset, const vT alpha) {
-#if __CUDA_ARCH__ < 300
-    volatile __shared__ vT s_sum[ANONYMOUSLIB_THREAD_GROUP + ANONYMOUSLIB_CSR5_OMEGA / 2];
-    volatile __shared__ int
-      s_scan[(ANONYMOUSLIB_CSR5_OMEGA + 1) * (ANONYMOUSLIB_THREAD_GROUP / ANONYMOUSLIB_CSR5_OMEGA)];
-#endif
-
     uiT row_start, row_stop;
 
-#if __CUDA_ARCH__ >= 350
     if (lane_id < 2) row_start = __ldg(&d_partition_pointer[par_id + lane_id]);
     row_stop = __shfl_sync(0xFFFFFFFF, row_start, 1);
     row_start = __shfl_sync(0xFFFFFFFF, row_start, 0);
     row_stop &= 0x7FFFFFFF;
-#else
-    volatile __shared__ uiT s_row_start_stop[ANONYMOUSLIB_THREAD_GROUP / ANONYMOUSLIB_CSR5_OMEGA + 1];
-    if (threadIdx.x < ANONYMOUSLIB_THREAD_GROUP / ANONYMOUSLIB_CSR5_OMEGA + 1)
-        s_row_start_stop[threadIdx.x] = d_partition_pointer[par_id + threadIdx.x];
-    __syncthreads();
-
-    row_start = s_row_start_stop[bunch_id];
-    row_stop = s_row_start_stop[bunch_id + 1] & 0x7FFFFFFF;
-#endif
 
     if (row_start == row_stop) // fast track through reduction
     {
         partition_fast_track<iT, vT, c_sigma>(d_value_partition, d_x, d_x_tex, d_column_index_partition, d_calibrator,
-#if __CUDA_ARCH__ < 300
-                                              &s_sum[bunch_id * ANONYMOUSLIB_CSR5_OMEGA],
-#endif
                                               lane_id, par_id, alpha);
     } else {
         const bool empty_rows = (row_start >> 31) & 0x1;
@@ -203,13 +176,10 @@ __inline__ __device__ void
 
         d_y = &d_y[row_start + 1];
 
-        partition_normal_track<iT, uiT, vT, c_sigma>(
-          d_column_index_partition, d_value_partition, d_x, d_x_tex, d_partition_descriptor,
-          d_partition_descriptor_offset_pointer, d_partition_descriptor_offset, d_calibrator, d_y,
-#if __CUDA_ARCH__ < 300
-          &s_sum[bunch_id * ANONYMOUSLIB_CSR5_OMEGA], &s_scan[bunch_id * (ANONYMOUSLIB_CSR5_OMEGA + 1)],
-#endif
-          par_id, lane_id, bit_y_offset, bit_scansum_offset, row_start, empty_rows, alpha);
+        partition_normal_track<iT, uiT, vT, c_sigma>(d_column_index_partition, d_value_partition, d_x, d_x_tex,
+                                                     d_partition_descriptor, d_partition_descriptor_offset_pointer,
+                                                     d_partition_descriptor_offset, d_calibrator, d_y, par_id, lane_id,
+                                                     bit_y_offset, bit_scansum_offset, row_start, empty_rows, alpha);
     }
 }
 
@@ -563,4 +533,4 @@ int csr5_spmv(const int sigma, const ANONYMOUSLIB_IT p, const ANONYMOUSLIB_IT m,
     return err;
 }
 
-#endif /* THIRD_PARTY_CSR5_CUDA_DETAIL_CUDA_CSR5_SPMV_CUDA */
+#endif /* THIRD_PARTY_CSR5_CUDA_INCLUDE_DETAIL_CUDA_CSR5_SPMV_CUDA */
