@@ -7,14 +7,14 @@ project(
 # default project settings.
 include(cmake/default_settings.cmake)
 
-# conan integration.
-include(cmake/conan.cmake)
-
 # versioning functions.
 include(cmake/versioning.cmake)
 
 # helper functions.
 include(cmake/functions.cmake)
+
+# conan integration.
+include(cmake/conan.cmake)
 
 # default installation directories for OSes.
 include(GNUInstallDirs)
