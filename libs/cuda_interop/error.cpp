@@ -7,7 +7,7 @@
 
 namespace cui {
 
-CUI_API void error_handler::operator+(cudaError error) const {
+void error_handler::operator+(cudaError error) const {
     if (error == cudaSuccess) return;
 
     throw std::runtime_error{fmt::format("Cuda call at {}({}):{} failed with error code {}: {}.", file, function, line,

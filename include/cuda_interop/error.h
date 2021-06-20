@@ -11,7 +11,7 @@ struct error_handler
     const char* function{};
     const size_t line{};
 
-    __host__ void operator+(cudaError error) const;
+    void operator+(cudaError error) const;
 };
 
 } // namespace cui
