@@ -6,11 +6,11 @@ AVAILABLE_ALGORITHMS = ['cpu_sequential', 'cpu_avx2', 'cuda']
 INPUT_MATRICES = ['resources/matrices/barrier2-10/barrier2-10.mtx',
                   'resources/matrices/ns3Da/ns3Da.mtx',
                   'resources/matrices/west0156/west0156.mtx',
-                  'resources/matrices/e40r5000.mtx'
+                  'resources/matrices/e40r5000.mtx',
+                  'resources/matrices/fidapm37.mtx',
+                  'resources/matrices/nv2/nv2.mtx',
                   ]
 NUM_TRIES = 2
-
-PARSED_OUTPUTS = ['SpMV', 'consumed_memory']
 
 
 def get_stats(lines: List[bytes]):

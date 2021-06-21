@@ -1,0 +1,87 @@
+{
+    "resources/matrices/barrier2-10/barrier2-10.mtx": {
+        "algorithms": {
+            "cpu_sequential": {
+                "runtime": 3120217.5,
+                "throughput": 15.137787029269594
+            },
+            "cpu_avx2": {
+                "runtime": 4279216.0,
+                "throughput": 11.037813468635376
+            },
+            "cuda": {
+                "runtime": 226816.0,
+                "throughput": 208.24451537810384
+            }
+        },
+        "memory_consumption": 47233188
+    },
+    "resources/matrices/ns3Da/ns3Da.mtx": {
+        "algorithms": {
+            "cpu_sequential": {
+                "runtime": 1360815.5,
+                "throughput": 14.871118090586123
+            },
+            "cpu_avx2": {
+                "runtime": 547113.5,
+                "throughput": 36.9883908914695
+            },
+            "cuda": {
+                "runtime": 163392.0,
+                "throughput": 123.85458284371327
+            }
+        },
+        "memory_consumption": 20236848
+    },
+    "resources/matrices/west0156/west0156.mtx": {
+        "algorithms": {
+            "cpu_sequential": {
+                "runtime": 812.0,
+                "throughput": 6.25615763546798
+            },
+            "cpu_avx2": {
+                "runtime": 120851.5,
+                "throughput": 0.04203505955656322
+            },
+            "cuda": {
+                "runtime": 59296.0,
+                "throughput": 0.08567188343227199
+            }
+        },
+        "memory_consumption": 5080
+    },
+    "resources/matrices/e40r5000.mtx": {
+        "algorithms": {
+            "cpu_sequential": {
+                "runtime": 296700.0,
+                "throughput": 22.63768115942029
+            },
+            "cpu_avx2": {
+                "runtime": 161291.5,
+                "throughput": 41.64261600890313
+            },
+            "cuda": {
+                "runtime": 89664.0,
+                "throughput": 74.90854746609564
+            }
+        },
+        "memory_consumption": 6716600
+    },
+    "resources/matrices/nv2/nv2.mtx": {
+        "algorithms": {
+            "cpu_sequential": {
+                "runtime": 142794794.0,
+                "throughput": 4.471843560347165
+            },
+            "cpu_avx2": {
+                "runtime": 48703744.0,
+                "throughput": 13.111024483045902
+            },
+            "cuda": {
+                "runtime": 2412816.0,
+                "throughput": 264.65175131464645
+            }
+        },
+        "memory_consumption": 638555980
+    }
+}
