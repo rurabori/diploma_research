@@ -57,8 +57,8 @@ auto generate_random_vector(size_t required_size) {
     cache_aligned_vector<double> x(required_size, 0.);
 
     std::mt19937_64 prng{std::random_device{}()};
-    std::uniform_int_distribution<uint64_t> dist{};
-    std::ranges::generate(x, [&] { return dist(prng) % 10; });
+    std::uniform_real_distribution<double> dist{0., 1.};
+    std::ranges::generate(x, [&] { return dist(prng); });
 
     return x;
 }
@@ -146,6 +146,13 @@ struct arguments
 int main(int argc, const char* argv[]) {
     auto arguments = arguments::from_main(argc, argv);
     auto matrix = load_matrix(arguments.matrix_file);
+
+    auto consumed_memory
+      = matrix.col_indices.size() * sizeof(typename decltype(matrix.col_indices)::value_type)
+        + matrix.row_start_offsets.size() * sizeof(typename decltype(matrix.row_start_offsets)::value_type)
+        + matrix.values.size() * sizeof(typename decltype(matrix.values)::value_type);
+
+    fmt::print("consumed_memory={}\n", consumed_memory);
 
     auto dimensions = matrix.dimensions;
 
