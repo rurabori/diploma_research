@@ -13,6 +13,7 @@
 #include <mm_malloc.h>
 #include <mmio/mmio.h>
 
+#include <fmt/chrono.h>
 #include <fmt/format.h>
 
 #include <anonymouslib_avx2.h>
@@ -74,8 +75,8 @@ auto read_matrix_size(FILE* file) {
 }
 
 template<typename ValueType>
-auto read_coo(FILE* file, cg::dimensions_t dimensions, size_t non_zero) {
-    auto retval = cg::matrix_storage_formats::coo<ValueType>{dimensions, non_zero};
+auto read_coo(FILE* file, cg::dimensions_t dimensions, size_t non_zero, bool symmetric) {
+    auto retval = cg::matrix_storage_formats::coo<ValueType>{dimensions, non_zero, symmetric};
 
     for (size_t i = 0; i < non_zero; ++i) {
         std::fscanf(file, "%d %d %lg", &retval.row_indices[i], &retval.col_indices[i], &retval.values[i]);
@@ -89,7 +90,8 @@ auto read_coo(FILE* file, cg::dimensions_t dimensions, size_t non_zero) {
 
 auto load_matrix(const std::filesystem::path& path) {
     file_t file{std::fopen(path.c_str(), "r")};
-    if (!file) throw std::runtime_error{"File couldn't be opened."};
+    if (!file)
+        throw std::runtime_error{"File couldn't be opened."};
 
     MM_typecode typecode{};
     mm_read_banner(file.get(), &typecode);
@@ -97,9 +99,15 @@ auto load_matrix(const std::filesystem::path& path) {
     auto [dimensions, non_zero] = read_matrix_size(file.get());
     print_mm_info(typecode, dimensions, non_zero);
 
-    if (!mm_is_coordinate(typecode)) throw std::runtime_error{"Only coordinate matrix loading is implemented."};
+    if (!mm_is_coordinate(typecode))
+        throw std::runtime_error{"Only coordinate matrix loading is implemented."};
 
-    const auto coo = read_coo<double>(file.get(), dimensions, static_cast<size_t>(non_zero));
+    const auto start = std::chrono::steady_clock::now();
+    const auto coo = read_coo<double>(file.get(), dimensions, static_cast<size_t>(non_zero),
+                                      mm_is_symmetric(typecode) || mm_is_hermitian(typecode));
+
+    const auto end = std::chrono::steady_clock::now() - start;
+    fmt::print(stderr, "Loading from file took {}\n", end);
 
     return cg::matrix_storage_formats::csr<double>::from_coo(coo);
 }
@@ -118,7 +126,8 @@ struct arguments
     algorithm_t algorithm;
 
     static algorithm_t get_algoritm(std::string_view string_representation) {
-        if (auto algo = magic_enum::enum_cast<algorithm_t>(string_representation); algo) return *algo;
+        if (auto algo = magic_enum::enum_cast<algorithm_t>(string_representation); algo)
+            return *algo;
 
         return algorithm_t::cpu_sequential;
     }
@@ -158,10 +167,6 @@ int main(int argc, const char* argv[]) {
 
     auto x = generate_random_vector(dimensions.cols);
 
-    auto Y_ref = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
-    report_timed_section("Reference sequential SpMV",
-                         [&] { cg::spmv_algos::cpu_sequential(matrix, std::span{x}, std::span{Y_ref}); });
-
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
     switch (arguments.algorithm) {
         case arguments::algorithm_t::cpu_sequential: {
@@ -180,8 +185,5 @@ int main(int argc, const char* argv[]) {
         }
     }
 
-    constexpr auto comparator = [](auto lhs, auto rhs) { return !(std::abs(lhs - rhs) > 0.01 * std::abs(lhs)); };
-    auto are_same = std::ranges::equal(Y, Y_ref, comparator);
-
-    fmt::print("SPMV correct : {}\n", are_same);
+    return 0;
 }
