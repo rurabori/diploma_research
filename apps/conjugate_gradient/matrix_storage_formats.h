@@ -74,10 +74,7 @@ namespace matrix_storage_formats {
             // count occurences of rows.
             std::vector<uint32_t> csr_row_counter(coo.dimensions.rows + 1, 0);
 
-            coo.iterate_values([&](auto value, auto row, auto col) {
-                auto x = 0;
-                ++csr_row_counter[row];
-            });
+            coo.iterate_values([&](auto /*value*/, auto row, auto /*col*/) { ++csr_row_counter[row]; });
 
             // prefix scan to get the starting indices of cols in a row.
             std::exclusive_scan(csr_row_counter.begin(), csr_row_counter.end(), csr_row_counter.begin(), 0);
