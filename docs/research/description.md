@@ -9,4 +9,11 @@
 + consider optimizations for iterative solvers
 (CG, BiCG).
 
+# Description v2
 
++ implement single machine version.
++ research existing solutions for distributed SpMV.
++ implement distributed SpMV.
++ optimize distribution of data between nodes.
++ benchmark the distributed solution against 
++ discuss the benchmarks and viability of distributed solution.
