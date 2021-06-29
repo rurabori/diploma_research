@@ -27,12 +27,12 @@ struct cache_aligned_allocator_t
     void deallocate(ValueType* ptr, size_t /*n*/) { _mm_free(ptr); }
 };
 
-template<typename ValueType1, std::align_val_t Alignment1, typename ValueType2, std::align_val_t Alignment2>
+template<typename ValueType1, typename ValueType2>
 constexpr bool operator==(const cache_aligned_allocator_t<ValueType1>&, const cache_aligned_allocator_t<ValueType2>&) {
     return std::same_as<ValueType1, ValueType2>;
 }
 
-template<typename ValueType1, std::align_val_t Alignment1, typename ValueType2, std::align_val_t Alignment2>
+template<typename ValueType1, typename ValueType2>
 constexpr bool operator!=(const cache_aligned_allocator_t<ValueType1>& a,
                           const cache_aligned_allocator_t<ValueType2>& b) {
     return !(a == b);
