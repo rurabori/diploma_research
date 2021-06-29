@@ -1,8 +1,10 @@
 #ifndef APPS_CONJUGATE_GRADIENT_TIMED_SECTION
 #define APPS_CONJUGATE_GRADIENT_TIMED_SECTION
 #include <chrono>
-#include <fmt/format.h>
 #include <string_view>
+
+#include <fmt/format.h>
+#include <fmt/chrono.h>
 
 template<typename Callable>
 auto timed_section(Callable&& callable) {
@@ -17,7 +19,7 @@ auto report_timed_section(std::string_view name, Callable&& callable) {
     using std::chrono::nanoseconds;
 
     auto duration = timed_section(std::forward<Callable>(callable));
-    fmt::print(FMT_STRING("{}={}ns\n"), name, duration_cast<nanoseconds>(duration).count());
+    fmt::print("{}={}\n", name, duration);
 }
 
 #endif /* APPS_CONJUGATE_GRADIENT_TIMED_SECTION */
