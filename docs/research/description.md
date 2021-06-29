@@ -26,5 +26,3 @@
 4. Implement some of the discussed optimizations and measure the resulting speedup. 
 5. Compare the performance of the implementation with similarly focused libraries as well as single machine implementation.
 [1]J. Eckstein ,G. Matyasfalvi (2018) Efficient Distributed-Memory Parallel Matrix-Vector Multiplication with Wide or Tall Unstructured Sparse Matrices
-
-
