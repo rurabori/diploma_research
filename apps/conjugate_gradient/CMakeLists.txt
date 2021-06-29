@@ -13,4 +13,5 @@ target_link_libraries(
           tclap::tclap
           csr5_cuda
           magic_enum::magic_enum
-          cui::cui)
+          cui::cui
+          dim::memory)

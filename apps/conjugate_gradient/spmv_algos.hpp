@@ -1,7 +1,6 @@
 #ifndef APPS_CONJUGATE_GRADIENT_SPMV_ALGOS
 #define APPS_CONJUGATE_GRADIENT_SPMV_ALGOS
 
-#include "cache_aligned_allocator.h"
 #include "cuda_algo_facade.h"
 #include "matrix_storage_formats.h"
 #include <anonymouslib_avx2.h>

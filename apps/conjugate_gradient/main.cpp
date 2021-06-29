@@ -25,7 +25,6 @@
 
 #include <magic_enum.hpp>
 
-#include "cache_aligned_allocator.h"
 #include "matrix_storage_formats.h"
 #include "spmv_algos.hpp"
 #include "timed_section.h"

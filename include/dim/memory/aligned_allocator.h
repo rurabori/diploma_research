@@ -1,13 +1,14 @@
-#ifndef APPS_CONJUGATE_GRADIENT_CACHE_ALIGNED_ALLOCATOR
-#define APPS_CONJUGATE_GRADIENT_CACHE_ALIGNED_ALLOCATOR
+#ifndef INCLUDE_DIM_MEMORY_ALIGNED_ALLOCATOR
+#define INCLUDE_DIM_MEMORY_ALIGNED_ALLOCATOR
 
+#include <concepts>
 #include <cstddef>
 #include <new>
-#include <concepts>
 
 #include <mm_malloc.h>
 
-namespace cg {
+namespace dim::memory {
+
 #ifdef __cpp_lib_hardware_interference_size
 using std::hardware_destructive_interference_size;
 #else
@@ -36,6 +37,6 @@ constexpr bool operator!=(const cache_aligned_allocator_t<ValueType1>& a,
                           const cache_aligned_allocator_t<ValueType2>& b) {
     return !(a == b);
 }
-} // namespace cg
+} // namespace dim::memory
 
-#endif /* APPS_CONJUGATE_GRADIENT_CACHE_ALIGNED_ALLOCATOR */
+#endif /* INCLUDE_DIM_MEMORY_ALIGNED_ALLOCATOR */

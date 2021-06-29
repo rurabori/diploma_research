@@ -1,7 +1,7 @@
 #ifndef APPS_CONJUGATE_GRADIENT_MATRIX_STORAGE_FORMATS
 #define APPS_CONJUGATE_GRADIENT_MATRIX_STORAGE_FORMATS
 
-#include "cache_aligned_allocator.h"
+#include <dim/memory/aligned_allocator.h>
 #include <algorithm>
 #include <concepts>
 #include <cstdint>
@@ -21,7 +21,7 @@ struct dimensions_t
 namespace matrix_storage_formats {
 
     template<typename Ty>
-    using cache_aligned_vector = std::vector<Ty, cache_aligned_allocator_t<Ty>>;
+    using cache_aligned_vector = std::vector<Ty, dim::memory::cache_aligned_allocator_t<Ty>>;
 
     template<typename ValueType, template<typename> typename StorageContainer = cache_aligned_vector>
     struct coo
