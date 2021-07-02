@@ -144,7 +144,8 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
     _csr5_partition_descriptor_offset_pointer.resize(_p + 1);
 
     if (generate_partition_pointer<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
-          _csr5_sigma, _m, _nnz, std::span{_csr5_partition_pointer}.subspan(0, _p), _csr_row_pointer)
+          _csr5_sigma, _nnz, std::span{_csr5_partition_pointer}.subspan(0, static_cast<size_t>(_p)),
+          std::span{_csr_row_pointer, static_cast<size_t>(_m + 1)})
         != ANONYMOUSLIB_SUCCESS)
         return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
 

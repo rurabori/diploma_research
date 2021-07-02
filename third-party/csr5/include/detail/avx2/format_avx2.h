@@ -9,10 +9,10 @@
 namespace csr5::avx2 {
 
 template<typename iT, typename uiT>
-void generate_partition_pointer_s1_kernel(const iT* row_pointer, const std::span<uiT> partition, const int sigma,
-                                          const iT m, const iT nnz) {
+void generate_partition_pointer_s1_kernel(std::span<const iT> row_pointer, const std::span<uiT> partition,
+                                          const int sigma, const iT nnz) {
 #pragma omp parallel for
-    for (iT global_id = 0; global_id <= partition.size(); global_id++) {
+    for (decltype(partition.size()) global_id = 0; global_id <= partition.size(); global_id++) {
         // compute partition boundaries by partition of size sigma * omega
         iT boundary = global_id * sigma * ANONYMOUSLIB_CSR5_OMEGA;
 
@@ -20,7 +20,8 @@ void generate_partition_pointer_s1_kernel(const iT* row_pointer, const std::span
         boundary = boundary > nnz ? nnz : boundary;
 
         // binary search
-        partition[global_id] = binary_search_right_boundary_kernel<iT>(row_pointer, boundary, m + 1) - 1;
+        partition[global_id]
+          = binary_search_right_boundary_kernel<iT>(row_pointer.data(), boundary, row_pointer.size()) - 1;
     }
 }
 
@@ -50,14 +51,15 @@ void generate_partition_pointer_s2_kernel(const iT* row, const std::span<uiT> pa
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
-int generate_partition_pointer(const int sigma, const ANONYMOUSLIB_IT num_rows, const ANONYMOUSLIB_IT num_non_zero,
-                               const std::span<ANONYMOUSLIB_UIT> partition, const ANONYMOUSLIB_IT* row_pointer) {
+int generate_partition_pointer(const int sigma, const ANONYMOUSLIB_IT num_non_zero,
+                               const std::span<ANONYMOUSLIB_UIT> partition,
+                               const std::span<const ANONYMOUSLIB_IT> row_pointer) {
     // step 1. binary search row pointer
-    generate_partition_pointer_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer, partition, sigma, num_rows,
+    generate_partition_pointer_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer, partition, sigma,
                                                                             num_non_zero);
 
     // step 2. check empty rows
-    generate_partition_pointer_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer, partition);
+    generate_partition_pointer_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer.data(), partition);
 
     return ANONYMOUSLIB_SUCCESS;
 }

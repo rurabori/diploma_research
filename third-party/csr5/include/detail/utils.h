@@ -9,17 +9,16 @@
 
 #include <chrono>
 
-
 namespace csr5::avx2 {
 
 template<typename iT, typename vT>
 double getB(const iT m, const iT nnz) {
-    return (double)((m + 1 + nnz) * sizeof(iT) + (2 * nnz + m) * sizeof(vT));
+    return static_cast<double>((m + 1 + nnz) * sizeof(iT) + (2 * nnz + m) * sizeof(vT));
 }
 
 template<typename iT>
 double getFLOP(const iT nnz) {
-    return (double)(2 * nnz);
+    return static_cast<double>(2 * nnz);
 }
 
 template<typename T>
