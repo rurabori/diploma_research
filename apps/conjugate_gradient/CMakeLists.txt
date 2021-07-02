@@ -2,6 +2,7 @@ find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(fmt REQUIRED)
 find_package(tclap REQUIRED)
 find_package(magic_enum REQUIRED)
+find_package(MPI REQUIRED)
 
 brr_add_executable(conjugate_gradient)
 target_link_libraries(
@@ -14,4 +15,5 @@ target_link_libraries(
           csr5_cuda
           magic_enum::magic_enum
           cui::cui
-          dim::memory)
+          dim::memory
+          MPI::MPI_CXX)
