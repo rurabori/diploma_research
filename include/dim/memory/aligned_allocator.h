@@ -4,6 +4,7 @@
 #include <concepts>
 #include <cstddef>
 #include <new>
+#include <vector>
 
 #include <mm_malloc.h>
 
@@ -38,6 +39,9 @@ constexpr bool operator!=(const cache_aligned_allocator_t<ValueType1>& a,
                           const cache_aligned_allocator_t<ValueType2>& b) noexcept {
     return !(a == b);
 }
+
+template<typename Ty>
+using cache_aligned_vector = std::vector<Ty, cache_aligned_allocator_t<Ty>>;
 } // namespace dim::memory
 
 #endif /* INCLUDE_DIM_MEMORY_ALIGNED_ALLOCATOR */
