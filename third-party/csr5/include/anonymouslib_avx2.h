@@ -29,8 +29,8 @@ public:
     int warmup();
     int inputCSR(ANONYMOUSLIB_IT nnz, ANONYMOUSLIB_IT* csr_row_pointer, ANONYMOUSLIB_IT* csr_column_index,
                  ANONYMOUSLIB_VT* csr_value);
-    int asCSR();
-    int asCSR5();
+    int asCSR() noexcept;
+    int asCSR5() noexcept;
     int setX(ANONYMOUSLIB_VT* x);
     int spmv(ANONYMOUSLIB_VT alpha, ANONYMOUSLIB_VT* y);
     int destroy();
@@ -85,7 +85,7 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::inpu
 }
 
 template<class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
-int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCSR() {
+int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCSR() noexcept {
     if (_format == ANONYMOUSLIB_FORMAT_CSR)
         return ANONYMOUSLIB_SUCCESS;
 
@@ -110,7 +110,7 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
 }
 
 template<class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
-int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCSR5() {
+int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCSR5() noexcept {
     if (_format == ANONYMOUSLIB_FORMAT_CSR5)
         return ANONYMOUSLIB_SUCCESS;
 
