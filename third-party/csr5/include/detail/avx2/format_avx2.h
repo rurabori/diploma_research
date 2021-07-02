@@ -4,13 +4,15 @@
 #include "common_avx2.h"
 #include "utils_avx2.h"
 
+#include <span>
+
 namespace csr5::avx2 {
 
 template<typename iT, typename uiT>
-void generate_partition_pointer_s1_kernel(const iT* d_row_pointer, uiT* d_partition_pointer, const int sigma,
-                                          const iT p, const iT m, const iT nnz) {
+void generate_partition_pointer_s1_kernel(const iT* row_pointer, const std::span<uiT> partition, const int sigma,
+                                          const iT m, const iT nnz) {
 #pragma omp parallel for
-    for (iT global_id = 0; global_id <= p; global_id++) {
+    for (iT global_id = 0; global_id <= partition.size(); global_id++) {
         // compute partition boundaries by partition of size sigma * omega
         iT boundary = global_id * sigma * ANONYMOUSLIB_CSR5_OMEGA;
 
@@ -18,52 +20,44 @@ void generate_partition_pointer_s1_kernel(const iT* d_row_pointer, uiT* d_partit
         boundary = boundary > nnz ? nnz : boundary;
 
         // binary search
-        d_partition_pointer[global_id] = binary_search_right_boundary_kernel<iT>(d_row_pointer, boundary, m + 1) - 1;
+        partition[global_id] = binary_search_right_boundary_kernel<iT>(row_pointer, boundary, m + 1) - 1;
     }
 }
 
+template<typename iT>
+bool is_dirty(const std::span<const iT> row) {
+    for (auto idx = 0; idx < row.size(); ++idx)
+        if (row[idx] == row[idx + 1])
+            return true;
+
+    return false;
+}
+
 template<typename iT, typename uiT>
-void generate_partition_pointer_s2_kernel(const iT* d_row_pointer, uiT* d_partition_pointer, const iT p) {
+void generate_partition_pointer_s2_kernel(const iT* row, const std::span<uiT> partition) {
 #pragma omp parallel for
-    for (iT group_id = 0; group_id < p; group_id++) {
-        int dirty = 0;
+    for (decltype(partition.size()) group_id = 0; group_id < partition.size(); group_id++) {
+        auto start = (partition[group_id] << 1) >> 1;
+        auto stop = (partition[group_id + 1] << 1) >> 1;
+        if (start == stop)
+            continue;
 
-        uiT start = d_partition_pointer[group_id];
-        uiT stop = d_partition_pointer[group_id + 1];
-
-        start = (start << 1) >> 1;
-        stop = (stop << 1) >> 1;
-
-        if (start == stop) continue;
-
-        for (iT row_idx = start; row_idx <= stop; row_idx++) {
-            if (d_row_pointer[row_idx] == d_row_pointer[row_idx + 1]) {
-                dirty = 1;
-                break;
-            }
-        }
-
-        if (dirty) {
-            start |= sizeof(uiT) == 4 ? 0x80000000 : 0x8000000000000000;
-            d_partition_pointer[group_id] = start;
+        if (is_dirty(std::span{row + start, row + start + stop})) {
+            start |= uiT{1} << (sizeof(uiT) * 8 - 1);
+            partition[group_id] = start;
         }
     }
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
-int generate_partition_pointer(const int sigma, const ANONYMOUSLIB_IT p, const ANONYMOUSLIB_IT m,
-                               const ANONYMOUSLIB_IT nnz, ANONYMOUSLIB_UIT* partition_pointer,
-                               const ANONYMOUSLIB_IT* row_pointer) {
+int generate_partition_pointer(const int sigma, const ANONYMOUSLIB_IT num_rows, const ANONYMOUSLIB_IT num_non_zero,
+                               const std::span<ANONYMOUSLIB_UIT> partition, const ANONYMOUSLIB_IT* row_pointer) {
     // step 1. binary search row pointer
-    generate_partition_pointer_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer, partition_pointer, sigma, p, m,
-                                                                            nnz);
+    generate_partition_pointer_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer, partition, sigma, num_rows,
+                                                                            num_non_zero);
 
     // step 2. check empty rows
-    generate_partition_pointer_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer, partition_pointer, p);
-
-    //    // print for debug
-    //    cout << "partition_pointer = ";
-    //    print_1darray<ANONYMOUSLIB_UIT>(partition_pointer, p+1);
+    generate_partition_pointer_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer, partition);
 
     return ANONYMOUSLIB_SUCCESS;
 }
@@ -107,7 +101,8 @@ void generate_partition_descriptor_s2_kernel(const uiT* d_partition_pointer, uiT
       = (int*)_mm_malloc(2 * ANONYMOUSLIB_CSR5_OMEGA * sizeof(int) * num_thread, ANONYMOUSLIB_X86_CACHELINE);
     int* s_present_all
       = (int*)_mm_malloc(2 * ANONYMOUSLIB_CSR5_OMEGA * sizeof(int) * num_thread, ANONYMOUSLIB_X86_CACHELINE);
-    for (int i = 0; i < num_thread; i++) s_present_all[i * 2 * ANONYMOUSLIB_CSR5_OMEGA + ANONYMOUSLIB_CSR5_OMEGA] = 1;
+    for (int i = 0; i < num_thread; i++)
+        s_present_all[i * 2 * ANONYMOUSLIB_CSR5_OMEGA + ANONYMOUSLIB_CSR5_OMEGA] = 1;
 
     const int bit_all_offset = bit_y_offset + bit_scansum_offset;
 
@@ -124,7 +119,8 @@ void generate_partition_descriptor_s2_kernel(const uiT* d_partition_pointer, uiT
         iT row_start = d_partition_pointer[par_id] & 0x7FFFFFFF;
         const iT row_stop = d_partition_pointer[par_id + 1] & 0x7FFFFFFF;
 
-        if (row_start == row_stop) continue;
+        if (row_start == row_stop)
+            continue;
 
 #pragma omp simd
         for (int lane_id = 0; lane_id < ANONYMOUSLIB_CSR5_OMEGA; lane_id++) {
@@ -240,7 +236,8 @@ void generate_partition_descriptor_offset_kernel(const iT* d_row_pointer, const 
 #pragma omp parallel for
     for (int par_id = 0; par_id < p - 1; par_id++) {
         bool with_empty_rows = (d_partition_pointer[par_id] >> 31) & 0x1;
-        if (!with_empty_rows) continue;
+        if (!with_empty_rows)
+            continue;
 
         iT row_start = d_partition_pointer[par_id] & 0x7FFFFFFF;
         const iT row_stop = d_partition_pointer[par_id + 1] & 0x7FFFFFFF;
@@ -326,7 +323,8 @@ void aosoa_transpose_kernel_smem(T* d_data, const uiT* d_partition_pointer, cons
         T* s_data = &s_data_all[sigma * ANONYMOUSLIB_CSR5_OMEGA * tid];
 
         // if this is fast track partition, do not transpose it
-        if (d_partition_pointer[par_id] == d_partition_pointer[par_id + 1]) continue;
+        if (d_partition_pointer[par_id] == d_partition_pointer[par_id + 1])
+            continue;
 
         // load global data to shared mem
         int idx_y, idx_x;
@@ -371,7 +369,8 @@ int aosoa_transpose(const int sigma, const int nnz, const ANONYMOUSLIB_UIT* part
     //    cout << "column_index(1) = " << endl;
     //    print_tile<ANONYMOUSLIB_IT>(column_index, sigma, ANONYMOUSLIB_CSR5_OMEGA);
     //    cout << "column_index(2) = " << endl;
-    //    print_tile<ANONYMOUSLIB_IT>(&column_index[sigma * ANONYMOUSLIB_CSR5_OMEGA], sigma, ANONYMOUSLIB_CSR5_OMEGA);
+    //    print_tile<ANONYMOUSLIB_IT>(&column_index[sigma * ANONYMOUSLIB_CSR5_OMEGA], sigma,
+    //    ANONYMOUSLIB_CSR5_OMEGA);
 
     //    // print for debug
     //    cout << "value(1) = " << endl;
