@@ -9,9 +9,10 @@
 #include "detail/avx2/csr5_spmv_avx2.h"
 #include "detail/avx2/format_avx2.h"
 
-#include <dim/memory/aligned_allocator.h>
 #include <utility>
 #include <vector>
+
+#include <dim/memory/aligned_allocator.h>
 
 namespace csr5::avx2 {
 
@@ -29,7 +30,7 @@ public:
     int asCSR();
     int asCSR5();
     int setX(ANONYMOUSLIB_VT* x);
-    int spmv(const ANONYMOUSLIB_VT alpha, ANONYMOUSLIB_VT* y);
+    int spmv(ANONYMOUSLIB_VT alpha, ANONYMOUSLIB_VT* y);
     int destroy();
     void setSigma(int sigma);
 
@@ -113,8 +114,14 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
 
     int err = ANONYMOUSLIB_SUCCESS;
     if (_format == ANONYMOUSLIB_FORMAT_CSR) {
-        double malloc_time = 0, tile_ptr_time = 0, tile_desc_time = 0, transpose_time = 0;
-        anonymouslib_timer malloc_timer, tile_ptr_timer, tile_desc_timer, transpose_timer;
+        double malloc_time = 0;
+        double tile_ptr_time = 0;
+        double tile_desc_time = 0;
+        double transpose_time = 0;
+        anonymouslib_timer malloc_timer{};
+        anonymouslib_timer tile_ptr_timer{};
+        anonymouslib_timer tile_desc_timer{};
+        anonymouslib_timer transpose_timer{};
 
         // compute sigma
         _csr5_sigma = computeSigma();
@@ -140,7 +147,7 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
             return ANONYMOUSLIB_UNSUPPORTED_CSR5_OMEGA;
 
         int bit_all = _bit_y_offset + _bit_scansum_offset + _csr5_sigma;
-        _num_packet = ceil((double)bit_all / (double)(sizeof(ANONYMOUSLIB_UIT) * 8));
+        _num_packet = ceil(static_cast<double>(bit_all) / (double)(sizeof(ANONYMOUSLIB_UIT) * 8));
 
         // calculate the number of partitions
         _p = ceil((double)_nnz / (double)(ANONYMOUSLIB_CSR5_OMEGA * _csr5_sigma));
@@ -242,8 +249,8 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::spmv
         csr5_spmv<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>(
           _csr5_sigma, _p, _m, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer, _csr_column_index,
           _csr_value, _csr5_partition_pointer.data(), _csr5_partition_descriptor.data(),
-          _csr5_partition_descriptor_offset_pointer.data(), _csr5_partition_descriptor_offset.data(), _temp_calibrator.data(),
-          _tail_partition_start, alpha, _x, y);
+          _csr5_partition_descriptor_offset_pointer.data(), _csr5_partition_descriptor_offset.data(),
+          _temp_calibrator.data(), _tail_partition_start, alpha, _x, y);
     }
 
     return err;
