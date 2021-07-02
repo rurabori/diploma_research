@@ -71,11 +71,13 @@ function(brr_add_library target_name type)
 
     brr_target_init(${target_name})
 
+    glob_dir(${PROJECT_SOURCE_DIR}/include/${target_name})
+
     target_include_directories(${target_name}
-                               INTERFACE ${CMAKE_HOME_DIRECTORY}/include)
+                               INTERFACE ${PROJECT_SOURCE_DIR}/include)
   else()
     glob_sources()
-    glob_dir(${CMAKE_HOME_DIRECTORY}/include/${target_name})
+    glob_dir(${PROJECT_SOURCE_DIR}/include/${target_name})
 
     add_library(${target_name} ${type} ${sources})
 
@@ -83,7 +85,7 @@ function(brr_add_library target_name type)
 
     target_include_directories(
       ${target_name}
-      PUBLIC ${CMAKE_HOME_DIRECTORY}/include
+      PUBLIC ${PROJECT_SOURCE_DIR}/include
       PRIVATE .)
   endif()
 endfunction()
