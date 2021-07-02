@@ -5,22 +5,6 @@
 
 namespace csr5::avx2 {
 
-struct anonymouslib_timer
-{
-    timeval t1, t2;
-    struct timezone tzone;
-
-    void start() { gettimeofday(&t1, &tzone); }
-
-    double stop() {
-        gettimeofday(&t2, &tzone);
-        double elapsedTime = 0;
-        elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;    // sec to ms
-        elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0; // us to ms
-        return elapsedTime;
-    }
-};
-
 template<typename iT>
 iT binary_search_right_boundary_kernel(const iT* d_row_pointer, const iT key_input, const iT size) {
     iT start = 0;

@@ -201,7 +201,7 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::spmv
           _csr5_sigma, _p, _m, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer, _csr_column_index,
           _csr_value, _csr5_partition_pointer.data(), _csr5_partition_descriptor.data(),
           _csr5_partition_descriptor_offset_pointer.data(), _csr5_partition_descriptor_offset.data(),
-          _temp_calibrator.data(), _tail_partition_start, alpha, _x, y);
+          _temp_calibrator.data(), _tail_partition_start, _x, y);
     }
 
     return err;

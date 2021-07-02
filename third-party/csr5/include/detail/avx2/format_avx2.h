@@ -1,9 +1,11 @@
 #ifndef THIRD_PARTY_CSR5_INCLUDE_DETAIL_AVX2_FORMAT_AVX2
 #define THIRD_PARTY_CSR5_INCLUDE_DETAIL_AVX2_FORMAT_AVX2
 
+#include "anonymouslib_avx2.h"
 #include "common_avx2.h"
 #include "utils_avx2.h"
 
+#include <dim/memory/aligned_allocator.h>
 #include <span>
 
 namespace csr5::avx2 {
@@ -66,7 +68,7 @@ int generate_partition_pointer(const int sigma, const ANONYMOUSLIB_IT num_non_ze
 
 template<typename iT, typename uiT>
 void generate_partition_descriptor_s1_kernel(const iT* d_row_pointer, const uiT* d_partition_pointer,
-                                             uiT* d_partition_descriptor, const iT m, const iT p, const int sigma,
+                                             uiT* d_partition_descriptor, const iT p, const int sigma,
                                              const int bit_all_offset, const int num_packet) {
 #pragma omp parallel for
     for (int par_id = 0; par_id < p - 1; par_id++) {
@@ -99,10 +101,9 @@ void generate_partition_descriptor_s2_kernel(const uiT* d_partition_pointer, uiT
                                              const int num_packet, const int bit_y_offset, const int bit_scansum_offset,
                                              const iT p) {
     int num_thread = omp_get_max_threads();
-    int* s_segn_scan_all
-      = (int*)_mm_malloc(2 * ANONYMOUSLIB_CSR5_OMEGA * sizeof(int) * num_thread, ANONYMOUSLIB_X86_CACHELINE);
-    int* s_present_all
-      = (int*)_mm_malloc(2 * ANONYMOUSLIB_CSR5_OMEGA * sizeof(int) * num_thread, ANONYMOUSLIB_X86_CACHELINE);
+
+    dim::memory::cache_aligned_vector<int> s_segn_scan_all(2 * ANONYMOUSLIB_CSR5_OMEGA * num_thread);
+    dim::memory::cache_aligned_vector<int> s_present_all(2 * ANONYMOUSLIB_CSR5_OMEGA * num_thread);
     for (int i = 0; i < num_thread; i++)
         s_present_all[i * 2 * ANONYMOUSLIB_CSR5_OMEGA + ANONYMOUSLIB_CSR5_OMEGA] = 1;
 
@@ -110,9 +111,9 @@ void generate_partition_descriptor_s2_kernel(const uiT* d_partition_pointer, uiT
 
 #pragma omp parallel for
     for (int par_id = 0; par_id < p - 1; par_id++) {
-        int tid = omp_get_thread_num();
-        int* s_segn_scan = &s_segn_scan_all[tid * 2 * ANONYMOUSLIB_CSR5_OMEGA];
-        int* s_present = &s_present_all[tid * 2 * ANONYMOUSLIB_CSR5_OMEGA];
+        const auto segment_start = static_cast<size_t>(omp_get_thread_num() * 2 * ANONYMOUSLIB_CSR5_OMEGA);
+        int* s_segn_scan = &s_segn_scan_all[segment_start];
+        int* s_present = &s_present_all[segment_start];
 
         memset(s_segn_scan, 0, (ANONYMOUSLIB_CSR5_OMEGA + 1) * sizeof(int));
         memset(s_present, 0, ANONYMOUSLIB_CSR5_OMEGA * sizeof(int));
@@ -190,9 +191,6 @@ void generate_partition_descriptor_s2_kernel(const uiT* d_partition_pointer, uiT
             d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + lane_id] = first_packet;
         }
     }
-
-    _mm_free(s_segn_scan_all);
-    _mm_free(s_present_all);
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
@@ -204,7 +202,7 @@ int generate_partition_descriptor(const int sigma, const ANONYMOUSLIB_IT p, cons
     int bit_all_offset = bit_y_offset + bit_scansum_offset;
 
     generate_partition_descriptor_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
-      row_pointer, partition_pointer, partition_descriptor, m, p, sigma, bit_all_offset, num_packet);
+      row_pointer, partition_pointer, partition_descriptor, p, sigma, bit_all_offset, num_packet);
 
     generate_partition_descriptor_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
       partition_pointer, partition_descriptor, partition_descriptor_offset_pointer, sigma, num_packet, bit_y_offset,
@@ -316,8 +314,8 @@ void aosoa_transpose_kernel_smem(T* d_data, const uiT* d_partition_pointer, cons
     int num_p = ceil((double)nnz / (double)(ANONYMOUSLIB_CSR5_OMEGA * sigma)) - 1;
 
     int num_thread = omp_get_max_threads();
-    T* s_data_all
-      = (T*)_mm_malloc(sigma * ANONYMOUSLIB_CSR5_OMEGA * sizeof(T) * num_thread, ANONYMOUSLIB_X86_CACHELINE);
+
+    dim::memory::cache_aligned_vector<T> s_data_all(sigma * ANONYMOUSLIB_CSR5_OMEGA * num_thread);
 
 #pragma omp parallel for
     for (int par_id = 0; par_id < num_p; par_id++) {
@@ -357,8 +355,6 @@ void aosoa_transpose_kernel_smem(T* d_data, const uiT* d_partition_pointer, cons
             d_data[par_id * ANONYMOUSLIB_CSR5_OMEGA * sigma + idx] = s_data[idx_y * ANONYMOUSLIB_CSR5_OMEGA + idx_x];
         }
     }
-
-    _mm_free(s_data_all);
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT, typename ANONYMOUSLIB_VT>
