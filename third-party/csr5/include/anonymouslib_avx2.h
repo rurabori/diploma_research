@@ -87,22 +87,22 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
     if (_format == ANONYMOUSLIB_FORMAT_CSR)
         return ANONYMOUSLIB_SUCCESS;
 
-    int err = ANONYMOUSLIB_SUCCESS;
-    if (_format == ANONYMOUSLIB_FORMAT_CSR5) {
-        // convert csr5 data to csr data
-        err = aosoa_transpose(_csr5_sigma, _nnz, _csr5_partition_pointer.data(), _csr_column_index, _csr_value, false);
+    if (_format != ANONYMOUSLIB_FORMAT_CSR5)
+        return ANONYMOUSLIB_SUCCESS;
 
-        // free the two newly added CSR5 arrays
-        std::exchange(_csr5_partition_pointer, {});
-        std::exchange(_csr5_partition_descriptor, {});
-        std::exchange(_temp_calibrator, {});
-        std::exchange(_csr5_partition_descriptor_offset_pointer, {});
+    // convert csr5 data to csr data
+    auto err = aosoa_transpose(_csr5_sigma, _nnz, _csr5_partition_pointer.data(), _csr_column_index, _csr_value, false);
 
-        if (_num_offsets)
-            std::exchange(_csr5_partition_descriptor_offset, {});
+    // free the two newly added CSR5 arrays
+    std::exchange(_csr5_partition_pointer, {});
+    std::exchange(_csr5_partition_descriptor, {});
+    std::exchange(_temp_calibrator, {});
+    std::exchange(_csr5_partition_descriptor_offset_pointer, {});
 
-        _format = ANONYMOUSLIB_FORMAT_CSR;
-    }
+    if (_num_offsets)
+        std::exchange(_csr5_partition_descriptor_offset, {});
+
+    _format = ANONYMOUSLIB_FORMAT_CSR;
 
     return err;
 }
