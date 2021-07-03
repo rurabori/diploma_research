@@ -6,16 +6,15 @@
 namespace csr5::avx2 {
 
 template<typename iT>
-iT binary_search_right_boundary_kernel(const iT* d_row_pointer, const iT key_input, const iT size) {
-    iT start = 0;
-    iT stop = size - 1;
-    iT median;
+size_t binary_search_right_boundary_kernel(const iT* row_pointer, const iT key_input, const size_t size) {
+    size_t start = 0;
+    size_t stop = size - 1;
     iT key_median;
 
     while (stop >= start) {
-        median = (stop + start) / 2;
+        auto median = (stop + start) / 2;
 
-        key_median = d_row_pointer[median];
+        key_median = row_pointer[median];
 
         if (key_input >= key_median)
             start = median + 1;

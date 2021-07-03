@@ -1,5 +1,5 @@
-#ifndef CSR5_SPMV_AVX2_H
-#define CSR5_SPMV_AVX2_H
+#ifndef THIRD_PARTY_CSR5_INCLUDE_DETAIL_AVX2_CSR5_SPMV_AVX2
+#define THIRD_PARTY_CSR5_INCLUDE_DETAIL_AVX2_CSR5_SPMV_AVX2
 
 #include "common_avx2.h"
 #include "utils_avx2.h"
@@ -90,7 +90,8 @@ void spmv_csr5_compute_kernel(const iT* d_column_index, const vT* d_value, const
             const iT* d_column_index_partition = &d_column_index[par_id * ANONYMOUSLIB_CSR5_OMEGA * c_sigma];
             const vT* d_value_partition = &d_value[par_id * ANONYMOUSLIB_CSR5_OMEGA * c_sigma];
 
-            uiT row_start = d_partition_pointer[par_id];
+            // TODO: check if the signedness used is needed.
+            auto row_start = static_cast<iT>(d_partition_pointer[par_id]);
             const iT row_stop = d_partition_pointer[par_id + 1] & 0x7FFFFFFF;
 
             if (row_start == row_stop) // fast track through reduction
@@ -356,8 +357,7 @@ int csr5_spmv(const int sigma, const ANONYMOUSLIB_IT p, const ANONYMOUSLIB_IT m,
               const ANONYMOUSLIB_IT tail_partition_start, const ANONYMOUSLIB_VT* x, ANONYMOUSLIB_VT* y) {
     int err = ANONYMOUSLIB_SUCCESS;
 
-    const int num_thread = omp_get_max_threads();
-    memset(calibrator, 0, ANONYMOUSLIB_X86_CACHELINE * num_thread);
+    std::fill_n(calibrator, ANONYMOUSLIB_X86_CACHELINE * static_cast<size_t>(omp_get_max_threads()), 0);
     spmv_csr5_compute_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>(
       column_index, value, x, partition_pointer, partition_descriptor, partition_descriptor_offset_pointer,
       partition_descriptor_offset, calibrator, y, p, num_packet, bit_y_offset, bit_scansum_offset, sigma);
@@ -371,4 +371,4 @@ int csr5_spmv(const int sigma, const ANONYMOUSLIB_IT p, const ANONYMOUSLIB_IT m,
 }
 
 } // namespace csr5::avx2
-#endif // CSR5_SPMV_AVX2_H
+#endif /* THIRD_PARTY_CSR5_INCLUDE_DETAIL_AVX2_CSR5_SPMV_AVX2 */
