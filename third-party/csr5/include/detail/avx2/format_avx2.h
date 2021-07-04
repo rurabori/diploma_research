@@ -321,32 +321,30 @@ int generate_partition_descriptor_offset(const int sigma, const ANONYMOUSLIB_IT 
 
 template<bool R2C, typename T, typename uiT> // R2C==true means CSR->CSR5, otherwise CSR5->CSR
 void aosoa_transpose_kernel_smem(T* d_data, const uiT* d_partition_pointer, const size_t nnz, const size_t sigma) {
-    const auto num_p
-      = static_cast<int>(std::ceil(static_cast<double>(nnz) / static_cast<double>(ANONYMOUSLIB_CSR5_OMEGA * sigma)))
-        - 1;
-
-    const auto transform_index = [&](size_t idx, bool way) {
-        if (way)
+    const auto transform_index = [&](size_t idx, bool r2c) {
+        if (r2c)
             return std::pair{(idx / sigma), (idx % sigma)};
 
         return std::pair{(idx % ANONYMOUSLIB_CSR5_OMEGA), (idx / ANONYMOUSLIB_CSR5_OMEGA)};
     };
 
-    const size_t size_base = static_cast<size_t>(sigma) * ANONYMOUSLIB_CSR5_OMEGA;
+    const auto num_p
+      = static_cast<size_t>(std::ceil(static_cast<double>(nnz) / static_cast<double>(ANONYMOUSLIB_CSR5_OMEGA * sigma)))
+        - 1;
+    const size_t size_base = sigma * ANONYMOUSLIB_CSR5_OMEGA;
 
     dim::memory::cache_aligned_vector<T> s_data_all(size_base * static_cast<size_t>(omp_get_max_threads()));
 
 #pragma omp parallel for
-    for (int par_id = 0; par_id < num_p; par_id++) {
+    for (size_t par_id = 0; par_id < num_p; ++par_id) {
         T* s_data = &s_data_all[size_base * static_cast<size_t>(omp_get_thread_num())];
 
         // if this is fast track partition, do not transpose it
         if (d_partition_pointer[par_id] == d_partition_pointer[par_id + 1])
             continue;
 
-        // load global data to shared mem
+            // load global data to shared mem
 
-        const auto modifier = R2C ? sigma : ANONYMOUSLIB_CSR5_OMEGA;
 #pragma omp simd
         for (size_t idx = 0; idx < ANONYMOUSLIB_CSR5_OMEGA * sigma; idx++) {
             const auto [x, y] = transform_index(idx, R2C);
