@@ -184,5 +184,14 @@ int main(int argc, const char* argv[]) {
         }
     }
 
+    if (arguments.debug) {
+        auto Y_ref = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
+        cg::spmv_algos::cpu_sequential(matrix, std::span{x}, std::span{Y_ref});
+
+        const auto correct
+          = std::ranges::equal(Y, Y_ref, [](auto l, auto r) { return std::abs(l - r) <= (0.01 * std::abs(r)); });
+        fmt::print(stderr, "SpMV correct: {}\n", correct);
+    }
+
     return 0;
 }
