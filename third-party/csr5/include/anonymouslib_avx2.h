@@ -56,12 +56,12 @@ private:
 
     // TODO: do these need to be signed?
     size_t _csr5_sigma{};
-    int _bit_y_offset{};
-    int _bit_scansum_offset{};
-    int _num_packet{};
+    size_t _bit_y_offset{};
+    size_t _bit_scansum_offset{};
+    size_t _num_packet{};
     ANONYMOUSLIB_IT _tail_partition_start;
 
-    ANONYMOUSLIB_IT _p;
+    ANONYMOUSLIB_IT _num_partitions;
     cache_aligned_vector<ANONYMOUSLIB_UIT> _csr5_partition_pointer;
     cache_aligned_vector<ANONYMOUSLIB_UIT> _csr5_partition_descriptor;
 
@@ -125,29 +125,26 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
     // compute sigma
     _csr5_sigma = computeSigma();
 
-    _bit_y_offset = static_cast<int>(get_needed_storage(ANONYMOUSLIB_CSR5_OMEGA * _csr5_sigma));
-    _bit_scansum_offset = static_cast<int>(get_needed_storage(ANONYMOUSLIB_CSR5_OMEGA));
+    _bit_y_offset = get_needed_storage(ANONYMOUSLIB_CSR5_OMEGA * _csr5_sigma);
+    _bit_scansum_offset = get_needed_storage(ANONYMOUSLIB_CSR5_OMEGA);
 
-    if (_bit_y_offset + _bit_scansum_offset
-        > static_cast<int>(sizeof(ANONYMOUSLIB_UIT) * 8 - 1)) // the 1st bit of bit-flag should be in the first packet
+    // the 1st bit of bit-flag should be in the first packet
+    if (_bit_y_offset + _bit_scansum_offset > (sizeof(ANONYMOUSLIB_UIT) * 8 - 1))
         return ANONYMOUSLIB_UNSUPPORTED_CSR5_OMEGA;
 
-    // TODO: this shouldn't need the int cast when signedness is correct everywhere.
-    _num_packet = static_cast<int>(
-      std::ceil(static_cast<double>(_bit_y_offset + _bit_scansum_offset + static_cast<int>(_csr5_sigma))
-                / static_cast<double>(sizeof(ANONYMOUSLIB_UIT) * 8)));
+    _num_packet = static_cast<size_t>(std::ceil(static_cast<double>(_bit_y_offset + _bit_scansum_offset + _csr5_sigma)
+                                                / static_cast<double>(sizeof(ANONYMOUSLIB_UIT) * 8)));
 
     // calculate the number of partitions
-    _p = static_cast<ANONYMOUSLIB_IT>(
+    _num_partitions = static_cast<ANONYMOUSLIB_IT>(
       std::ceil(static_cast<double>(_num_non_zero) / static_cast<double>(ANONYMOUSLIB_CSR5_OMEGA * _csr5_sigma)));
 
     // malloc the newly added arrays for CSR5
-    _csr5_partition_pointer.resize(static_cast<size_t>(_p + 1));
-    _csr5_partition_descriptor.resize(static_cast<size_t>(_p * ANONYMOUSLIB_CSR5_OMEGA * _num_packet));
-
+    // TODO: move these allocations to separate function.
+    _csr5_partition_pointer.resize(static_cast<size_t>(_num_partitions + 1));
+    _csr5_partition_descriptor.resize(static_cast<size_t>(_num_partitions * ANONYMOUSLIB_CSR5_OMEGA * _num_packet));
     _temp_calibrator.resize(static_cast<size_t>(omp_get_max_threads())
                             * dim::memory::hardware_destructive_interference_size / sizeof(ANONYMOUSLIB_VT));
-
     _csr5_partition_descriptor_offset_pointer.resize(_csr5_partition_pointer.size());
 
     if (generate_partition_pointer<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
@@ -156,11 +153,11 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
         != ANONYMOUSLIB_SUCCESS)
         return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
 
-    _tail_partition_start = (_csr5_partition_pointer[static_cast<size_t>(_p - 1)] << 1) >> 1;
+    _tail_partition_start = (_csr5_partition_pointer[static_cast<size_t>(_num_partitions - 1)] << 1) >> 1;
 
     // step 2. generate partition descriptor
     if (generate_partition_descriptor<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
-          _csr5_sigma, _p, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer,
+          _csr5_sigma, _num_partitions, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer,
           _csr5_partition_pointer.data(), _csr5_partition_descriptor.data(),
           _csr5_partition_descriptor_offset_pointer.data(), &_num_offsets)
         != ANONYMOUSLIB_SUCCESS)
@@ -169,7 +166,7 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
     if (_num_offsets) {
         _csr5_partition_descriptor_offset.resize(static_cast<size_t>(_num_offsets));
         if (generate_partition_descriptor_offset<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
-              _csr5_sigma, _p, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer,
+              _csr5_sigma, _num_partitions, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer,
               _csr5_partition_pointer.data(), _csr5_partition_descriptor.data(),
               _csr5_partition_descriptor_offset_pointer.data(), _csr5_partition_descriptor_offset.data())
             != ANONYMOUSLIB_SUCCESS)
@@ -201,8 +198,8 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::spmv
         return ANONYMOUSLIB_UNSUPPORTED_CSR_SPMV;
 
     csr5_spmv<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>(
-      _csr5_sigma, _p, _num_rows, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer, _csr_column_index,
-      _csr_value, _csr5_partition_pointer.data(), _csr5_partition_descriptor.data(),
+      _csr5_sigma, _num_partitions, _num_rows, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer,
+      _csr_column_index, _csr_value, _csr5_partition_pointer.data(), _csr5_partition_descriptor.data(),
       _csr5_partition_descriptor_offset_pointer.data(), _csr5_partition_descriptor_offset.data(),
       _temp_calibrator.data(), _tail_partition_start, _x, y);
 

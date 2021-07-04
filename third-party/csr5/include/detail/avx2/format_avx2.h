@@ -18,10 +18,8 @@ void generate_partition_pointer_s1_kernel(std::span<const iT> row_pointer, const
 #pragma omp parallel for
     for (size_t global_id = 0; global_id < partition.size(); global_id++) {
         // compute partition boundaries by partition of size sigma * omega
-        auto boundary = static_cast<iT>(global_id * sigma * ANONYMOUSLIB_CSR5_OMEGA);
-
         // clamp partition boundaries to [0, nnz]
-        boundary = boundary > nnz ? nnz : boundary;
+        const auto boundary = static_cast<iT>(std::min(global_id * sigma * ANONYMOUSLIB_CSR5_OMEGA, nnz));
 
         // binary search
         partition[global_id]
@@ -68,8 +66,6 @@ int generate_partition_pointer(const size_t sigma, const size_t num_non_zero,
     // step 2. check empty rows
     generate_partition_pointer_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer, partition);
 
-    printf("%d\n", row_pointer.size());
-
     return ANONYMOUSLIB_SUCCESS;
 }
 
@@ -84,7 +80,7 @@ void generate_partition_descriptor_s1_kernel(const iT* d_row_pointer, const uiT*
 
         for (int rid = row_start; rid <= row_stop; rid++) {
             int ptr = d_row_pointer[rid];
-            int pid = ptr / (ANONYMOUSLIB_CSR5_OMEGA * sigma);
+            size_t pid = ptr / (ANONYMOUSLIB_CSR5_OMEGA * sigma);
 
             if (pid == par_id) {
                 int lx = (ptr / sigma) % ANONYMOUSLIB_CSR5_OMEGA;
@@ -204,12 +200,12 @@ void generate_partition_descriptor_s2_kernel(const uiT* d_partition_pointer, uiT
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
-int generate_partition_descriptor(const size_t sigma, const ANONYMOUSLIB_IT p, const int bit_y_offset,
-                                  const int bit_scansum_offset, const int num_packet,
+int generate_partition_descriptor(const size_t sigma, const ANONYMOUSLIB_IT p, const size_t bit_y_offset,
+                                  const size_t bit_scansum_offset, const size_t num_packet,
                                   const ANONYMOUSLIB_IT* row_pointer, const ANONYMOUSLIB_UIT* partition_pointer,
                                   ANONYMOUSLIB_UIT* partition_descriptor,
                                   ANONYMOUSLIB_IT* partition_descriptor_offset_pointer, ANONYMOUSLIB_IT* _num_offsets) {
-    int bit_all_offset = bit_y_offset + bit_scansum_offset;
+    size_t bit_all_offset = bit_y_offset + bit_scansum_offset;
 
     generate_partition_descriptor_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
       row_pointer, partition_pointer, partition_descriptor, p, sigma, bit_all_offset, num_packet);
@@ -237,11 +233,11 @@ template<typename iT, typename uiT>
 void generate_partition_descriptor_offset_kernel(const iT* d_row_pointer, const uiT* d_partition_pointer,
                                                  const uiT* d_partition_descriptor,
                                                  const iT* d_partition_descriptor_offset_pointer,
-                                                 iT* d_partition_descriptor_offset, const iT p, const int num_packet,
-                                                 const int bit_y_offset, const int bit_scansum_offset,
-                                                 const int c_sigma) {
-    const int bit_all_offset = bit_y_offset + bit_scansum_offset;
-    const int bit_bitflag = 32 - bit_all_offset;
+                                                 iT* d_partition_descriptor_offset, const iT p, const size_t num_packet,
+                                                 const size_t bit_y_offset, const size_t bit_scansum_offset,
+                                                 const size_t c_sigma) {
+    const size_t bit_all_offset = bit_y_offset + bit_scansum_offset;
+    const size_t bit_bitflag = 32 - bit_all_offset;
 
 #pragma omp parallel for
     for (int par_id = 0; par_id < p - 1; par_id++) {
@@ -306,8 +302,8 @@ void generate_partition_descriptor_offset_kernel(const iT* d_row_pointer, const 
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
-int generate_partition_descriptor_offset(const int sigma, const ANONYMOUSLIB_IT p, const int bit_y_offset,
-                                         const int bit_scansum_offset, const int num_packet,
+int generate_partition_descriptor_offset(const size_t sigma, const ANONYMOUSLIB_IT p, const size_t bit_y_offset,
+                                         const size_t bit_scansum_offset, const size_t num_packet,
                                          const ANONYMOUSLIB_IT* row_pointer, const ANONYMOUSLIB_UIT* partition_pointer,
                                          ANONYMOUSLIB_UIT* partition_descriptor,
                                          ANONYMOUSLIB_IT* partition_descriptor_offset_pointer,
