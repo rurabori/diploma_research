@@ -5,6 +5,7 @@
 #include "common_avx2.h"
 #include "utils_avx2.h"
 
+#include <cstddef>
 #include <dim/memory/aligned_allocator.h>
 #include <span>
 
@@ -12,12 +13,11 @@ namespace csr5::avx2 {
 
 template<typename iT, typename uiT>
 void generate_partition_pointer_s1_kernel(std::span<const iT> row_pointer, const std::span<uiT> partition,
-                                          const int sigma, const iT nnz) {
+                                          const size_t sigma, const size_t nnz) {
 #pragma omp parallel for
-    for (size_t global_id = 0; global_id <= partition.size(); global_id++) {
+    for (size_t global_id = 0; global_id < partition.size(); global_id++) {
         // compute partition boundaries by partition of size sigma * omega
-        // NOLINTNEXTLINE
-        auto boundary = static_cast<iT>(global_id * static_cast<size_t>(sigma) * ANONYMOUSLIB_CSR5_OMEGA);
+        auto boundary = static_cast<iT>(global_id * sigma * ANONYMOUSLIB_CSR5_OMEGA);
 
         // clamp partition boundaries to [0, nnz]
         boundary = boundary > nnz ? nnz : boundary;
@@ -31,31 +31,32 @@ void generate_partition_pointer_s1_kernel(std::span<const iT> row_pointer, const
 
 template<typename iT>
 bool is_dirty(const std::span<const iT> row) {
-    for (size_t idx = 0; idx < (row.size() - 1); ++idx)
-        if (row[idx] == row[idx + 1])
+    for (size_t idx = 1; idx < row.size(); ++idx)
+        if (row[idx - 1] == row[idx])
             return true;
 
     return false;
 }
 
 template<typename iT, typename uiT>
-void generate_partition_pointer_s2_kernel(const iT* row, const std::span<uiT> partition) {
+void generate_partition_pointer_s2_kernel(const std::span<const iT> row, const std::span<uiT> partition) {
 #pragma omp parallel for
-    for (decltype(partition.size()) group_id = 0; group_id < partition.size(); group_id++) {
-        auto start = (partition[group_id] << 1) >> 1;
-        auto stop = (partition[group_id + 1] << 1) >> 1;
+    for (size_t group_id = 1; group_id < partition.size(); group_id++) {
+        auto start = (partition[group_id - 1] << 1) >> 1;
+        auto stop = (partition[group_id] << 1) >> 1;
+
         if (start == stop)
             continue;
 
-        if (is_dirty(std::span{row + start, row + start + stop})) {
-            start |= uiT{1} << (sizeof(uiT) * 8 - 1);
-            partition[group_id] = start;
+        if (is_dirty(row.subspan(start, stop - start))) {
+            start |= uiT{1} << (sizeof(uiT) * 8 - 1); // TODO: investigate why the MSB is set.
+            partition[group_id - 1] = start;
         }
     }
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
-int generate_partition_pointer(const int sigma, const ANONYMOUSLIB_IT num_non_zero,
+int generate_partition_pointer(const size_t sigma, const size_t num_non_zero,
                                const std::span<ANONYMOUSLIB_UIT> partition,
                                const std::span<const ANONYMOUSLIB_IT> row_pointer) {
     // step 1. binary search row pointer
@@ -63,14 +64,16 @@ int generate_partition_pointer(const int sigma, const ANONYMOUSLIB_IT num_non_ze
                                                                             num_non_zero);
 
     // step 2. check empty rows
-    generate_partition_pointer_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer.data(), partition);
+    generate_partition_pointer_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_pointer, partition);
+
+    printf("%d\n", row_pointer.size());
 
     return ANONYMOUSLIB_SUCCESS;
 }
 
 template<typename iT, typename uiT>
 void generate_partition_descriptor_s1_kernel(const iT* d_row_pointer, const uiT* d_partition_pointer,
-                                             uiT* d_partition_descriptor, const iT p, const int sigma,
+                                             uiT* d_partition_descriptor, const iT p, const size_t sigma,
                                              const int bit_all_offset, const int num_packet) {
 #pragma omp parallel for
     for (int par_id = 0; par_id < p - 1; par_id++) {
@@ -199,7 +202,7 @@ void generate_partition_descriptor_s2_kernel(const uiT* d_partition_pointer, uiT
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
-int generate_partition_descriptor(const int sigma, const ANONYMOUSLIB_IT p, const int bit_y_offset,
+int generate_partition_descriptor(const size_t sigma, const ANONYMOUSLIB_IT p, const int bit_y_offset,
                                   const int bit_scansum_offset, const int num_packet,
                                   const ANONYMOUSLIB_IT* row_pointer, const ANONYMOUSLIB_UIT* partition_pointer,
                                   ANONYMOUSLIB_UIT* partition_descriptor,
@@ -314,11 +317,18 @@ int generate_partition_descriptor_offset(const int sigma, const ANONYMOUSLIB_IT 
     return ANONYMOUSLIB_SUCCESS;
 }
 
-template<typename T, typename uiT>
-void aosoa_transpose_kernel_smem(T* d_data, const uiT* d_partition_pointer, const int nnz, const int sigma,
-                                 const bool R2C) // R2C==true means CSR->CSR5, otherwise CSR5->CSR
-{
-    const auto num_p = static_cast<int>(std::ceil(static_cast<double>(nnz) / (ANONYMOUSLIB_CSR5_OMEGA * sigma))) - 1;
+template<bool R2C, typename T, typename uiT> // R2C==true means CSR->CSR5, otherwise CSR5->CSR
+void aosoa_transpose_kernel_smem(T* d_data, const uiT* d_partition_pointer, const size_t nnz, const size_t sigma) {
+    const auto num_p
+      = static_cast<int>(std::ceil(static_cast<double>(nnz) / static_cast<double>(ANONYMOUSLIB_CSR5_OMEGA * sigma)))
+        - 1;
+
+    const auto transform_index = [&](size_t idx, bool way) {
+        if (way)
+            return std::pair{(idx / sigma), (idx % sigma)};
+
+        return std::pair{(idx % ANONYMOUSLIB_CSR5_OMEGA), (idx / ANONYMOUSLIB_CSR5_OMEGA)};
+    };
 
     const size_t size_base = static_cast<size_t>(sigma) * ANONYMOUSLIB_CSR5_OMEGA;
 
@@ -333,42 +343,28 @@ void aosoa_transpose_kernel_smem(T* d_data, const uiT* d_partition_pointer, cons
             continue;
 
         // load global data to shared mem
-        int idx_y{};
-        int idx_x{};
-#pragma omp simd
-        for (int idx = 0; idx < ANONYMOUSLIB_CSR5_OMEGA * sigma; idx++) {
-            if (R2C) {
-                idx_y = idx % sigma;
-                idx_x = idx / sigma;
-            } else {
-                idx_x = idx % ANONYMOUSLIB_CSR5_OMEGA;
-                idx_y = idx / ANONYMOUSLIB_CSR5_OMEGA;
-            }
 
-            s_data[idx_y * ANONYMOUSLIB_CSR5_OMEGA + idx_x] = d_data[par_id * ANONYMOUSLIB_CSR5_OMEGA * sigma + idx];
+        const auto modifier = R2C ? sigma : ANONYMOUSLIB_CSR5_OMEGA;
+#pragma omp simd
+        for (size_t idx = 0; idx < ANONYMOUSLIB_CSR5_OMEGA * sigma; idx++) {
+            const auto [x, y] = transform_index(idx, R2C);
+            s_data[y * ANONYMOUSLIB_CSR5_OMEGA + x] = d_data[par_id * ANONYMOUSLIB_CSR5_OMEGA * sigma + idx];
         }
 
 // store transposed shared mem data to global
 #pragma omp simd
-        for (int idx = 0; idx < ANONYMOUSLIB_CSR5_OMEGA * sigma; idx++) {
-            if (R2C) {
-                idx_x = idx % ANONYMOUSLIB_CSR5_OMEGA;
-                idx_y = idx / ANONYMOUSLIB_CSR5_OMEGA;
-            } else {
-                idx_y = idx % sigma;
-                idx_x = idx / sigma;
-            }
-
-            d_data[par_id * ANONYMOUSLIB_CSR5_OMEGA * sigma + idx] = s_data[idx_y * ANONYMOUSLIB_CSR5_OMEGA + idx_x];
+        for (size_t idx = 0; idx < ANONYMOUSLIB_CSR5_OMEGA * sigma; idx++) {
+            const auto [x, y] = transform_index(idx, !R2C);
+            d_data[par_id * ANONYMOUSLIB_CSR5_OMEGA * sigma + idx] = s_data[y * ANONYMOUSLIB_CSR5_OMEGA + x];
         }
     }
 }
 
-template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT, typename ANONYMOUSLIB_VT>
-int aosoa_transpose(const int sigma, const int nnz, const ANONYMOUSLIB_UIT* partition_pointer,
-                    ANONYMOUSLIB_IT* column_index, ANONYMOUSLIB_VT* value, bool R2C) {
-    aosoa_transpose_kernel_smem<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(column_index, partition_pointer, nnz, sigma, R2C);
-    aosoa_transpose_kernel_smem<ANONYMOUSLIB_VT, ANONYMOUSLIB_UIT>(value, partition_pointer, nnz, sigma, R2C);
+template<bool R2C, typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT, typename ANONYMOUSLIB_VT>
+int aosoa_transpose(const size_t sigma, const size_t nnz, const ANONYMOUSLIB_UIT* partition_pointer,
+                    ANONYMOUSLIB_IT* column_index, ANONYMOUSLIB_VT* value) {
+    aosoa_transpose_kernel_smem<R2C, ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(column_index, partition_pointer, nnz, sigma);
+    aosoa_transpose_kernel_smem<R2C, ANONYMOUSLIB_VT, ANONYMOUSLIB_UIT>(value, partition_pointer, nnz, sigma);
 
     return ANONYMOUSLIB_SUCCESS;
 }

@@ -9,6 +9,7 @@
 #include "detail/avx2/csr5_spmv_avx2.h"
 #include "detail/avx2/format_avx2.h"
 
+#include <cstddef>
 #include <utility>
 #include <vector>
 
@@ -24,31 +25,37 @@ using cache_aligned_vector = std::vector<Ty, dim::memory::cache_aligned_allocato
 template<class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
 class anonymouslibHandle
 {
+    enum class format
+    {
+        csr,
+        csr5
+    };
+
 public:
-    anonymouslibHandle(ANONYMOUSLIB_IT m, ANONYMOUSLIB_IT n) : _m{m}, _n{n} {}
+    anonymouslibHandle(size_t num_rows, size_t num_cols) : _num_rows{num_rows}, _num_cols{num_cols} {}
     int warmup();
-    int inputCSR(ANONYMOUSLIB_IT nnz, ANONYMOUSLIB_IT* csr_row_pointer, ANONYMOUSLIB_IT* csr_column_index,
+    int inputCSR(size_t num_non_zero, ANONYMOUSLIB_IT* csr_row_pointer, ANONYMOUSLIB_IT* csr_column_index,
                  ANONYMOUSLIB_VT* csr_value);
     int asCSR() noexcept;
     int asCSR5() noexcept;
     int setX(ANONYMOUSLIB_VT* x);
     int spmv(ANONYMOUSLIB_VT alpha, ANONYMOUSLIB_VT* y);
     int destroy();
-    void setSigma(int sigma);
+    void setSigma(size_t sigma);
 
 private:
-    int computeSigma();
-    int _format{};
-    ANONYMOUSLIB_IT _m;
-    ANONYMOUSLIB_IT _n;
-    ANONYMOUSLIB_IT _nnz;
+    size_t computeSigma();
+    format _format{format::csr};
+    size_t _num_rows{};
+    size_t _num_cols{};
+    size_t _num_non_zero{};
 
     ANONYMOUSLIB_IT* _csr_row_pointer;
     ANONYMOUSLIB_IT* _csr_column_index;
     ANONYMOUSLIB_VT* _csr_value;
 
     // TODO: do these need to be signed?
-    int _csr5_sigma{};
+    size_t _csr5_sigma{};
     int _bit_y_offset{};
     int _bit_scansum_offset{};
     int _num_packet{};
@@ -72,12 +79,12 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::warm
 }
 
 template<class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
-int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::inputCSR(ANONYMOUSLIB_IT nnz,
+int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::inputCSR(size_t num_non_zero,
                                                                                      ANONYMOUSLIB_IT* csr_row_pointer,
                                                                                      ANONYMOUSLIB_IT* csr_column_index,
                                                                                      ANONYMOUSLIB_VT* csr_value) {
-    _format = ANONYMOUSLIB_FORMAT_CSR;
-    _nnz = nnz;
+    _format = format::csr;
+    _num_non_zero = num_non_zero;
     _csr_row_pointer = csr_row_pointer;
     _csr_column_index = csr_column_index;
     _csr_value = csr_value;
@@ -87,14 +94,14 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::inpu
 
 template<class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
 int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCSR() noexcept {
-    if (_format == ANONYMOUSLIB_FORMAT_CSR)
-        return ANONYMOUSLIB_SUCCESS;
-
-    if (_format != ANONYMOUSLIB_FORMAT_CSR5)
+    if (_format == format::csr)
         return ANONYMOUSLIB_SUCCESS;
 
     // convert csr5 data to csr data
-    auto err = aosoa_transpose(_csr5_sigma, _nnz, _csr5_partition_pointer.data(), _csr_column_index, _csr_value, false);
+    if (auto err = aosoa_transpose<false>(_csr5_sigma, _num_non_zero, _csr5_partition_pointer.data(), _csr_column_index,
+                                          _csr_value);
+        err != ANONYMOUSLIB_SUCCESS)
+        return err;
 
     // free the two newly added CSR5 arrays
     std::exchange(_csr5_partition_pointer, {});
@@ -105,18 +112,15 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
     if (_num_offsets)
         std::exchange(_csr5_partition_descriptor_offset, {});
 
-    _format = ANONYMOUSLIB_FORMAT_CSR;
+    _format = format::csr;
 
-    return err;
+    return ANONYMOUSLIB_SUCCESS;
 }
 
 template<class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
 int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCSR5() noexcept {
-    if (_format == ANONYMOUSLIB_FORMAT_CSR5)
+    if (_format == format::csr5)
         return ANONYMOUSLIB_SUCCESS;
-
-    if (_format != ANONYMOUSLIB_FORMAT_CSR)
-        return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
 
     // compute sigma
     _csr5_sigma = computeSigma();
@@ -128,12 +132,14 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
         > static_cast<int>(sizeof(ANONYMOUSLIB_UIT) * 8 - 1)) // the 1st bit of bit-flag should be in the first packet
         return ANONYMOUSLIB_UNSUPPORTED_CSR5_OMEGA;
 
-    _num_packet = static_cast<int>(std::ceil(static_cast<double>(_bit_y_offset + _bit_scansum_offset + _csr5_sigma)
-                                             / static_cast<double>(sizeof(ANONYMOUSLIB_UIT) * 8)));
+    // TODO: this shouldn't need the int cast when signedness is correct everywhere.
+    _num_packet = static_cast<int>(
+      std::ceil(static_cast<double>(_bit_y_offset + _bit_scansum_offset + static_cast<int>(_csr5_sigma))
+                / static_cast<double>(sizeof(ANONYMOUSLIB_UIT) * 8)));
 
     // calculate the number of partitions
     _p = static_cast<ANONYMOUSLIB_IT>(
-      std::ceil(static_cast<double>(_nnz) / static_cast<double>(ANONYMOUSLIB_CSR5_OMEGA * _csr5_sigma)));
+      std::ceil(static_cast<double>(_num_non_zero) / static_cast<double>(ANONYMOUSLIB_CSR5_OMEGA * _csr5_sigma)));
 
     // malloc the newly added arrays for CSR5
     _csr5_partition_pointer.resize(static_cast<size_t>(_p + 1));
@@ -145,8 +151,8 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
     _csr5_partition_descriptor_offset_pointer.resize(_csr5_partition_pointer.size());
 
     if (generate_partition_pointer<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
-          _csr5_sigma, _nnz, std::span{_csr5_partition_pointer}.subspan(0, static_cast<size_t>(_p)),
-          std::span{_csr_row_pointer, static_cast<size_t>(_m + 1)})
+          static_cast<size_t>(_csr5_sigma), _num_non_zero, _csr5_partition_pointer,
+          std::span{_csr_row_pointer, static_cast<size_t>(_num_rows + 1)})
         != ANONYMOUSLIB_SUCCESS)
         return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
 
@@ -170,11 +176,11 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
             return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
     }
 
-    if (aosoa_transpose(_csr5_sigma, _nnz, _csr5_partition_pointer.data(), _csr_column_index, _csr_value, true)
+    if (aosoa_transpose<true>(_csr5_sigma, _num_non_zero, _csr5_partition_pointer.data(), _csr_column_index, _csr_value)
         != ANONYMOUSLIB_SUCCESS)
         return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
 
-    _format = ANONYMOUSLIB_FORMAT_CSR5;
+    _format = format::csr5;
 
     return ANONYMOUSLIB_SUCCESS;
 }
@@ -191,21 +197,16 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::setX
 template<class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
 int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::spmv(const ANONYMOUSLIB_VT /*alpha*/,
                                                                                  ANONYMOUSLIB_VT* y) {
-    int err = ANONYMOUSLIB_SUCCESS;
-
-    if (_format == ANONYMOUSLIB_FORMAT_CSR) {
+    if (_format == format::csr)
         return ANONYMOUSLIB_UNSUPPORTED_CSR_SPMV;
-    }
 
-    if (_format == ANONYMOUSLIB_FORMAT_CSR5) {
-        csr5_spmv<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>(
-          _csr5_sigma, _p, _m, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer, _csr_column_index,
-          _csr_value, _csr5_partition_pointer.data(), _csr5_partition_descriptor.data(),
-          _csr5_partition_descriptor_offset_pointer.data(), _csr5_partition_descriptor_offset.data(),
-          _temp_calibrator.data(), _tail_partition_start, _x, y);
-    }
+    csr5_spmv<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>(
+      _csr5_sigma, _p, _num_rows, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer, _csr_column_index,
+      _csr_value, _csr5_partition_pointer.data(), _csr5_partition_descriptor.data(),
+      _csr5_partition_descriptor_offset_pointer.data(), _csr5_partition_descriptor_offset.data(),
+      _temp_calibrator.data(), _tail_partition_start, _x, y);
 
-    return err;
+    return ANONYMOUSLIB_SUCCESS;
 }
 
 template<class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
@@ -214,12 +215,12 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::dest
 }
 
 template<class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
-void anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::setSigma(int sigma) {
+void anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::setSigma(size_t sigma) {
     _csr5_sigma = sigma;
 }
 
 template<class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
-int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::computeSigma() {
+size_t anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::computeSigma() {
     return _csr5_sigma;
 }
 

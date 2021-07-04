@@ -27,10 +27,9 @@ void cpu_sequential(const matrix_storage_formats::csr<ValueType, StorageTy>& mat
 
 template<typename ValueType>
 auto create_csr5_handle(matrix_storage_formats::csr<ValueType, matrix_storage_formats::cache_aligned_vector>& matrix) {
-    csr5::avx2::anonymouslibHandle<int, unsigned int, ValueType> handle{static_cast<int>(matrix.dimensions.rows),
-                                                                        static_cast<int>(matrix.dimensions.cols)};
+    csr5::avx2::anonymouslibHandle<int, unsigned int, ValueType> handle{matrix.dimensions.rows, matrix.dimensions.cols};
 
-    handle.inputCSR(static_cast<int>(matrix.values.size()), reinterpret_cast<int*>(matrix.row_start_offsets.data()),
+    handle.inputCSR(matrix.values.size(), reinterpret_cast<int*>(matrix.row_start_offsets.data()),
                     reinterpret_cast<int*>(matrix.col_indices.data()), matrix.values.data());
     handle.setSigma(csr5::avx2::ANONYMOUSLIB_CSR5_SIGMA);
     handle.asCSR5();
