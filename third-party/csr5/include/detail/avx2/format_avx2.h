@@ -31,7 +31,7 @@ void generate_partition_pointer_s1_kernel(std::span<const iT> row_pointer, const
 
 template<typename iT>
 bool is_dirty(const std::span<const iT> row) {
-    for (decltype(row.size()) idx = 0; idx < row.size(); ++idx)
+    for (size_t idx = 0; idx < (row.size() - 1); ++idx)
         if (row[idx] == row[idx + 1])
             return true;
 
