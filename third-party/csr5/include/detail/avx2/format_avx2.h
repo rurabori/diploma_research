@@ -5,6 +5,7 @@
 #include "common_avx2.h"
 #include "utils_avx2.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <dim/memory/aligned_allocator.h>
 #include <span>
@@ -24,7 +25,8 @@ void generate_partition_pointer_s1_kernel(std::span<const iT> row_pointer, const
 
         // binary search
         partition[global_id]
-          = static_cast<uiT>(binary_search_right_boundary_kernel<iT>(row_pointer.data(), boundary, row_pointer.size()))
+          = static_cast<uiT>(
+              std::distance(row_pointer.begin(), std::upper_bound(row_pointer.begin(), row_pointer.end(), boundary)))
             - 1;
     }
 }
