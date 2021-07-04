@@ -357,7 +357,8 @@ int csr5_spmv(const int sigma, const ANONYMOUSLIB_IT p, const ANONYMOUSLIB_IT m,
               const ANONYMOUSLIB_IT tail_partition_start, const ANONYMOUSLIB_VT* x, ANONYMOUSLIB_VT* y) {
     int err = ANONYMOUSLIB_SUCCESS;
 
-    std::fill_n(calibrator, ANONYMOUSLIB_X86_CACHELINE * static_cast<size_t>(omp_get_max_threads()), 0);
+    // TODO: Switch this back to fill_n.
+    memset(calibrator, 0, ANONYMOUSLIB_X86_CACHELINE * static_cast<size_t>(omp_get_max_threads()));
     spmv_csr5_compute_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>(
       column_index, value, x, partition_pointer, partition_descriptor, partition_descriptor_offset_pointer,
       partition_descriptor_offset, calibrator, y, p, num_packet, bit_y_offset, bit_scansum_offset, sigma);
