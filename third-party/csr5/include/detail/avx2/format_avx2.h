@@ -18,15 +18,45 @@ void generate_partition_pointer_s1_kernel(std::span<const iT> row_pointer, const
                                           const size_t sigma, const size_t nnz) {
 #pragma omp parallel for
     for (size_t global_id = 0; global_id < partition.size(); global_id++) {
-        // compute partition boundaries by partition of size sigma * omega
-        // clamp partition boundaries to [0, nnz]
+        // compute partition boundaries by partition of size sigma * omega, clamp to [0, nnz]
         const auto boundary = static_cast<iT>(std::min(global_id * sigma * ANONYMOUSLIB_CSR5_OMEGA, nnz));
 
-        // binary search
-        partition[global_id]
-          = static_cast<uiT>(
-              std::distance(row_pointer.begin(), std::upper_bound(row_pointer.begin(), row_pointer.end(), boundary)))
-            - 1;
+        // binary search for the row where this partition starts.
+        const auto partition_start = std::upper_bound(row_pointer.begin(), row_pointer.end(), boundary);
+
+        // convert into index and write to partition.
+        partition[global_id] = static_cast<uiT>(std::distance(row_pointer.begin(), partition_start)) - 1;
+    }
+}
+
+template<typename Integral>
+constexpr Integral msb = Integral{1} << sizeof(Integral) * 8 - 1;
+
+template<std::integral Ty>
+bool is_dirty(Ty value) {
+    return value & msb<Ty>;
+}
+
+template<std::integral Ty>
+Ty mark_dirty(Ty value) {
+    return value | msb<Ty>;
+}
+
+template<std::integral Ty>
+Ty strip_dirty(Ty value) {
+    return value & ~msb<Ty>;
+}
+
+template<bool StripDirty = true, typename uiT, typename Callable>
+void iterate_partitions(const std::span<uiT> partitions, Callable&& callable) {
+    constexpr auto conditional_strip = [](auto value) {
+        return StripDirty ? strip_dirty(value) : value;
+    };
+
+#pragma omp parallel for
+    for (size_t id = 1; id < partitions.size(); id++) {
+        const auto partition_id = id - 1;
+        std::forward<Callable>(callable)(partition_id, conditional_strip(partitions[partition_id]), conditional_strip(partitions[partition_id + 1]));
     }
 }
 
@@ -41,19 +71,13 @@ bool is_dirty(const std::span<const iT> row) {
 
 template<typename iT, typename uiT>
 void generate_partition_pointer_s2_kernel(const std::span<const iT> row, const std::span<uiT> partition) {
-#pragma omp parallel for
-    for (size_t group_id = 1; group_id < partition.size(); group_id++) {
-        auto start = (partition[group_id - 1] << 1) >> 1;
-        auto stop = (partition[group_id] << 1) >> 1;
-
+    iterate_partitions(partition, [&](auto partition_id, auto start, auto stop) {
         if (start == stop)
-            continue;
+            return;
 
-        if (is_dirty(row.subspan(start, stop - start))) {
-            start |= uiT{1} << (sizeof(uiT) * 8 - 1); // TODO: investigate why the MSB is set.
-            partition[group_id - 1] = start;
-        }
-    }
+        if (is_dirty(row.subspan(start, stop - start)))
+            partition[partition_id] = mark_dirty(start);
+    });
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
@@ -70,37 +94,28 @@ int generate_partition_pointer(const size_t sigma, const size_t num_non_zero,
     return ANONYMOUSLIB_SUCCESS;
 }
 
-template<typename uiT, typename Callable>
-void iterate_partitions(const std::span<const uiT> partitions, Callable&& callable) {
-#pragma omp parallel for
-    for (size_t id = 1; id < partitions.size(); id++) {
-        const auto partition_id = id - 1;
-        std::forward<Callable>(callable)(partition_id, partitions[partition_id], partitions[partition_id + 1]);
-    }
-}
-
 template<typename iT, typename uiT>
 void generate_partition_descriptor_s1_kernel(const iT* d_row_pointer, const std::span<const uiT> d_partition_pointer,
                                              uiT* d_partition_descriptor, const size_t sigma,
                                              const size_t bit_all_offset, const size_t num_packet) {
     iterate_partitions(d_partition_pointer, [&](auto partition_id, auto row_start, auto row_stop) {
         for (auto rid = row_start; rid <= row_stop; rid++) {
-            const auto ptr = static_cast<size_t>(d_row_pointer[rid]);
-            const auto pid = ptr / (ANONYMOUSLIB_CSR5_OMEGA * sigma);
+            const auto idx = static_cast<size_t>(d_row_pointer[rid]);
 
-            if (pid != partition_id)
+            // if we aren't in the correct partition, skip.
+            if (partition_id != idx / (ANONYMOUSLIB_CSR5_OMEGA * sigma))
                 continue;
 
-            const auto lx = (ptr / sigma) % ANONYMOUSLIB_CSR5_OMEGA;
-
-            const auto glid = ptr % sigma + bit_all_offset;
+            // TODO: better naming.
+            const auto lx = (idx / sigma) % ANONYMOUSLIB_CSR5_OMEGA;
+            const auto glid = idx % sigma + bit_all_offset;
             const auto ly = glid / 32;
             const auto llid = glid % 32;
 
             const uiT val = 0x1 << (31 - llid);
-
-            const auto location = pid * ANONYMOUSLIB_CSR5_OMEGA * num_packet + ly * ANONYMOUSLIB_CSR5_OMEGA + lx;
-            d_partition_descriptor[location] |= val;
+            const auto location
+              = partition_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + ly * ANONYMOUSLIB_CSR5_OMEGA + lx;
+             d_partition_descriptor[location] |= val;
         }
     });
 }
@@ -127,27 +142,21 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
 
         const auto segn_scan_thr = std::span{s_segn_scan_all}.subspan(segment_start, ANONYMOUSLIB_CSR5_OMEGA + 1);
         const auto present_thr = std::span{s_present_all}.subspan(segment_start, ANONYMOUSLIB_CSR5_OMEGA);
-        
+
         bool with_empty_rows = (partitions[par_id] >> 31) & 0x1;
 
 #pragma omp simd
         for (int lane_id = 0; lane_id < ANONYMOUSLIB_CSR5_OMEGA; lane_id++) {
-            int start = 0;
-            int stop = 0;
-            int segn = 0;
-            bool present = 0;
-            uiT bitflag = 0;
-
-            present |= !lane_id;
+            bool present = !lane_id;
 
             // extract the first bit-flag packet
-            int ly = 0;
             uiT first_packet = d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + lane_id];
-            bitflag = (first_packet << bit_all_offset) | (static_cast<uiT>(present) << 31);
-            start = !((bitflag >> 31) & 0x1);
+            uiT bitflag = (first_packet << bit_all_offset) | (static_cast<uiT>(present) << 31);
+            int start = !((bitflag >> 31) & 0x1);
             present |= (bitflag >> 31) & 0x1;
 
-            for (int i = 1; i < sigma; i++) {
+            int stop = 0;
+            for (int i = 1, ly = 0; i < sigma; i++) {
                 if ((!ly && i == 32 - bit_all_offset) || (ly && (i - (32 - bit_all_offset)) % 32 == 0)) {
                     ly++;
                     bitflag = d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet
@@ -159,8 +168,7 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
             }
 
             // compute y_offset for all partitions
-            segn = stop - start + present;
-            segn = segn > 0 ? segn : 0;
+            int segn = std::max(stop - start + present, 0);
 
             segn_scan_thr[lane_id] = segn;
 
