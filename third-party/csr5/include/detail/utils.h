@@ -48,12 +48,17 @@ void print_1darray(T* input, int l) {
     cout << endl;
 }
 
-template<typename Integral>
-constexpr size_t get_needed_storage(Integral value) {
+/**
+ * @brief Computes needed storage for N values (in bits.)
+ * 
+ * @param N the number of values that need to be stored.
+ * @return constexpr size_t he amount of bits needed to store N values.F
+ */
+template<std::integral Ty>
+constexpr size_t get_needed_storage(Ty N) {
     size_t retval{1};
 
-    // TODO: this might be doable with bit magic without a loop.
-    for (Integral base = 2; base < value; base *= 2)
+    for (Ty base = 2; base < N; base *= 2)
         ++retval;
 
     return retval;
