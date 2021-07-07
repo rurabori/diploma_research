@@ -1,8 +1,9 @@
-#ifndef UTILS_H
-#define UTILS_H
+#ifndef THIRD_PARTY_CSR5_INCLUDE_DETAIL_UTILS
+#define THIRD_PARTY_CSR5_INCLUDE_DETAIL_UTILS
 
 #include "common.h"
 
+#include <climits>
 #include <dirent.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -50,7 +51,7 @@ void print_1darray(T* input, int l) {
 
 /**
  * @brief Computes needed storage for N values (in bits.)
- * 
+ *
  * @param N the number of values that need to be stored.
  * @return constexpr size_t he amount of bits needed to store N values.F
  */
@@ -64,6 +65,9 @@ constexpr size_t get_needed_storage(Ty N) {
     return retval;
 }
 
+template<std::integral Ty>
+constexpr size_t bit_size = sizeof(Ty) * CHAR_BIT;
+
 template<typename Callable>
 auto timed_section(Callable&& callable) {
     auto begin = std::chrono::steady_clock::now();
@@ -73,4 +77,4 @@ auto timed_section(Callable&& callable) {
 
 } // namespace csr5::avx2
 
-#endif // UTILS_H
+#endif /* THIRD_PARTY_CSR5_INCLUDE_DETAIL_UTILS */

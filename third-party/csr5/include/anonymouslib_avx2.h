@@ -61,7 +61,7 @@ private:
     size_t _num_packet{};
     ANONYMOUSLIB_IT _tail_partition_start;
 
-    ANONYMOUSLIB_IT _num_partitions;
+    size_t _num_partitions;
     cache_aligned_vector<ANONYMOUSLIB_UIT> _csr5_partition_pointer;
     cache_aligned_vector<ANONYMOUSLIB_UIT> _csr5_partition_descriptor;
 
@@ -125,35 +125,38 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
     // compute sigma
     _csr5_sigma = computeSigma();
 
-    _bit_y_offset = get_needed_storage(ANONYMOUSLIB_CSR5_OMEGA * _csr5_sigma);
+    const auto partition_size = ANONYMOUSLIB_CSR5_OMEGA * _csr5_sigma;
+
+    _bit_y_offset = get_needed_storage(partition_size);
     _bit_scansum_offset = get_needed_storage(ANONYMOUSLIB_CSR5_OMEGA);
 
-    // the 1st bit of bit-flag should be in the first packet
-    if (_bit_y_offset + _bit_scansum_offset > (sizeof(ANONYMOUSLIB_UIT) * 8 - 1))
+    // packet won't fit into the storage.
+    if (_bit_y_offset + _bit_scansum_offset >= bit_size<ANONYMOUSLIB_UIT>)
         return ANONYMOUSLIB_UNSUPPORTED_CSR5_OMEGA;
 
-    _num_packet = static_cast<size_t>(std::ceil(static_cast<double>(_bit_y_offset + _bit_scansum_offset + _csr5_sigma)
-                                                / static_cast<double>(sizeof(ANONYMOUSLIB_UIT) * 8)));
+    // number of packets in a single UIT.
+    _num_packet = static_cast<size_t>(
+      std::ceil(static_cast<double>(_bit_y_offset + _bit_scansum_offset + _csr5_sigma) / bit_size<ANONYMOUSLIB_UIT>));
 
     // calculate the number of partitions
-    _num_partitions = static_cast<ANONYMOUSLIB_IT>(
-      std::ceil(static_cast<double>(_num_non_zero) / static_cast<double>(ANONYMOUSLIB_CSR5_OMEGA * _csr5_sigma)));
+    _num_partitions
+      = static_cast<size_t>(std::ceil(static_cast<double>(_num_non_zero) / static_cast<double>(partition_size)));
 
     // malloc the newly added arrays for CSR5
     // TODO: move these allocations to separate function.
-    _csr5_partition_pointer.resize(static_cast<size_t>(_num_partitions + 1));
-    _csr5_partition_descriptor.resize(static_cast<size_t>(_num_partitions * ANONYMOUSLIB_CSR5_OMEGA * _num_packet));
+    _csr5_partition_pointer.resize(_num_partitions + 1);
+    _csr5_partition_descriptor.resize(_num_partitions * ANONYMOUSLIB_CSR5_OMEGA * _num_packet);
+
     _temp_calibrator.resize(static_cast<size_t>(omp_get_max_threads())
                             * dim::memory::hardware_destructive_interference_size / sizeof(ANONYMOUSLIB_VT));
     _csr5_partition_descriptor_offset_pointer.resize(_csr5_partition_pointer.size());
 
     if (generate_partition_pointer<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
-          static_cast<size_t>(_csr5_sigma), _num_non_zero, _csr5_partition_pointer,
-          std::span{_csr_row_pointer, static_cast<size_t>(_num_rows + 1)})
+          _csr5_sigma, _num_non_zero, _csr5_partition_pointer, std::span{_csr_row_pointer, _num_rows + 1})
         != ANONYMOUSLIB_SUCCESS)
         return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
 
-    _tail_partition_start = (_csr5_partition_pointer[static_cast<size_t>(_num_partitions - 1)] << 1) >> 1;
+    _tail_partition_start = (_csr5_partition_pointer.back() << 1) >> 1;
 
     // step 2. generate partition descriptor
     if (generate_partition_descriptor<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
