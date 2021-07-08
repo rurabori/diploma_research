@@ -29,8 +29,20 @@ void generate_partition_pointer_s1_kernel(std::span<const iT> row_pointer, const
     }
 }
 
+/**
+ * @brief Set the bit starting at the most significant bit.
+ *
+ * @tparam Integral any integral type.
+ * @param which the bit to be set (0 means MSB, 1 means MSB - 1 etc.)
+ * @return constexpr Integral a value with needed bit set.
+ */
+template<std::integral Integral>
+constexpr Integral set_bit(size_t which) {
+    return Integral{1} << bit_size<Integral> - 1 - which;
+}
+
 template<typename Integral>
-constexpr Integral msb = Integral{1} << sizeof(Integral) * 8 - 1;
+constexpr Integral msb = set_bit<Integral>(0);
 
 template<std::integral Ty>
 bool is_dirty(Ty value) {
@@ -93,29 +105,36 @@ int generate_partition_pointer(const size_t sigma, const size_t num_non_zero,
     return ANONYMOUSLIB_SUCCESS;
 }
 
+/**
+ * @brief Sets the bit flag of each first non-0 element in a tile to true.
+ */
 template<typename iT, typename uiT>
-void generate_partition_descriptor_s1_kernel(const iT* d_row_pointer, const std::span<const uiT> d_partition_pointer,
-                                             uiT* d_partition_descriptor, const size_t sigma,
-                                             const size_t bit_all_offset, const size_t num_packet) {
-    iterate_partitions(d_partition_pointer, [&](auto partition_id, auto row_start, auto row_stop) {
+void set_partition_descriptor_bit_flags(const iT* row_pointer, const std::span<const uiT> partition_pointer,
+                                        uiT* partition_descriptor, const size_t sigma, const size_t bit_all_offset,
+                                        const size_t num_packet) {
+    iterate_partitions(partition_pointer, [&](auto partition_id, auto row_start, auto row_stop) {
+        // start of tiles for this partition.
         const auto location_base = partition_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet;
 
         for (auto rid = row_start; rid <= row_stop; rid++) {
-            const auto idx = static_cast<size_t>(d_row_pointer[rid]);
-
+            const auto idx = static_cast<size_t>(row_pointer[rid]);
             // if we aren't in the correct partition, skip.
             if (partition_id != idx / (ANONYMOUSLIB_CSR5_OMEGA * sigma))
                 continue;
 
-            // TODO: better naming.
-            const auto lx = (idx / sigma) % ANONYMOUSLIB_CSR5_OMEGA;
-            const auto glid = idx % sigma + bit_all_offset;
-            const auto ly = glid / 32;
-            const auto llid = glid % 32;
+            // the tile has sigma rows and omega cols, thus we get row by doing modulo sigma.
+            const auto tile_row = idx % sigma;
+            // each element in tile gets a bit flag, offset by bit_all_offset(y_offset + seg_offset).
+            const auto tile_bit_flag_offset = tile_row + bit_all_offset;
+            // get in which row to store the bit flag.
+            const auto tile_y = tile_bit_flag_offset / bit_size<uiT>;
+            // get the column in which to store the bit flag.
+            const auto tile_x = (idx / sigma) % ANONYMOUSLIB_CSR5_OMEGA;
+            // get the index in the partition_descriptor storage.
+            const auto location = location_base + tile_y * ANONYMOUSLIB_CSR5_OMEGA + tile_x;
 
-            const uiT val = 0x1 << (31 - llid);
-            const auto location = location_base + ly * ANONYMOUSLIB_CSR5_OMEGA + lx;
-            d_partition_descriptor[location] |= val;
+            // set the bit flag as this is the first non-0 element in the row in this tile.
+            partition_descriptor[location] |= set_bit<uiT>(tile_bit_flag_offset % bit_size<uiT>);
         }
     });
 }
@@ -217,7 +236,7 @@ int generate_partition_descriptor(const size_t sigma, const size_t bit_y_offset,
                                   ANONYMOUSLIB_IT* partition_descriptor_offset_pointer, ANONYMOUSLIB_IT* _num_offsets) {
     size_t bit_all_offset = bit_y_offset + bit_scansum_offset;
 
-    generate_partition_descriptor_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
+    set_partition_descriptor_bit_flags<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
       row_pointer, partition_pointer, partition_descriptor, sigma, bit_all_offset, num_packet);
 
     generate_partition_descriptor_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
