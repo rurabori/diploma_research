@@ -156,7 +156,7 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
         != ANONYMOUSLIB_SUCCESS)
         return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
 
-    _tail_partition_start = (_csr5_partition_pointer.back() << 1) >> 1;
+    _tail_partition_start = (_csr5_partition_pointer[_num_partitions - 1] << 1) >> 1;
 
     // step 2. generate partition descriptor
     if (generate_partition_descriptor<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
