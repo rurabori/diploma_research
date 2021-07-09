@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <dim/memory/aligned_allocator.h>
 #include <numeric>
+#include <ranges>
 #include <span>
 #include <utility>
 
@@ -30,6 +31,8 @@ void generate_partition_pointer_s1_kernel(std::span<const iT> row_pointer, const
         partition[global_id] = static_cast<uiT>(std::distance(row_pointer.begin(), partition_start)) - 1;
     }
 }
+
+// TODO: move these helpers to a different header and add unit-tests.
 
 /**
  * @brief Set the bit starting at the most significant bit.
@@ -87,11 +90,7 @@ void iterate_partitions(const std::span<uiT> partitions, Callable&& callable) {
 
 template<typename iT>
 bool is_dirty(const std::span<const iT> row) {
-    for (size_t idx = 1; idx < row.size(); ++idx)
-        if (row[idx - 1] == row[idx])
-            return true;
-
-    return false;
+    return std::ranges::adjacent_find(row) != row.end();
 }
 
 template<std::integral Integral>
@@ -103,6 +102,12 @@ constexpr size_t set_bit_count(const Integral value, const size_t start = 0, con
         result += has_bit_set(value, start + i);
 
     return result;
+}
+
+template<typename ValueType>
+constexpr size_t count_consecutive_equal_elements(const std::span<ValueType> data, const ValueType& example) {
+    return static_cast<size_t>(
+      std::distance(data.begin(), std::ranges::find_if_not(data, [&](auto&& val) { return val == example; })));
 }
 
 template<typename iT, typename uiT>
@@ -183,16 +188,23 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
         if (row_start == row_stop)
             return;
 
+        // thread local views into the main storage.
         const auto segment_start = static_cast<size_t>(omp_get_thread_num()) * 2 * ANONYMOUSLIB_CSR5_OMEGA;
         const auto segn_scan_thr = std::span{s_segn_scan_all}.subspan(segment_start, ANONYMOUSLIB_CSR5_OMEGA + 1);
         const auto present_thr = std::span{s_present_all}.subspan(segment_start, ANONYMOUSLIB_CSR5_OMEGA);
+
+        // partition before was dirty.
         const auto has_empty_rows = is_dirty(partitions[par_id]);
+
         const auto base_descriptor_index = par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet;
+        const auto read_packet = [&](size_t row, size_t col) {
+            return partition_descriptor[base_descriptor_index + row * ANONYMOUSLIB_CSR5_OMEGA + col];
+        };
 
 #pragma omp simd
         for (size_t col_idx = 0; col_idx < ANONYMOUSLIB_CSR5_OMEGA; ++col_idx) {
-            // extract the first bit-flag packet.
-            auto packet = partition_descriptor[base_descriptor_index + col_idx];
+            auto packet = read_packet(0, col_idx);
+            // check if bit is set or col_idx is 0 in which case the big flag is always true.
             int start = !(has_bit_set(packet, bit_all_offset) || !col_idx);
 
             // process the values in the first packet.
@@ -201,8 +213,7 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
             int stop = static_cast<int>(set_bit_count(packet, bit_all_offset + 1, processed - 1));
 
             for (auto remaining = sigma - processed, row_idx = size_t{1}; remaining != 0; ++row_idx) {
-                // read in another part of data.
-                packet = partition_descriptor[base_descriptor_index + row_idx * ANONYMOUSLIB_CSR5_OMEGA + col_idx];
+                packet = read_packet(row_idx, col_idx);
 
                 // compute how much we still need to sum.
                 const auto loop_processed = std::min(remaining, bit_size<decltype(packet)>);
@@ -212,39 +223,34 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
                 remaining -= loop_processed;
             }
 
+            // true if any of the bits in bit flag table was true.
             const auto present = start == 0 || stop != 0;
+
             segn_scan_thr[col_idx] = std::max(stop - start + present, 0);
             present_thr[col_idx] = present;
         }
 
         std::exclusive_scan(segn_scan_thr.begin(), segn_scan_thr.end(), segn_scan_thr.begin(), 0);
+
         if (has_empty_rows) {
             partition_descriptor_offset_pointer[par_id] = segn_scan_thr[ANONYMOUSLIB_CSR5_OMEGA];
             partition_descriptor_offset_pointer[partitions.size() - 1] += segn_scan_thr[ANONYMOUSLIB_CSR5_OMEGA];
         }
 
 #pragma omp simd
-        for (int lane_id = 0; lane_id < ANONYMOUSLIB_CSR5_OMEGA; lane_id++) {
-            // TODO: check the signedness requirements here.
-            auto y_offset = static_cast<uiT>(segn_scan_thr[lane_id]);
+        for (size_t col_idx = 0; col_idx < ANONYMOUSLIB_CSR5_OMEGA; col_idx++) {
+            auto first_packet = read_packet(0, col_idx);
 
-            uiT scansum_offset = 0;
-            int next1 = lane_id + 1;
-            if (present_thr[lane_id]) {
-                while (!present_thr[next1] && next1 < ANONYMOUSLIB_CSR5_OMEGA) {
-                    scansum_offset++;
-                    next1++;
-                }
-            }
+            const auto y_offset = col_idx ? static_cast<uiT>(segn_scan_thr[col_idx]) - 1 : 0;
+            first_packet |= y_offset << (bit_size<decltype(first_packet)> - bit_y_offset);
 
-            uiT first_packet = partition_descriptor[base_descriptor_index + lane_id];
+            const auto scansum_offset
+              = present_thr[col_idx]
+                  ? static_cast<uiT>(count_consecutive_equal_elements(present_thr.subspan(col_idx + 1), 0))
+                  : 0;
+            first_packet |= scansum_offset << (bit_size<decltype(first_packet)> - bit_all_offset);
 
-            y_offset = lane_id ? y_offset - 1 : 0;
-
-            first_packet |= y_offset << (32 - bit_y_offset);
-            first_packet |= scansum_offset << (32 - bit_all_offset);
-
-            partition_descriptor[base_descriptor_index + lane_id] = first_packet;
+            partition_descriptor[base_descriptor_index + col_idx] = first_packet;
         }
     });
 }
