@@ -3,6 +3,7 @@
 
 #include "anonymouslib_avx2.h"
 #include "common_avx2.h"
+#include "detail/utils.h"
 #include "utils_avx2.h"
 
 #include <algorithm>
@@ -39,6 +40,18 @@ void generate_partition_pointer_s1_kernel(std::span<const iT> row_pointer, const
 template<std::integral Integral>
 constexpr Integral set_bit(size_t which) {
     return Integral{1} << bit_size<Integral> - 1 - which;
+}
+
+/**
+ * @brief Checks if a bit is set.
+ *
+ * @tparam Integral any integral type.
+ * @param which the bit to be set (0 means MSB, 1 means MSB - 1 etc.)
+ * @return constexpr bool true if bit is set, false otherwise.
+ */
+template<std::integral Integral>
+constexpr bool has_bit_set(Integral value, size_t which) {
+    return value & set_bit<Integral>(which);
 }
 
 template<typename Integral>
@@ -78,6 +91,17 @@ bool is_dirty(const std::span<const iT> row) {
             return true;
 
     return false;
+}
+
+template<std::integral Integral>
+constexpr size_t set_bit_count(const Integral value, const size_t start = 0, const size_t count = bit_size<Integral>) {
+    size_t result{};
+
+#pragma unroll
+    for (size_t i = 0; i < count; ++i)
+        result += has_bit_set(value, start + i);
+
+    return result;
 }
 
 template<typename iT, typename uiT>
@@ -140,66 +164,63 @@ void set_partition_descriptor_bit_flags(const iT* row_pointer, const std::span<c
 }
 
 template<typename iT, typename uiT>
-void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitions, uiT* d_partition_descriptor,
-                                             iT* d_partition_descriptor_offset_pointer, const int sigma,
-                                             const int num_packet, const int bit_y_offset,
-                                             const int bit_scansum_offset) {
+void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitions, uiT* partition_descriptor,
+                                             iT* partition_descriptor_offset_pointer, const size_t sigma,
+                                             const size_t num_packet, const size_t bit_y_offset,
+                                             const size_t bit_scansum_offset) {
     const auto num_thread = static_cast<size_t>(omp_get_max_threads());
+    const auto bit_all_offset = bit_y_offset + bit_scansum_offset;
+    const auto first_packet_bit_flag_size = bit_size<uiT> - bit_all_offset;
 
     dim::memory::cache_aligned_vector<int> s_segn_scan_all(2 * ANONYMOUSLIB_CSR5_OMEGA * num_thread);
     dim::memory::cache_aligned_vector<int> s_present_all(2 * ANONYMOUSLIB_CSR5_OMEGA * num_thread);
     for (size_t i = 0; i < num_thread; i++)
         s_present_all[i * 2 * ANONYMOUSLIB_CSR5_OMEGA + ANONYMOUSLIB_CSR5_OMEGA] = 1;
 
-    const int bit_all_offset = bit_y_offset + bit_scansum_offset;
-
     iterate_partitions(partitions, [&](auto par_id, auto row_start, auto row_stop) {
+        // skip empty rows.
         if (row_start == row_stop)
             return;
 
         const auto segment_start = static_cast<size_t>(omp_get_thread_num()) * 2 * ANONYMOUSLIB_CSR5_OMEGA;
-
         const auto segn_scan_thr = std::span{s_segn_scan_all}.subspan(segment_start, ANONYMOUSLIB_CSR5_OMEGA + 1);
         const auto present_thr = std::span{s_present_all}.subspan(segment_start, ANONYMOUSLIB_CSR5_OMEGA);
-
-        bool with_empty_rows = (partitions[par_id] >> 31) & 0x1;
+        const auto has_empty_rows = is_dirty(partitions[par_id]);
+        const auto base_descriptor_index = par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet;
 
 #pragma omp simd
-        for (int lane_id = 0; lane_id < ANONYMOUSLIB_CSR5_OMEGA; lane_id++) {
-            bool present = !lane_id;
+        for (size_t col_idx = 0; col_idx < ANONYMOUSLIB_CSR5_OMEGA; ++col_idx) {
+            // extract the first bit-flag packet.
+            auto packet = partition_descriptor[base_descriptor_index + col_idx];
+            int start = !(has_bit_set(packet, bit_all_offset) || !col_idx);
 
-            // extract the first bit-flag packet
-            uiT first_packet = d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + lane_id];
-            uiT bitflag = (first_packet << bit_all_offset) | (static_cast<uiT>(present) << 31);
-            int start = !((bitflag >> 31) & 0x1);
-            present |= (bitflag >> 31) & 0x1;
+            // process the values in the first packet.
+            const auto processed = std::min(first_packet_bit_flag_size, sigma);
+            // process one less than the count because we've processed the first bit to compute start.
+            int stop = static_cast<int>(set_bit_count(packet, bit_all_offset + 1, processed - 1));
 
-            int stop = 0;
-            for (int i = 1, ly = 0; i < sigma; i++) {
-                if ((!ly && i == 32 - bit_all_offset) || (ly && (i - (32 - bit_all_offset)) % 32 == 0)) {
-                    ly++;
-                    bitflag = d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet
-                                                     + ly * ANONYMOUSLIB_CSR5_OMEGA + lane_id];
-                }
-                const int norm_i = !ly ? i : i - (32 - bit_all_offset);
-                stop += (bitflag >> (31 - norm_i % 32)) & 0x1;
-                present |= (bitflag >> (31 - norm_i % 32)) & 0x1;
+            for (auto remaining = sigma - processed, row_idx = size_t{1}; remaining != 0; ++row_idx) {
+                // read in another part of data.
+                packet = partition_descriptor[base_descriptor_index + row_idx * ANONYMOUSLIB_CSR5_OMEGA + col_idx];
+
+                // compute how much we still need to sum.
+                const auto loop_processed = std::min(remaining, bit_size<decltype(packet)>);
+                stop += set_bit_count(packet, 0, loop_processed);
+
+                // subtract the processed data from remaining data.
+                remaining -= loop_processed;
             }
 
-            // compute y_offset for all partitions
-            int segn = std::max(stop - start + present, 0);
-
-            segn_scan_thr[lane_id] = segn;
-
-            // compute scansum_offset
-            present_thr[lane_id] = present;
+            const auto present = start == 0 || stop != 0;
+            segn_scan_thr[col_idx] = std::max(stop - start + present, 0);
+            present_thr[col_idx] = present;
         }
 
         scan_single<int>(segn_scan_thr.data(), ANONYMOUSLIB_CSR5_OMEGA + 1);
 
-        if (with_empty_rows) {
-            d_partition_descriptor_offset_pointer[par_id] = segn_scan_thr[ANONYMOUSLIB_CSR5_OMEGA];
-            d_partition_descriptor_offset_pointer[partitions.size() - 1] += segn_scan_thr[ANONYMOUSLIB_CSR5_OMEGA];
+        if (has_empty_rows) {
+            partition_descriptor_offset_pointer[par_id] = segn_scan_thr[ANONYMOUSLIB_CSR5_OMEGA];
+            partition_descriptor_offset_pointer[partitions.size() - 1] += segn_scan_thr[ANONYMOUSLIB_CSR5_OMEGA];
         }
 
 #pragma omp simd
@@ -216,14 +237,14 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
                 }
             }
 
-            uiT first_packet = d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + lane_id];
+            uiT first_packet = partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + lane_id];
 
             y_offset = lane_id ? y_offset - 1 : 0;
 
             first_packet |= y_offset << (32 - bit_y_offset);
             first_packet |= scansum_offset << (32 - bit_all_offset);
 
-            d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + lane_id] = first_packet;
+            partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + lane_id] = first_packet;
         }
     });
 }
