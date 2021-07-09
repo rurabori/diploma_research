@@ -210,24 +210,16 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
                                              iT* partition_descriptor_offset_pointer, const size_t sigma,
                                              const size_t num_packet, const size_t bit_y_offset,
                                              const size_t bit_scansum_offset) {
-    const auto num_threads = static_cast<size_t>(omp_get_max_threads());
     const auto bit_all_offset = bit_y_offset + bit_scansum_offset;
     const auto first_packet_bit_flag_size = bit_size<uiT> - bit_all_offset;
-
-    dim::memory::cache_aligned_vector<int> s_segn_scan_all(2 * ANONYMOUSLIB_CSR5_OMEGA * num_threads);
-    dim::memory::cache_aligned_vector<int> s_present_all(2 * ANONYMOUSLIB_CSR5_OMEGA * num_threads);
-    for (size_t i = 0; i < num_threads; i++)
-        s_present_all[i * 2 * ANONYMOUSLIB_CSR5_OMEGA + ANONYMOUSLIB_CSR5_OMEGA] = 1;
 
     iterate_partitions(partitions, [&](auto par_id, auto row_start, auto row_stop) {
         // skip empty rows.
         if (row_start == row_stop)
             return;
 
-        // thread local views into the main storage.
-        const auto segment_start = static_cast<size_t>(omp_get_thread_num()) * 2 * ANONYMOUSLIB_CSR5_OMEGA;
-        const auto segn_scan_thr = std::span{s_segn_scan_all}.subspan(segment_start, ANONYMOUSLIB_CSR5_OMEGA + 1);
-        const auto present_thr = std::span{s_present_all}.subspan(segment_start, ANONYMOUSLIB_CSR5_OMEGA);
+        int segn_scan[ANONYMOUSLIB_CSR5_OMEGA + 1] = {};
+        int present[ANONYMOUSLIB_CSR5_OMEGA] = {};
 
         // partition before was dirty.
         const auto has_empty_rows = is_dirty(partitions[par_id]);
@@ -237,24 +229,24 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
             return partition_descriptor[base_descriptor_index + row * ANONYMOUSLIB_CSR5_OMEGA + col];
         };
 
-        calculate_segn_scan_and_present(first_packet_bit_flag_size, sigma, bit_all_offset, segn_scan_thr, present_thr,
+        calculate_segn_scan_and_present(first_packet_bit_flag_size, sigma, bit_all_offset, segn_scan, present,
                                         read_packet);
 
         if (has_empty_rows) {
-            partition_descriptor_offset_pointer[par_id] = segn_scan_thr[ANONYMOUSLIB_CSR5_OMEGA];
-            partition_descriptor_offset_pointer[partitions.size() - 1] += segn_scan_thr[ANONYMOUSLIB_CSR5_OMEGA];
+            partition_descriptor_offset_pointer[par_id] = segn_scan[ANONYMOUSLIB_CSR5_OMEGA];
+            partition_descriptor_offset_pointer[partitions.size() - 1] += segn_scan[ANONYMOUSLIB_CSR5_OMEGA];
         }
 
 #pragma omp simd
         for (size_t col_idx = 0; col_idx < ANONYMOUSLIB_CSR5_OMEGA; col_idx++) {
             auto first_packet = read_packet(0, col_idx);
 
-            const auto y_offset = col_idx ? static_cast<uiT>(segn_scan_thr[col_idx]) - 1 : 0;
+            const auto y_offset = col_idx ? static_cast<uiT>(segn_scan[col_idx]) - 1 : 0;
             first_packet |= y_offset << (bit_size<decltype(first_packet)> - bit_y_offset);
 
             const auto scansum_offset
-              = present_thr[col_idx]
-                  ? static_cast<uiT>(count_consecutive_equal_elements(present_thr.subspan(col_idx + 1), 0))
+              = present[col_idx]
+                  ? static_cast<uiT>(count_consecutive_equal_elements(std::span{present}.subspan(col_idx + 1), 0))
                   : 0;
             first_packet |= scansum_offset << (bit_size<decltype(first_packet)> - bit_all_offset);
 
@@ -279,12 +271,11 @@ int generate_partition_descriptor(const size_t sigma, const size_t bit_y_offset,
       bit_scansum_offset);
 
     if (partition_descriptor_offset_pointer[partition_pointer.size() - 1])
-        scan_single<ANONYMOUSLIB_IT>(partition_descriptor_offset_pointer, partition_pointer.size());
+        std::exclusive_scan(partition_descriptor_offset_pointer,
+                            partition_descriptor_offset_pointer + partition_pointer.size(),
+                            partition_descriptor_offset_pointer, 0);
 
-    if (partition_descriptor_offset_pointer[partition_pointer.size()])
-        scan_single<ANONYMOUSLIB_IT>(partition_descriptor_offset_pointer, partition_pointer.size());
-
-    *_num_offsets = partition_descriptor_offset_pointer[partition_pointer.size()];
+    *_num_offsets = partition_descriptor_offset_pointer[partition_pointer.size() - 1];
 
     return ANONYMOUSLIB_SUCCESS;
 }
