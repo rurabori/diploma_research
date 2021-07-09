@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <dim/memory/aligned_allocator.h>
+#include <numeric>
 #include <span>
 #include <utility>
 
@@ -216,8 +217,7 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
             present_thr[col_idx] = present;
         }
 
-        scan_single<int>(segn_scan_thr.data(), ANONYMOUSLIB_CSR5_OMEGA + 1);
-
+        std::exclusive_scan(segn_scan_thr.begin(), segn_scan_thr.end(), segn_scan_thr.begin(), 0);
         if (has_empty_rows) {
             partition_descriptor_offset_pointer[par_id] = segn_scan_thr[ANONYMOUSLIB_CSR5_OMEGA];
             partition_descriptor_offset_pointer[partitions.size() - 1] += segn_scan_thr[ANONYMOUSLIB_CSR5_OMEGA];
@@ -237,14 +237,14 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
                 }
             }
 
-            uiT first_packet = partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + lane_id];
+            uiT first_packet = partition_descriptor[base_descriptor_index + lane_id];
 
             y_offset = lane_id ? y_offset - 1 : 0;
 
             first_packet |= y_offset << (32 - bit_y_offset);
             first_packet |= scansum_offset << (32 - bit_all_offset);
 
-            partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet + lane_id] = first_packet;
+            partition_descriptor[base_descriptor_index + lane_id] = first_packet;
         }
     });
 }
