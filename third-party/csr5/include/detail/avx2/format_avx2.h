@@ -169,18 +169,54 @@ void set_partition_descriptor_bit_flags(const iT* row_pointer, const std::span<c
     });
 }
 
+template<std::invocable<size_t, size_t> ReadPacket>
+void calculate_segn_scan_and_present(const size_t first_packet_bit_flag_size, const size_t sigma,
+                                     const size_t bit_all_offset, const std::span<int> segn_scan,
+                                     const std::span<int> present, const ReadPacket& read_packet) {
+#pragma omp simd
+    for (size_t col_idx = 0; col_idx < ANONYMOUSLIB_CSR5_OMEGA; ++col_idx) {
+        auto packet = read_packet(0, col_idx);
+        // check if bit is set or col_idx is 0 in which case the big flag is always true.
+        int start = !(has_bit_set(packet, bit_all_offset) || !col_idx);
+
+        // process the values in the first packet.
+        const auto processed = std::min(first_packet_bit_flag_size, sigma);
+        // process one less than the count because we've processed the first bit to compute start.
+        int stop = static_cast<int>(set_bit_count(packet, bit_all_offset + 1, processed - 1));
+
+        for (auto remaining = sigma - processed, row_idx = size_t{1}; remaining != 0; ++row_idx) {
+            packet = read_packet(row_idx, col_idx);
+
+            // compute how much we still need to sum.
+            const auto loop_processed = std::min(remaining, bit_size<decltype(packet)>);
+            stop += set_bit_count(packet, 0, loop_processed);
+
+            // subtract the processed data from remaining data.
+            remaining -= loop_processed;
+        }
+
+        // true if any of the bits in bit flag table was true.
+        const auto current_present = start == 0 || stop != 0;
+
+        segn_scan[col_idx] = std::max(stop - start + current_present, 0);
+        present[col_idx] = current_present;
+    }
+
+    std::exclusive_scan(segn_scan.begin(), segn_scan.end(), segn_scan.begin(), 0);
+}
+
 template<typename iT, typename uiT>
 void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitions, uiT* partition_descriptor,
                                              iT* partition_descriptor_offset_pointer, const size_t sigma,
                                              const size_t num_packet, const size_t bit_y_offset,
                                              const size_t bit_scansum_offset) {
-    const auto num_thread = static_cast<size_t>(omp_get_max_threads());
+    const auto num_threads = static_cast<size_t>(omp_get_max_threads());
     const auto bit_all_offset = bit_y_offset + bit_scansum_offset;
     const auto first_packet_bit_flag_size = bit_size<uiT> - bit_all_offset;
 
-    dim::memory::cache_aligned_vector<int> s_segn_scan_all(2 * ANONYMOUSLIB_CSR5_OMEGA * num_thread);
-    dim::memory::cache_aligned_vector<int> s_present_all(2 * ANONYMOUSLIB_CSR5_OMEGA * num_thread);
-    for (size_t i = 0; i < num_thread; i++)
+    dim::memory::cache_aligned_vector<int> s_segn_scan_all(2 * ANONYMOUSLIB_CSR5_OMEGA * num_threads);
+    dim::memory::cache_aligned_vector<int> s_present_all(2 * ANONYMOUSLIB_CSR5_OMEGA * num_threads);
+    for (size_t i = 0; i < num_threads; i++)
         s_present_all[i * 2 * ANONYMOUSLIB_CSR5_OMEGA + ANONYMOUSLIB_CSR5_OMEGA] = 1;
 
     iterate_partitions(partitions, [&](auto par_id, auto row_start, auto row_stop) {
@@ -201,36 +237,8 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
             return partition_descriptor[base_descriptor_index + row * ANONYMOUSLIB_CSR5_OMEGA + col];
         };
 
-#pragma omp simd
-        for (size_t col_idx = 0; col_idx < ANONYMOUSLIB_CSR5_OMEGA; ++col_idx) {
-            auto packet = read_packet(0, col_idx);
-            // check if bit is set or col_idx is 0 in which case the big flag is always true.
-            int start = !(has_bit_set(packet, bit_all_offset) || !col_idx);
-
-            // process the values in the first packet.
-            const auto processed = std::min(first_packet_bit_flag_size, sigma);
-            // process one less than the count because we've processed the first bit to compute start.
-            int stop = static_cast<int>(set_bit_count(packet, bit_all_offset + 1, processed - 1));
-
-            for (auto remaining = sigma - processed, row_idx = size_t{1}; remaining != 0; ++row_idx) {
-                packet = read_packet(row_idx, col_idx);
-
-                // compute how much we still need to sum.
-                const auto loop_processed = std::min(remaining, bit_size<decltype(packet)>);
-                stop += set_bit_count(packet, 0, loop_processed);
-
-                // subtract the processed data from remaining data.
-                remaining -= loop_processed;
-            }
-
-            // true if any of the bits in bit flag table was true.
-            const auto present = start == 0 || stop != 0;
-
-            segn_scan_thr[col_idx] = std::max(stop - start + present, 0);
-            present_thr[col_idx] = present;
-        }
-
-        std::exclusive_scan(segn_scan_thr.begin(), segn_scan_thr.end(), segn_scan_thr.begin(), 0);
+        calculate_segn_scan_and_present(first_packet_bit_flag_size, sigma, bit_all_offset, segn_scan_thr, present_thr,
+                                        read_packet);
 
         if (has_empty_rows) {
             partition_descriptor_offset_pointer[par_id] = segn_scan_thr[ANONYMOUSLIB_CSR5_OMEGA];
