@@ -172,7 +172,7 @@ void set_partition_descriptor_bit_flags(const iT* row_pointer, const std::span<c
 template<std::invocable<size_t, size_t> ReadPacket>
 void calculate_segn_scan_and_present(const size_t first_packet_bit_flag_size, const size_t sigma,
                                      const size_t bit_all_offset, const std::span<int> segn_scan,
-                                     const std::span<int> present, const ReadPacket& read_packet) {
+                                     const std::span<bool> present, const ReadPacket& read_packet) {
 #pragma omp simd
     for (size_t col_idx = 0; col_idx < ANONYMOUSLIB_CSR5_OMEGA; ++col_idx) {
         auto packet = read_packet(0, col_idx);
@@ -219,7 +219,7 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
             return;
 
         int segn_scan[ANONYMOUSLIB_CSR5_OMEGA + 1] = {};
-        int present[ANONYMOUSLIB_CSR5_OMEGA] = {};
+        bool present[ANONYMOUSLIB_CSR5_OMEGA] = {};
 
         // partition before was dirty.
         const auto has_empty_rows = is_dirty(partitions[par_id]);
@@ -246,7 +246,7 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
 
             const auto scansum_offset
               = present[col_idx]
-                  ? static_cast<uiT>(count_consecutive_equal_elements(std::span{present}.subspan(col_idx + 1), 0))
+                  ? static_cast<uiT>(count_consecutive_equal_elements(std::span{present}.subspan(col_idx + 1), false))
                   : 0;
             first_packet |= scansum_offset << (bit_size<decltype(first_packet)> - bit_all_offset);
 
