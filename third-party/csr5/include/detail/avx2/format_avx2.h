@@ -170,9 +170,10 @@ void set_partition_descriptor_bit_flags(const iT* row_pointer, const std::span<c
 }
 
 template<std::invocable<size_t, size_t> ReadPacket>
-void calculate_segn_scan_and_present(const size_t first_packet_bit_flag_size, const size_t sigma,
-                                     const size_t bit_all_offset, const std::span<int> segn_scan,
+void calculate_segn_scan_and_present(const size_t sigma, const size_t bit_all_offset, const std::span<int> segn_scan,
                                      const std::span<bool> present, const ReadPacket& read_packet) {
+    const auto first_packet_bit_flag_size = bit_size<decltype(read_packet(0, 0))> - bit_all_offset;
+
 #pragma omp simd
     for (size_t col_idx = 0; col_idx < ANONYMOUSLIB_CSR5_OMEGA; ++col_idx) {
         auto packet = read_packet(0, col_idx);
@@ -211,7 +212,6 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
                                              const size_t num_packet, const size_t bit_y_offset,
                                              const size_t bit_scansum_offset) {
     const auto bit_all_offset = bit_y_offset + bit_scansum_offset;
-    const auto first_packet_bit_flag_size = bit_size<uiT> - bit_all_offset;
 
     iterate_partitions(partitions, [&](auto par_id, auto row_start, auto row_stop) {
         // skip empty rows.
@@ -229,8 +229,7 @@ void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitio
             return partition_descriptor[base_descriptor_index + row * ANONYMOUSLIB_CSR5_OMEGA + col];
         };
 
-        calculate_segn_scan_and_present(first_packet_bit_flag_size, sigma, bit_all_offset, segn_scan, present,
-                                        read_packet);
+        calculate_segn_scan_and_present(sigma, bit_all_offset, segn_scan, present, read_packet);
 
         if (has_empty_rows) {
             partition_descriptor_offset_pointer[par_id] = segn_scan[ANONYMOUSLIB_CSR5_OMEGA];
