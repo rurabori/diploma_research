@@ -161,7 +161,7 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
     // step 2. generate partition descriptor
     if (generate_partition_descriptor<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
           _csr5_sigma, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer, _csr5_partition_pointer,
-          _csr5_partition_descriptor.data(), _csr5_partition_descriptor_offset_pointer.data(), &_num_offsets)
+          _csr5_partition_descriptor.data(), _csr5_partition_descriptor_offset_pointer.data(), _num_offsets)
         != ANONYMOUSLIB_SUCCESS)
         return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
 
@@ -169,7 +169,7 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
         _csr5_partition_descriptor_offset.resize(static_cast<size_t>(_num_offsets));
         if (generate_partition_descriptor_offset<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
               _csr5_sigma, _num_partitions, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer,
-              _csr5_partition_pointer.data(), _csr5_partition_descriptor.data(),
+              _csr5_partition_pointer, _csr5_partition_descriptor.data(),
               _csr5_partition_descriptor_offset_pointer.data(), _csr5_partition_descriptor_offset.data())
             != ANONYMOUSLIB_SUCCESS)
             return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;

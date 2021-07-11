@@ -1,8 +1,16 @@
 cmake_minimum_required(VERSION 3.15)
+
+# setup options from commandline.
+include(cmake/options.cmake)
+
 project(
   small_vector
   VERSION 1.0.0
-  LANGUAGES C CXX CUDA)
+  LANGUAGES C CXX)
+
+if(${enable_cuda_backend})
+  enable_language(CUDA)
+endif()
 
 # default project settings.
 include(cmake/default_settings.cmake)

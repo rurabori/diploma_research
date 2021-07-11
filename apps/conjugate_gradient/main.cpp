@@ -117,7 +117,9 @@ struct arguments
     {
         cpu_sequential,
         cpu_avx2,
+#ifdef CUDA_ENABLED
         cuda,
+#endif
     };
 
     std::filesystem::path matrix_file{};
@@ -178,10 +180,12 @@ int main(int argc, const char* argv[]) {
             handle.destroy();
             break;
         }
+#ifdef CUDA_ENABLED
         case arguments::algorithm_t::cuda: {
             cg::spmv_algos::cuda_complete_bench(matrix, std::span{x}, std::span{Y});
             break;
         }
+#endif
     }
 
     if (arguments.debug) {

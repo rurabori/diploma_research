@@ -4,7 +4,11 @@ find_package(tclap REQUIRED)
 find_package(magic_enum REQUIRED)
 find_package(MPI REQUIRED)
 
-brr_add_executable(conjugate_gradient)
+add_executable(conjugate_gradient main.cpp matrix_storage_formats.h
+                                  spmv_algos.hpp timed_section.h)
+brr_target_init(conjugate_gradient)
+add_versioning(conjugate_gradient)
+
 target_link_libraries(
   conjugate_gradient
   PRIVATE mmio
@@ -12,8 +16,12 @@ target_link_libraries(
           OpenMP::OpenMP_CXX
           fmt::fmt
           tclap::tclap
-          csr5_cuda
           magic_enum::magic_enum
-          cui::cui
           dim::memory
           MPI::MPI_CXX)
+
+if(${enable_cuda})
+  target_sources(conjugate_gradient csr5_cuda.cu cuda_algo_facade)
+  target_compile_definitions(conjugate_gradient PRIVATE CUDA_ENABLED)
+  target_link_libraries(conjugate_gradient PRIVATE csr5_cuda)
+endif()

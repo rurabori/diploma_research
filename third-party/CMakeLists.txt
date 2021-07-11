@@ -1,2 +1,5 @@
 add_subdirectory(csr5)
-add_subdirectory(csr5_cuda)
+
+if(${enable_cuda_backend})
+  add_subdirectory(csr5_cuda)
+endif()

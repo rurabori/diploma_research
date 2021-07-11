@@ -207,10 +207,10 @@ void calculate_segn_scan_and_present(const size_t sigma, const size_t bit_all_of
 }
 
 template<typename iT, typename uiT>
-void generate_partition_descriptor_s2_kernel(const std::span<const uiT> partitions, uiT* partition_descriptor,
-                                             iT* partition_descriptor_offset_pointer, const size_t sigma,
-                                             const size_t num_packet, const size_t bit_y_offset,
-                                             const size_t bit_scansum_offset) {
+void set_partition_descriptor_y_and_segsum_offsets(const std::span<const uiT> partitions, uiT* partition_descriptor,
+                                                   iT* partition_descriptor_offset_pointer, const size_t sigma,
+                                                   const size_t num_packet, const size_t bit_y_offset,
+                                                   const size_t bit_scansum_offset) {
     const auto bit_all_offset = bit_y_offset + bit_scansum_offset;
 
     iterate_partitions(partitions, [&](auto par_id, auto row_start, auto row_stop) {
@@ -259,28 +259,29 @@ int generate_partition_descriptor(const size_t sigma, const size_t bit_y_offset,
                                   const size_t num_packet, const ANONYMOUSLIB_IT* row_pointer,
                                   const std::span<const ANONYMOUSLIB_UIT> partition_pointer,
                                   ANONYMOUSLIB_UIT* partition_descriptor,
-                                  ANONYMOUSLIB_IT* partition_descriptor_offset_pointer, ANONYMOUSLIB_IT* _num_offsets) {
+                                  ANONYMOUSLIB_IT* partition_descriptor_offset_pointer, ANONYMOUSLIB_IT& _num_offsets) {
     size_t bit_all_offset = bit_y_offset + bit_scansum_offset;
 
     set_partition_descriptor_bit_flags<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
       row_pointer, partition_pointer, partition_descriptor, sigma, bit_all_offset, num_packet);
 
-    generate_partition_descriptor_s2_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
+    set_partition_descriptor_y_and_segsum_offsets<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
       partition_pointer, partition_descriptor, partition_descriptor_offset_pointer, sigma, num_packet, bit_y_offset,
       bit_scansum_offset);
 
+    // if we have any empty rows, this will be non-0 and we have to adjust the offsets.
     if (partition_descriptor_offset_pointer[partition_pointer.size() - 1])
         std::exclusive_scan(partition_descriptor_offset_pointer,
                             partition_descriptor_offset_pointer + partition_pointer.size(),
                             partition_descriptor_offset_pointer, 0);
 
-    *_num_offsets = partition_descriptor_offset_pointer[partition_pointer.size() - 1];
+    _num_offsets = partition_descriptor_offset_pointer[partition_pointer.size() - 1];
 
     return ANONYMOUSLIB_SUCCESS;
 }
 
 template<typename iT, typename uiT>
-void generate_partition_descriptor_offset_kernel(const iT* d_row_pointer, const uiT* d_partition_pointer,
+void generate_partition_descriptor_offset_kernel(const iT* d_row_pointer, const std::span<const uiT> partitions,
                                                  const uiT* d_partition_descriptor,
                                                  const iT* d_partition_descriptor_offset_pointer,
                                                  iT* d_partition_descriptor_offset, const iT p, const size_t num_packet,
@@ -289,14 +290,9 @@ void generate_partition_descriptor_offset_kernel(const iT* d_row_pointer, const 
     const size_t bit_all_offset = bit_y_offset + bit_scansum_offset;
     const size_t bit_bitflag = 32 - bit_all_offset;
 
-#pragma omp parallel for
-    for (int par_id = 0; par_id < p - 1; par_id++) {
-        bool with_empty_rows = (d_partition_pointer[par_id] >> 31) & 0x1;
-        if (!with_empty_rows)
-            continue;
-
-        const auto row_start = d_partition_pointer[par_id] & 0x7FFFFFFF;
-        const auto row_stop = d_partition_pointer[par_id + 1] & 0x7FFFFFFF;
+    iterate_partitions(partitions, [&](auto par_id, auto row_start, auto row_stop) {
+        if (!is_dirty(partitions[par_id]))
+            return;
 
         // TODO: check if offsets could be negative (C implicit conversion makes this unsigned in operations
         // anyway).
@@ -349,13 +345,14 @@ void generate_partition_descriptor_offset_kernel(const iT* d_row_pointer, const 
                 }
             }
         }
-    }
+    });
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
 int generate_partition_descriptor_offset(const size_t sigma, const ANONYMOUSLIB_IT p, const size_t bit_y_offset,
                                          const size_t bit_scansum_offset, const size_t num_packet,
-                                         const ANONYMOUSLIB_IT* row_pointer, const ANONYMOUSLIB_UIT* partition_pointer,
+                                         const ANONYMOUSLIB_IT* row_pointer,
+                                         const std::span<const ANONYMOUSLIB_UIT> partition_pointer,
                                          ANONYMOUSLIB_UIT* partition_descriptor,
                                          ANONYMOUSLIB_IT* partition_descriptor_offset_pointer,
                                          ANONYMOUSLIB_IT* partition_descriptor_offset) {
