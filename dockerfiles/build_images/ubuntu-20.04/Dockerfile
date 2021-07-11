@@ -10,10 +10,6 @@ RUN add-apt-repository ppa:ubuntu-toolchain-r/test && \
     apt update && \
     apt install -y gcc-11 g++-11
 
-# add cuda remotes and keys.
-RUN apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub && \
-    echo "deb http://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64 /" >> /etc/apt/sources.list.d/cuda.list
-
 # add LLVM remotes and keys.
 RUN apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key && \
     echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-12 main" >> /etc/apt/sources.list.d/llvm.list
@@ -21,7 +17,7 @@ RUN apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key && \
 # update to get packages from added repos.
 RUN apt update
 
-RUN apt install -y clang-12 clang-tidy-12 libomp-12-dev ninja-build curl python3 python3-pip cuda-toolkit-11-3 mpi-default-dev
+RUN apt install -y clang-12 clang-tidy-12 libomp-12-dev ninja-build curl python3 python3-pip mpi-default-dev
 
 RUN pip3 install conan
 
