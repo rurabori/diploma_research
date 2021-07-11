@@ -315,8 +315,8 @@ int generate_partition_descriptor(const size_t sigma, const size_t bit_y_offset,
 template<typename iT, typename uiT>
 void generate_partition_descriptor_offset_kernel(std::span<const iT> rows, const std::span<const uiT> partitions,
                                                  const uiT* partition_descriptor,
-                                                 const iT* d_partition_descriptor_offset_pointer,
-                                                 iT* d_partition_descriptor_offset, const size_t num_packet,
+                                                 const iT* partition_descriptor_offset_pointer,
+                                                 iT* partition_descriptor_offset, const size_t num_packet,
                                                  const size_t bit_y_offset, const size_t bit_scansum_offset,
                                                  const size_t sigma) {
     const size_t bit_all_offset = bit_y_offset + bit_scansum_offset;
@@ -325,8 +325,7 @@ void generate_partition_descriptor_offset_kernel(std::span<const iT> rows, const
         if (!is_dirty(partitions[par_id]))
             return;
 
-        const auto offset_pointer = static_cast<size_t>(d_partition_descriptor_offset_pointer[par_id]);
-        const auto base_descriptor_index = par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet;
+        const auto offset_pointer = static_cast<size_t>(partition_descriptor_offset_pointer[par_id]);
 
 #pragma omp simd
         for (size_t col_idx = 0; col_idx < ANONYMOUSLIB_CSR5_OMEGA; col_idx++) {
@@ -337,9 +336,9 @@ void generate_partition_descriptor_offset_kernel(std::span<const iT> rows, const
 
             for (size_t i = 0; i < num_set; ++i, ++y_offset) {
                 const auto row_data = rows.subspan(row_start + 1, row_stop - row_start);
-                const iT idx = par_id * ANONYMOUSLIB_CSR5_OMEGA * sigma + col_idx * sigma;
+                const auto idx = static_cast<iT>(par_id * ANONYMOUSLIB_CSR5_OMEGA * sigma + col_idx * sigma);
 
-                d_partition_descriptor_offset[offset_pointer + y_offset]
+                partition_descriptor_offset[offset_pointer + y_offset]
                   = static_cast<iT>(upper_bound_idx(row_data, idx));
             }
         }
@@ -347,9 +346,8 @@ void generate_partition_descriptor_offset_kernel(std::span<const iT> rows, const
 }
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
-int generate_partition_descriptor_offset(const size_t sigma, const ANONYMOUSLIB_IT p, const size_t bit_y_offset,
-                                         const size_t bit_scansum_offset, const size_t num_packet,
-                                         std::span<const ANONYMOUSLIB_IT> rows,
+int generate_partition_descriptor_offset(const size_t sigma, const size_t bit_y_offset, const size_t bit_scansum_offset,
+                                         const size_t num_packet, std::span<const ANONYMOUSLIB_IT> rows,
                                          const std::span<const ANONYMOUSLIB_UIT> partition_pointer,
                                          ANONYMOUSLIB_UIT* partition_descriptor,
                                          ANONYMOUSLIB_IT* partition_descriptor_offset_pointer,
@@ -363,7 +361,7 @@ int generate_partition_descriptor_offset(const size_t sigma, const ANONYMOUSLIB_
 
 // R2C==true means CSR->CSR5, otherwise CSR5->CSR
 template<bool R2C, typename T, typename uiT>
-void aosoa_transpose_kernel_smem(T* d_data, const std::span<uiT> partitions, const size_t nnz, const size_t sigma) {
+void aosoa_transpose_kernel_smem(T* d_data, const std::span<uiT> partitions, const size_t sigma) {
     const auto transform_index = [&](size_t idx, bool r2c) {
         if (r2c)
             return std::pair{(idx / sigma), (idx % sigma)};
@@ -398,10 +396,10 @@ void aosoa_transpose_kernel_smem(T* d_data, const std::span<uiT> partitions, con
 }
 
 template<bool R2C, typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT, typename ANONYMOUSLIB_VT>
-int aosoa_transpose(const size_t sigma, const size_t nnz, const std::span<ANONYMOUSLIB_UIT> partition_pointer,
+int aosoa_transpose(const size_t sigma, const std::span<ANONYMOUSLIB_UIT> partition_pointer,
                     ANONYMOUSLIB_IT* column_index, ANONYMOUSLIB_VT* value) {
-    aosoa_transpose_kernel_smem<R2C, ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(column_index, partition_pointer, nnz, sigma);
-    aosoa_transpose_kernel_smem<R2C, ANONYMOUSLIB_VT, ANONYMOUSLIB_UIT>(value, partition_pointer, nnz, sigma);
+    aosoa_transpose_kernel_smem<R2C, ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(column_index, partition_pointer, sigma);
+    aosoa_transpose_kernel_smem<R2C, ANONYMOUSLIB_VT, ANONYMOUSLIB_UIT>(value, partition_pointer, sigma);
 
     return ANONYMOUSLIB_SUCCESS;
 }

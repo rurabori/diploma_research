@@ -98,8 +98,8 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
         return ANONYMOUSLIB_SUCCESS;
 
     // convert csr5 data to csr data
-    if (auto err = aosoa_transpose<false>(_csr5_sigma, _num_non_zero, _csr5_partition_pointer.data(), _csr_column_index,
-                                          _csr_value);
+    if (auto err
+        = aosoa_transpose<false>(_csr5_sigma, std::span{_csr5_partition_pointer}, _csr_column_index, _csr_value);
         err != ANONYMOUSLIB_SUCCESS)
         return err;
 
@@ -168,14 +168,14 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
     if (_num_offsets) {
         _csr5_partition_descriptor_offset.resize(static_cast<size_t>(_num_offsets));
         if (generate_partition_descriptor_offset<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
-              _csr5_sigma, _num_partitions, _bit_y_offset, _bit_scansum_offset, _num_packet,
-              std::span{_csr_row_pointer, _num_rows + 1}, _csr5_partition_pointer, _csr5_partition_descriptor.data(),
+              _csr5_sigma, _bit_y_offset, _bit_scansum_offset, _num_packet, std::span{_csr_row_pointer, _num_rows + 1},
+              _csr5_partition_pointer, _csr5_partition_descriptor.data(),
               _csr5_partition_descriptor_offset_pointer.data(), _csr5_partition_descriptor_offset.data())
             != ANONYMOUSLIB_SUCCESS)
             return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
     }
 
-    if (aosoa_transpose<true>(_csr5_sigma, _num_non_zero, _csr5_partition_pointer.data(), _csr_column_index, _csr_value)
+    if (aosoa_transpose<true>(_csr5_sigma, std::span{_csr5_partition_pointer}, _csr_column_index, _csr_value)
         != ANONYMOUSLIB_SUCCESS)
         return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
 
@@ -199,11 +199,13 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::spmv
     if (_format == format::csr)
         return ANONYMOUSLIB_UNSUPPORTED_CSR_SPMV;
 
+    // TODO: update code here too.
     csr5_spmv<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>(
-      _csr5_sigma, _num_partitions, _num_rows, _bit_y_offset, _bit_scansum_offset, _num_packet, _csr_row_pointer,
-      _csr_column_index, _csr_value, _csr5_partition_pointer.data(), _csr5_partition_descriptor.data(),
-      _csr5_partition_descriptor_offset_pointer.data(), _csr5_partition_descriptor_offset.data(),
-      _temp_calibrator.data(), _tail_partition_start, _x, y);
+      static_cast<int>(_csr5_sigma), static_cast<ANONYMOUSLIB_IT>(_num_partitions),
+      static_cast<ANONYMOUSLIB_IT>(_num_rows), static_cast<int>(_bit_y_offset), static_cast<int>(_bit_scansum_offset),
+      static_cast<int>(_num_packet), _csr_row_pointer, _csr_column_index, _csr_value, _csr5_partition_pointer.data(),
+      _csr5_partition_descriptor.data(), _csr5_partition_descriptor_offset_pointer.data(),
+      _csr5_partition_descriptor_offset.data(), _temp_calibrator.data(), _tail_partition_start, _x, y);
 
     return ANONYMOUSLIB_SUCCESS;
 }
