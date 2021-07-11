@@ -363,7 +363,7 @@ int generate_partition_descriptor_offset(const size_t sigma, const ANONYMOUSLIB_
 
 // R2C==true means CSR->CSR5, otherwise CSR5->CSR
 template<bool R2C, typename T, typename uiT>
-void aosoa_transpose_kernel_smem(T* d_data, const uiT* d_partition_pointer, const size_t nnz, const size_t sigma) {
+void aosoa_transpose_kernel_smem(T* d_data, const std::span<uiT> partitions, const size_t nnz, const size_t sigma) {
     const auto transform_index = [&](size_t idx, bool r2c) {
         if (r2c)
             return std::pair{(idx / sigma), (idx % sigma)};
@@ -371,20 +371,16 @@ void aosoa_transpose_kernel_smem(T* d_data, const uiT* d_partition_pointer, cons
         return std::pair{(idx % ANONYMOUSLIB_CSR5_OMEGA), (idx / ANONYMOUSLIB_CSR5_OMEGA)};
     };
 
-    const auto num_p
-      = static_cast<size_t>(std::ceil(static_cast<double>(nnz) / static_cast<double>(ANONYMOUSLIB_CSR5_OMEGA * sigma)))
-        - 1;
-    const size_t size_base = sigma * ANONYMOUSLIB_CSR5_OMEGA;
+    const size_t partition_size = sigma * ANONYMOUSLIB_CSR5_OMEGA;
+    dim::memory::cache_aligned_vector<T> s_data_all(partition_size * static_cast<size_t>(omp_get_max_threads()));
 
-    dim::memory::cache_aligned_vector<T> s_data_all(size_base * static_cast<size_t>(omp_get_max_threads()));
-
-#pragma omp parallel for
-    for (size_t par_id = 0; par_id < num_p; ++par_id) {
-        T* s_data = &s_data_all[size_base * static_cast<size_t>(omp_get_thread_num())];
+    // TODO: figure out why it doesn't like the count of partitions here.
+    iterate_partitions(partitions.subspan(0, partitions.size() - 1), [&](auto par_id, auto start, auto stop) {
+        T* s_data = &s_data_all[partition_size * static_cast<size_t>(omp_get_thread_num())];
 
         // if this is fast track partition, do not transpose it
-        if (d_partition_pointer[par_id] == d_partition_pointer[par_id + 1])
-            continue;
+        if (start == stop)
+            return;
 
 #pragma omp simd
         for (size_t idx = 0; idx < ANONYMOUSLIB_CSR5_OMEGA * sigma; idx++) {
@@ -398,11 +394,11 @@ void aosoa_transpose_kernel_smem(T* d_data, const uiT* d_partition_pointer, cons
             const auto [x, y] = transform_index(idx, !R2C);
             d_data[par_id * ANONYMOUSLIB_CSR5_OMEGA * sigma + idx] = s_data[y * ANONYMOUSLIB_CSR5_OMEGA + x];
         }
-    }
+    });
 }
 
 template<bool R2C, typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT, typename ANONYMOUSLIB_VT>
-int aosoa_transpose(const size_t sigma, const size_t nnz, const ANONYMOUSLIB_UIT* partition_pointer,
+int aosoa_transpose(const size_t sigma, const size_t nnz, const std::span<ANONYMOUSLIB_UIT> partition_pointer,
                     ANONYMOUSLIB_IT* column_index, ANONYMOUSLIB_VT* value) {
     aosoa_transpose_kernel_smem<R2C, ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(column_index, partition_pointer, nnz, sigma);
     aosoa_transpose_kernel_smem<R2C, ANONYMOUSLIB_VT, ANONYMOUSLIB_UIT>(value, partition_pointer, nnz, sigma);
