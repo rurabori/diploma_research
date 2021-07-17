@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <bits/ranges_algo.h>
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
@@ -8,7 +7,6 @@
 #include <iterator>
 #include <random>
 #include <ranges>
-#include <scn/detail/scan.h>
 #include <span>
 #include <stdexcept>
 #include <vector>
