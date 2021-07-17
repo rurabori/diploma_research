@@ -3,6 +3,7 @@ find_package(fmt REQUIRED)
 find_package(tclap REQUIRED)
 find_package(magic_enum REQUIRED)
 find_package(MPI REQUIRED)
+find_package(scn REQUIRED)
 
 add_executable(conjugate_gradient main.cpp matrix_storage_formats.h
                                   spmv_algos.hpp timed_section.h)
@@ -18,7 +19,8 @@ target_link_libraries(
           tclap::tclap
           magic_enum::magic_enum
           dim::memory
-          MPI::MPI_CXX)
+          MPI::MPI_CXX
+          scn::scn)
 
 if(${enable_cuda})
   target_sources(conjugate_gradient csr5_cuda.cu cuda_algo_facade)

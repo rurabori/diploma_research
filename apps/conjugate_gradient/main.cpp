@@ -1,17 +1,24 @@
 #include <algorithm>
+#include <bits/ranges_algo.h>
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
+#include <iterator>
 #include <random>
 #include <ranges>
+#include <scn/detail/scan.h>
 #include <span>
 #include <stdexcept>
 #include <vector>
 
 #include <mm_malloc.h>
 #include <mmio/mmio.h>
+
+// TODO: make more standard/portable.
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 #include <fmt/chrono.h>
 #include <fmt/format.h>
@@ -24,6 +31,9 @@
 #include <tclap/ValueArg.h>
 
 #include <magic_enum.hpp>
+
+#include <scn/scn.h>
+#include <stx/panic.h>
 
 #include "matrix_storage_formats.h"
 #include "spmv_algos.hpp"
@@ -73,15 +83,68 @@ auto read_matrix_size(FILE* file) {
                      static_cast<size_t>(non_zero)};
 }
 
+class mmapped
+{
+    void* _memory{};
+    size_t _size{};
+
+public:
+    mmapped(int fd, size_t size, int prototype = PROT_READ, int flags = MAP_SHARED | MAP_FILE | MAP_POPULATE,
+            std::ptrdiff_t offset = 0)
+      : _memory{::mmap(nullptr, size, prototype, flags, fd, offset)}, _size{size} {
+        if (!_memory)
+            stx::panic(fmt::format("mmap failed with {}", errno));
+    }
+
+    static mmapped from_file(FILE* file) {
+        int fd = fileno(file);
+        struct stat stat = {};
+        ::fstat(fd, &stat);
+
+        return mmapped{fd, static_cast<size_t>(stat.st_size)};
+    }
+
+    mmapped(const mmapped&) = delete;
+    mmapped(mmapped&& o) noexcept : _memory{std::exchange(o._memory, nullptr)}, _size{std::exchange(o._size, 0)} {}
+    mmapped& operator=(const mmapped&) = delete;
+    mmapped& operator=(mmapped&& o) noexcept {
+        if (this == &o)
+            return *this;
+
+        std::swap(_memory, o._memory);
+        std::swap(_size, o._size);
+        return *this;
+    }
+
+    ~mmapped() { release(); }
+
+    void release() {
+        if (_memory)
+            ::munmap(std::exchange(_memory, nullptr), std::exchange(_size, 0));
+    }
+
+    template<typename As>
+    auto as() -> std::span<As> {
+        return std::span{reinterpret_cast<As*>(_memory), _size / sizeof(As)};
+    }
+};
+
 template<typename ValueType>
 auto read_coo(FILE* file, cg::dimensions_t dimensions, size_t non_zero, bool symmetric) {
     auto retval = cg::matrix_storage_formats::coo<ValueType>{dimensions, non_zero, symmetric};
 
-    for (size_t i = 0; i < non_zero; ++i) {
-        std::fscanf(file, "%d %d %lg", &retval.row_indices[i], &retval.col_indices[i], &retval.values[i]);
-        // convert to 0 based.
-        --retval.row_indices[i];
-        --retval.col_indices[i];
+    auto map = mmapped::from_file(file);
+    // skip the already read part.
+    auto span = map.as<char>().subspan(static_cast<size_t>(::ftell(file)));
+
+    size_t idx = 0;
+    for (auto remaining = std::string_view{span.data(), span.size()}; !remaining.empty(); ++idx) {
+        const auto result
+          = scn::scan(remaining, "{} {} {} ", retval.row_indices[idx], retval.col_indices[idx], retval.values[idx]);
+        if (!result)
+            stx::panic("scan failed");
+
+        remaining = result.string_view();
     }
 
     return retval;
