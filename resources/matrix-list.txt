@@ -1,0 +1,3 @@
+https://suitesparse-collection-website.herokuapp.com/MM/VLSI/nv2.tar.gz
+https://suitesparse-collection-website.herokuapp.com/MM/Schenk_ISEI/barrier2-10.tar.gz
+ftp://math.nist.gov/pub/MatrixMarket2/SPARSKIT/drivcav/e40r5000.mtx.gz
