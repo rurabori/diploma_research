@@ -17,7 +17,8 @@ Checks:          '*,-google-runtime-references,
                     -llvm-include-order,
                     -readability-static-accessed-through-instance,
                     -google-readability-todo,
-                    -altera-struct-pack-*'
+                    -altera-struct-pack-*,
+                    -portability-simd-intrinsics'
 HeaderFilterRegex: '^((?!third-party).)*$'
 AnalyzeTemporaryDtors: false
 FormatStyle:     file
