@@ -1,5 +1,5 @@
-#ifndef UTILS_AVX2_H
-#define UTILS_AVX2_H
+#ifndef THIRD_PARTY_CSR5_INCLUDE_DETAIL_AVX2_UTILS_AVX2
+#define THIRD_PARTY_CSR5_INCLUDE_DETAIL_AVX2_UTILS_AVX2
 
 #include "common_avx2.h"
 
@@ -25,11 +25,22 @@ size_t binary_search_right_boundary_kernel(const iT* row_pointer, const iT key_i
     return start;
 }
 
+// TODO: this relies on permutation argument being imm8, research if that is correct.
+template<std::integral... Ty>
+consteval int make_permute_seq(Ty... seq) {
+    int value{};
+    for (size_t off = 0; auto pos : std::array{seq...})
+        value |= pos << (off++ * 8 / sizeof...(seq));
+
+    return value;
+}
+
 // sum up 4 double-precision numbers
 inline double hsum_avx(__m256d in256d) {
-    double sum;
+    __m256d hsum = _mm256_add_pd(in256d, _mm256_permute2f128_pd(in256d, in256d, make_permute_seq(1, 0)));
 
-    __m256d hsum = _mm256_add_pd(in256d, _mm256_permute2f128_pd(in256d, in256d, 0x1));
+    // NOLINTNEXTLINE - initialization would be dead write.
+    double sum;
     _mm_store_sd(&sum, _mm_hadd_pd(_mm256_castpd256_pd128(hsum), _mm256_castpd256_pd128(hsum)));
 
     return sum;
@@ -37,59 +48,49 @@ inline double hsum_avx(__m256d in256d) {
 
 // sum up 8 single-precision numbers
 inline float hsum_avx(__m256 in256) {
-    float sum;
-
     __m256 hsum = _mm256_hadd_ps(in256, in256);
-    hsum = _mm256_add_ps(hsum, _mm256_permute2f128_ps(hsum, hsum, 0x1));
+    hsum = _mm256_add_ps(hsum, _mm256_permute2f128_ps(hsum, hsum, make_permute_seq(1, 0)));
+
+    // NOLINTNEXTLINE - initialization would be dead write.
+    float sum;
     _mm_store_ss(&sum, _mm_hadd_ps(_mm256_castps256_ps128(hsum), _mm256_castps256_ps128(hsum)));
 
     return sum;
 }
 
-// exclusive scan using a single thread
-template<typename T>
-void scan_single(T* s_scan, const int l) {
-    T old_val, new_val;
-
-    old_val = s_scan[0];
-    s_scan[0] = 0;
-    for (int i = 1; i < l; i++) {
-        new_val = s_scan[i];
-        s_scan[i] = old_val + s_scan[i - 1];
-        old_val = new_val;
-    }
-}
-
 // inclusive prefix-sum scan
 inline __m256d hscan_avx(__m256d in256d) {
-    __m256d t0, t1;
-    t0 = _mm256_permute4x64_pd(in256d, 0x93);
-    t1 = _mm256_add_pd(in256d, _mm256_blend_pd(t0, _mm256_set1_pd(0), 0x1));
+    auto t0 = _mm256_permute4x64_pd(in256d, make_permute_seq(3, 0, 1, 2));
+    auto t1 = _mm256_add_pd(in256d, _mm256_blend_pd(t0, _mm256_set1_pd(0), 0b0001));
 
-    t0 = _mm256_permute4x64_pd(in256d, 0x4E);
-    t1 = _mm256_add_pd(t1, _mm256_blend_pd(t0, _mm256_set1_pd(0), 0x3));
+    t0 = _mm256_permute4x64_pd(in256d, make_permute_seq(2, 3, 0, 1));
+    t1 = _mm256_add_pd(t1, _mm256_blend_pd(t0, _mm256_set1_pd(0), 0b0011));
 
-    t0 = _mm256_permute4x64_pd(in256d, 0x39);
-    t1 = _mm256_add_pd(t1, _mm256_blend_pd(t0, _mm256_set1_pd(0), 0x7));
+    t0 = _mm256_permute4x64_pd(in256d, make_permute_seq(1, 2, 3, 0));
+    t1 = _mm256_add_pd(t1, _mm256_blend_pd(t0, _mm256_set1_pd(0), 0b0111));
 
     return t1;
 }
 
 // inclusive prefix-sum scan
 inline __m256 hscan_avx(__m256 in256) {
-    __m256 t0, t1;
+    constexpr auto zero = 0b1000;
+
     // shift1_AVX + add
-    t0 = _mm256_permute_ps(in256, _MM_SHUFFLE(2, 1, 0, 3));
-    t1 = _mm256_permute2f128_ps(t0, t0, 41);
-    in256 = _mm256_add_ps(in256, _mm256_blend_ps(t0, t1, 0x11));
+    auto t0 = _mm256_permute_ps(in256, make_permute_seq(3, 0, 1, 2));
+    auto t1 = _mm256_permute2f128_ps(t0, t0, make_permute_seq(zero, 0));
+    in256 = _mm256_add_ps(in256, _mm256_blend_ps(t0, t1, 0b00010001));
+
     // shift2_AVX + add
-    t0 = _mm256_permute_ps(in256, _MM_SHUFFLE(1, 0, 3, 2));
-    t1 = _mm256_permute2f128_ps(t0, t0, 41);
-    in256 = _mm256_add_ps(in256, _mm256_blend_ps(t0, t1, 0x33));
+    t0 = _mm256_permute_ps(in256, make_permute_seq(2, 3, 0, 1));
+    t1 = _mm256_permute2f128_ps(t0, t0, make_permute_seq(zero, 0));
+    in256 = _mm256_add_ps(in256, _mm256_blend_ps(t0, t1, 0b00110011));
+
     // shift3_AVX + add
-    in256 = _mm256_add_ps(in256, _mm256_permute2f128_ps(in256, in256, 41));
+    in256 = _mm256_add_ps(in256, _mm256_permute2f128_ps(in256, in256, make_permute_seq(zero, 0)));
+
     return in256;
 }
 
 } // namespace csr5::avx2
-#endif // UTILS_AVX2_H
+#endif /* THIRD_PARTY_CSR5_INCLUDE_DETAIL_AVX2_UTILS_AVX2 */
