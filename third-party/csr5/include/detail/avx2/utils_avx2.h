@@ -6,26 +6,6 @@
 
 namespace csr5::avx2 {
 
-template<typename iT>
-size_t binary_search_right_boundary_kernel(const iT* row_pointer, const iT key_input, const size_t size) {
-    size_t start = 0;
-    size_t stop = size - 1;
-    iT key_median;
-
-    while (stop >= start) {
-        auto median = (stop + start) / 2;
-
-        key_median = row_pointer[median];
-
-        if (key_input >= key_median)
-            start = median + 1;
-        else
-            stop = median - 1;
-    }
-
-    return start;
-}
-
 // TODO: this relies on permutation argument being imm8, research if that is correct.
 template<std::integral... Ty>
 consteval int make_permute_seq(Ty... seq) {
