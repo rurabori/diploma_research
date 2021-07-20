@@ -2,6 +2,7 @@
 #define THIRD_PARTY_CSR5_INCLUDE_DETAIL_AVX2_UTILS_AVX2
 
 #include "common_avx2.h"
+#include <array>
 
 namespace csr5::avx2 {
 
