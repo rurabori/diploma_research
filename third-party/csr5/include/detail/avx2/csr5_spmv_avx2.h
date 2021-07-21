@@ -2,42 +2,42 @@
 #define THIRD_PARTY_CSR5_INCLUDE_DETAIL_AVX2_CSR5_SPMV_AVX2
 
 #include "common_avx2.h"
+#include "detail/avx2/format_avx2.h"
 #include "utils_avx2.h"
 
 #include <bit>
 
 namespace csr5::avx2 {
 
+template<typename vT, typename iT>
+auto load_x(const vT* x, iT* column_index_partition, size_t offset) {
+    return _mm256_set_pd(x[column_index_partition[offset + 3]], x[column_index_partition[offset + 2]],
+                         x[column_index_partition[offset + 1]], x[column_index_partition[offset]]);
+}
+
 template<typename iT, typename vT>
-inline void partition_fast_track(const vT* d_value_partition, const vT* d_x, const iT* d_column_index_partition,
-                                 vT* d_calibrator, vT* d_y, const iT row_start, const int tid, const iT start_row_start,
+inline void partition_fast_track(const vT* value_partition, const vT* x, const iT* column_index_partition,
+                                 vT* calibrator, vT* y, const iT row_start, const int tid, const iT start_row_start,
                                  const int stride_vT, const bool direct) {
-    __m256d sum256d = _mm256_setzero_pd();
-    __m256d value256d, x256d;
-    vT x256d0, x256d1, x256d2, x256d3;
+    auto sum256d = _mm256_setzero_pd();
 
-#pragma unroll(ANONYMOUSLIB_CSR5_SIGMA)
-    for (int i = 0; i < ANONYMOUSLIB_CSR5_SIGMA; i++) {
-        value256d = _mm256_load_pd(&d_value_partition[i * ANONYMOUSLIB_CSR5_OMEGA]);
+#pragma unroll
+    for (size_t i = 0; i < ANONYMOUSLIB_CSR5_SIGMA; i++) {
+        const auto base_offset = i * ANONYMOUSLIB_CSR5_OMEGA;
 
-        x256d0 = d_x[d_column_index_partition[i * ANONYMOUSLIB_CSR5_OMEGA]];
-        x256d1 = d_x[d_column_index_partition[i * ANONYMOUSLIB_CSR5_OMEGA + 1]];
-        x256d2 = d_x[d_column_index_partition[i * ANONYMOUSLIB_CSR5_OMEGA + 2]];
-        x256d3 = d_x[d_column_index_partition[i * ANONYMOUSLIB_CSR5_OMEGA + 3]];
-        x256d = _mm256_set_pd(x256d3, x256d2, x256d1, x256d0);
-
-        sum256d = _mm256_fmadd_pd(value256d, x256d, sum256d);
+        sum256d = _mm256_fmadd_pd(_mm256_load_pd(&value_partition[base_offset]),
+                                  load_x(x, column_index_partition, base_offset), sum256d);
     }
 
     vT sum = hsum_avx(sum256d);
 
     if (row_start == start_row_start && !direct)
-        d_calibrator[tid * stride_vT] += sum;
+        calibrator[tid * stride_vT] += sum;
     else {
         if (direct)
-            d_y[row_start] = sum;
+            y[row_start] = sum;
         else
-            d_y[row_start] += sum;
+            y[row_start] += sum;
     }
 }
 
@@ -54,20 +54,14 @@ void spmv_csr5_compute_kernel(const iT* d_column_index, const vT* d_value, const
 
 #pragma omp parallel
     {
-        int tid = omp_get_thread_num();
-        iT start_row_start = tid < num_thread_active ? d_partition_pointer[tid * chunk] & 0x7FFFFFFF : 0;
+        const auto tid = omp_get_thread_num();
+        iT start_row_start = tid < num_thread_active ? strip_dirty(d_partition_pointer[tid * chunk]) : 0;
 
         // these need to be aligned to 32 as the intrinsics require it.
         alignas(32) vT s_sum[8];        // allocate a cache line
         alignas(32) vT s_first_sum[8];  // allocate a cache line
         alignas(32) uint64_t s_cond[8]; // allocate a cache line
         alignas(32) int s_y_idx[16];    // allocate a cache line
-
-        int inc0, inc1, inc2, inc3;
-        vT x256d0, x256d1, x256d2, x256d3;
-
-        __m128i* d_column_index_partition128i;
-        __m128i* d_partition_descriptor128i;
 
         __m256d sum256d = _mm256_setzero_pd();
         __m256d tmp_sum256d = _mm256_setzero_pd();
@@ -87,8 +81,11 @@ void spmv_csr5_compute_kernel(const iT* d_column_index, const vT* d_value, const
 
 #pragma omp for schedule(static, chunk)
         for (int par_id = 0; par_id < p - 1; par_id++) {
-            const iT* d_column_index_partition = &d_column_index[par_id * ANONYMOUSLIB_CSR5_OMEGA * c_sigma];
-            const vT* d_value_partition = &d_value[par_id * ANONYMOUSLIB_CSR5_OMEGA * c_sigma];
+            const auto partition_offset_base = par_id * ANONYMOUSLIB_CSR5_OMEGA;
+            const auto partition_descriptor_offset = partition_offset_base * num_packet;
+
+            const iT* d_column_index_partition = &d_column_index[partition_offset_base * c_sigma];
+            const vT* d_value_partition = &d_value[partition_offset_base * c_sigma];
 
             // TODO: check if the signedness used is needed.
             auto row_start = static_cast<iT>(d_partition_pointer[par_id]);
@@ -98,9 +95,8 @@ void spmv_csr5_compute_kernel(const iT* d_column_index, const vT* d_value, const
             {
                 // check whether the the partition contains the first element of row "row_start"
                 // => we are the first writing data to d_y[row_start]
-                bool fast_direct = (d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet]
-                                      >> (31 - (bit_y_offset + bit_scansum_offset))
-                                    & 0x1);
+                bool fast_direct
+                  = has_bit_set(d_partition_descriptor[partition_descriptor_offset], bit_y_offset + bit_scansum_offset);
                 partition_fast_track<iT, vT>(d_value_partition, d_x, d_column_index_partition, d_calibrator, d_y,
                                              row_start, tid, start_row_start, stride_vT, fast_direct);
             } else // normal track for all the other partitions
@@ -112,10 +108,8 @@ void spmv_csr5_compute_kernel(const iT* d_column_index, const vT* d_value, const
                 const int offset_pointer = empty_rows ? d_partition_descriptor_offset_pointer[par_id] : 0;
 
                 // TODO: do we really need to cast away const here?
-                d_column_index_partition128i
-                  = const_cast<__m128i*>(reinterpret_cast<const __m128i*>(d_column_index_partition));
-                d_partition_descriptor128i = const_cast<__m128i*>(reinterpret_cast<const __m128i*>(
-                  &d_partition_descriptor[par_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet]));
+                auto d_partition_descriptor128i = const_cast<__m128i*>(
+                  reinterpret_cast<const __m128i*>(&d_partition_descriptor[partition_descriptor_offset]));
 
                 first_sum256d = _mm256_setzero_pd();
                 stop256i = _mm256_setzero_si256();
@@ -149,11 +143,7 @@ void spmv_csr5_compute_kernel(const iT* d_column_index, const vT* d_value, const
 
                 value256d = _mm256_load_pd(d_value_partition);
 
-                x256d0 = d_x[d_column_index_partition[0]];
-                x256d1 = d_x[d_column_index_partition[1]];
-                x256d2 = d_x[d_column_index_partition[2]];
-                x256d3 = d_x[d_column_index_partition[3]];
-                x256d = _mm256_set_pd(x256d3, x256d2, x256d1, x256d0);
+                x256d = load_x(d_x, d_column_index_partition, 0);
 
                 sum256d = _mm256_mul_pd(value256d, x256d);
 
@@ -163,11 +153,7 @@ void spmv_csr5_compute_kernel(const iT* d_column_index, const vT* d_value, const
 #endif
 
                 for (int i = 1; i < ANONYMOUSLIB_CSR5_SIGMA; i++) {
-                    x256d0 = d_x[d_column_index_partition[i * ANONYMOUSLIB_CSR5_OMEGA]];
-                    x256d1 = d_x[d_column_index_partition[i * ANONYMOUSLIB_CSR5_OMEGA + 1]];
-                    x256d2 = d_x[d_column_index_partition[i * ANONYMOUSLIB_CSR5_OMEGA + 2]];
-                    x256d3 = d_x[d_column_index_partition[i * ANONYMOUSLIB_CSR5_OMEGA + 3]];
-                    x256d = _mm256_set_pd(x256d3, x256d2, x256d1, x256d0);
+                    x256d = load_x(d_x, d_column_index_partition, i * ANONYMOUSLIB_CSR5_OMEGA);
 
 #if ANONYMOUSLIB_CSR5_SIGMA > 23
                     int norm_i = i - (32 - bit_y_offset - bit_scansum_offset);
@@ -199,7 +185,10 @@ void spmv_csr5_compute_kernel(const iT* d_column_index, const vT* d_value, const
                         _mm256_store_pd(s_sum, sum256d);
                         _mm256_store_si256(reinterpret_cast<__m256i*>(std::data(s_cond)),
                                            _mm256_and_si256(direct256i, local_bit256i));
-                        inc0 = 0, inc1 = 0, inc2 = 0, inc3 = 0;
+                        int inc0 = 0;
+                        int inc1 = 0;
+                        int inc2 = 0;
+                        int inc3 = 0;
                         if (s_cond[0]) {
                             d_y_local[s_y_idx[0]] = s_sum[0];
                             inc0 = 1;
