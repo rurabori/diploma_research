@@ -66,11 +66,6 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
         __m256d sum256d = _mm256_setzero_pd();
         __m128i y_idx128i;
         __m256i stop256i = _mm256_setzero_si256();
-
-        __m256i local_bit256i;
-        __m256i direct256i;
-
-        __m128i descriptor128i;
         __m256i tmp256i;
 
 #pragma omp for schedule(static, chunk)
@@ -78,8 +73,8 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
             const auto partition_offset_base = par_id * ANONYMOUSLIB_CSR5_OMEGA;
             const auto partition_descriptor_base = partition_offset_base * num_packet;
 
-            const iT* d_column_index_partition = &column_index[partition_offset_base * c_sigma];
-            const vT* d_value_partition = &value[partition_offset_base * c_sigma];
+            const iT* column_index_partition = &column_index[partition_offset_base * c_sigma];
+            const vT* value_partition = &value[partition_offset_base * c_sigma];
 
             // TODO: check if the signedness used is needed.
             auto row_start = static_cast<iT>(partition_pointer[par_id]);
@@ -91,25 +86,25 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                 // => we are the first writing data to d_y[row_start]
                 bool fast_direct
                   = has_bit_set(partition_descriptor[partition_descriptor_base], bit_y_offset + bit_scansum_offset);
-                partition_fast_track<iT, vT>(d_value_partition, x, d_column_index_partition, calibrator, y, row_start,
-                                             tid, start_row_start, stride_vT, fast_direct);
+                partition_fast_track<iT, vT>(value_partition, x, column_index_partition, calibrator, y, row_start, tid,
+                                             start_row_start, stride_vT, fast_direct);
 
             } else {
                 // normal track for all the other partitions
-                const bool empty_rows = (row_start >> 31) & 0x1;
-                row_start &= 0x7FFFFFFF;
+                const bool empty_rows = is_dirty(row_start);
+                row_start = strip_dirty(row_start);
 
-                vT* d_y_local = &y[row_start + 1];
+                vT* y_local = &y[row_start + 1];
                 const int offset_pointer = empty_rows ? partition_descriptor_offset_pointer[par_id] : 0;
 
                 // TODO: do we really need to cast away const here?
-                auto* partition_descriptor128i = const_cast<__m128i*>(
-                  reinterpret_cast<const __m128i*>(&partition_descriptor[partition_descriptor_base]));
+                const auto* partition_descriptor128i
+                  = reinterpret_cast<const __m128i*>(&partition_descriptor[partition_descriptor_base]);
 
                 auto first_sum256d = _mm256_setzero_pd();
                 stop256i = _mm256_setzero_si256();
 
-                descriptor128i = _mm_load_si128(partition_descriptor128i);
+                auto descriptor128i = _mm_load_si128(partition_descriptor128i);
 
                 auto y_offset128i = _mm_srli_epi32(descriptor128i, 32 - bit_y_offset);
                 auto scansum_offset128i = _mm_slli_epi32(descriptor128i, bit_y_offset);
@@ -118,7 +113,7 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                 descriptor128i = _mm_slli_epi32(descriptor128i, bit_y_offset + bit_scansum_offset);
 
                 // remember if the first element of this partition is the first element of a new row
-                local_bit256i = _mm256_cvtepu32_epi64(_mm_srli_epi32(descriptor128i, 31));
+                auto local_bit256i = _mm256_cvtepu32_epi64(_mm_srli_epi32(descriptor128i, 31));
                 bool first_direct = false;
                 _mm256_store_si256(reinterpret_cast<__m256i*>(std::data(s_cond)), local_bit256i);
                 if (s_cond[0])
@@ -134,10 +129,10 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
 
                 local_bit256i = _mm256_cvtepu32_epi64(_mm_srli_epi32(descriptor128i, 31));
                 auto start256i = _mm256_sub_epi64(_mm256_set1_epi64x(0x1), local_bit256i);
-                direct256i = _mm256_and_si256(local_bit256i, _mm256_set_epi64x(0x1, 0x1, 0x1, 0));
+                auto direct256i = _mm256_and_si256(local_bit256i, _mm256_set_epi64x(0x1, 0x1, 0x1, 0));
 
-                auto value256d = _mm256_load_pd(d_value_partition);
-                auto x256d = load_x(x, d_column_index_partition, 0);
+                auto value256d = _mm256_load_pd(value_partition);
+                auto x256d = load_x(x, column_index_partition, 0);
 
                 sum256d = _mm256_mul_pd(value256d, x256d);
 
@@ -147,7 +142,7 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
 #endif
 
                 for (int i = 1; i < ANONYMOUSLIB_CSR5_SIGMA; i++) {
-                    x256d = load_x(x, d_column_index_partition, i * ANONYMOUSLIB_CSR5_OMEGA);
+                    x256d = load_x(x, column_index_partition, i * ANONYMOUSLIB_CSR5_OMEGA);
 
 #if ANONYMOUSLIB_CSR5_SIGMA > 23
                     int norm_i = i - (32 - bit_y_offset - bit_scansum_offset);
@@ -184,19 +179,19 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                         int inc2 = 0;
                         int inc3 = 0;
                         if (s_cond[0]) {
-                            d_y_local[s_y_idx[0]] = s_sum[0];
+                            y_local[s_y_idx[0]] = s_sum[0];
                             inc0 = 1;
                         }
                         if (s_cond[1]) {
-                            d_y_local[s_y_idx[1]] = s_sum[1];
+                            y_local[s_y_idx[1]] = s_sum[1];
                             inc1 = 1;
                         }
                         if (s_cond[2]) {
-                            d_y_local[s_y_idx[2]] = s_sum[2];
+                            y_local[s_y_idx[2]] = s_sum[2];
                             inc2 = 1;
                         }
                         if (s_cond[3]) {
-                            d_y_local[s_y_idx[3]] = s_sum[3];
+                            y_local[s_y_idx[3]] = s_sum[3];
                             inc3 = 1;
                         }
 
@@ -218,7 +213,7 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                         stop256i = _mm256_add_epi64(stop256i, local_bit256i);
                     }
 
-                    value256d = _mm256_load_pd(&d_value_partition[i * ANONYMOUSLIB_CSR5_OMEGA]);
+                    value256d = _mm256_load_pd(&value_partition[i * ANONYMOUSLIB_CSR5_OMEGA]);
                     sum256d = _mm256_fmadd_pd(value256d, x256d, sum256d);
                 }
 
@@ -268,15 +263,15 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                 _mm256_store_pd(s_sum, last_sum256d);
 
                 if (s_cond[0]) {
-                    d_y_local[s_y_idx[0]] = s_sum[0];
+                    y_local[s_y_idx[0]] = s_sum[0];
                     _mm256_store_pd(s_first_sum, first_sum256d);
                 }
                 if (s_cond[1])
-                    d_y_local[s_y_idx[1]] = s_sum[1];
+                    y_local[s_y_idx[1]] = s_sum[1];
                 if (s_cond[2])
-                    d_y_local[s_y_idx[2]] = s_sum[2];
+                    y_local[s_y_idx[2]] = s_sum[2];
                 if (s_cond[3])
-                    d_y_local[s_y_idx[3]] = s_sum[3];
+                    y_local[s_y_idx[3]] = s_sum[3];
 
                 // only use calibrator if this partition does not contain the first element of the row "row_start"
                 if (row_start == start_row_start && !first_all_direct)
