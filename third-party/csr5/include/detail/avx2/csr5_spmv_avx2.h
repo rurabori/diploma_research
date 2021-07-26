@@ -6,6 +6,7 @@
 #include "utils_avx2.h"
 
 #include <bit>
+#include <immintrin.h>
 
 namespace csr5::avx2 {
 
@@ -41,6 +42,22 @@ inline void partition_fast_track(const vT* value_partition, const vT* x, const i
     }
 }
 
+template<typename iT>
+auto load_partition_info(iT* partition_descriptor, int bit_y_offset, int bit_scansum_offset) {
+    const auto* partition_descriptor128i = reinterpret_cast<const __m128i*>(partition_descriptor);
+    auto descriptor128i = _mm_load_si128(partition_descriptor128i);
+
+    auto y_offset128i = _mm_srli_epi32(descriptor128i, 32 - bit_y_offset);
+    auto scansum_offset128i = _mm_srli_epi32(_mm_slli_epi32(descriptor128i, bit_y_offset), 32 - bit_scansum_offset);
+    descriptor128i = _mm_slli_epi32(descriptor128i, bit_y_offset + bit_scansum_offset);
+
+    return std::tuple{descriptor128i, y_offset128i, scansum_offset128i};
+}
+
+inline __m256i get_local_bit(__m128i descriptor, int offset = 0) {
+    return _mm256_and_si256(_mm256_cvtepu32_epi64(_mm_srli_epi32(descriptor, 31 - offset)), _mm256_set1_epi64x(0x1));
+}
+
 template<typename iT, typename uiT, typename vT>
 void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT* x, const uiT* partition_pointer,
                               const uiT* partition_descriptor, const iT* partition_descriptor_offset_pointer,
@@ -63,9 +80,7 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
         alignas(32) uint64_t s_cond[8]; // allocate a cache line
         alignas(32) int s_y_idx[16];    // allocate a cache line
 
-        __m256d sum256d = _mm256_setzero_pd();
         __m128i y_idx128i;
-        __m256i stop256i = _mm256_setzero_si256();
         __m256i tmp256i;
 
 #pragma omp for schedule(static, chunk)
@@ -97,52 +112,35 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                 vT* y_local = &y[row_start + 1];
                 const int offset_pointer = empty_rows ? partition_descriptor_offset_pointer[par_id] : 0;
 
-                const auto* partition_descriptor128i
-                  = reinterpret_cast<const __m128i*>(&partition_descriptor[partition_descriptor_base]);
-
-                auto first_sum256d = _mm256_setzero_pd();
-                stop256i = _mm256_setzero_si256();
-
-                auto descriptor128i = _mm_load_si128(partition_descriptor128i);
-
-                auto y_offset128i = _mm_srli_epi32(descriptor128i, 32 - bit_y_offset);
-                auto scansum_offset128i = _mm_slli_epi32(descriptor128i, bit_y_offset);
-                scansum_offset128i = _mm_srli_epi32(scansum_offset128i, 32 - bit_scansum_offset);
-
-                descriptor128i = _mm_slli_epi32(descriptor128i, bit_y_offset + bit_scansum_offset);
+                auto [descriptor128i, y_offset128i, scansum_offset128i] = load_partition_info(
+                  &partition_descriptor[partition_descriptor_base], bit_y_offset, bit_scansum_offset);
 
                 // remember if the first element of this partition is the first element of a new row
-                auto local_bit256i = _mm256_cvtepu32_epi64(_mm_srli_epi32(descriptor128i, 31));
-                bool first_direct = false;
+                auto local_bit256i = get_local_bit(descriptor128i, 0);
                 _mm256_store_si256(reinterpret_cast<__m256i*>(std::data(s_cond)), local_bit256i);
-                if (s_cond[0])
-                    first_direct = true;
+                const bool first_direct = s_cond[0] != 0;
 
                 // remember if the first element of the first partition of the current thread is the first element of a
                 // new row
-                bool first_all_direct = false;
-                if (par_id == tid * chunk)
-                    first_all_direct = first_direct;
+                bool first_all_direct = par_id == tid * chunk && first_direct;
 
                 descriptor128i = _mm_or_si128(descriptor128i, _mm_set_epi32(0, 0, 0, std::bit_cast<int>(0x80000000)));
+                local_bit256i = get_local_bit(descriptor128i, 0);
 
-                local_bit256i = _mm256_cvtepu32_epi64(_mm_srli_epi32(descriptor128i, 31));
                 auto start256i = _mm256_sub_epi64(_mm256_set1_epi64x(0x1), local_bit256i);
+                auto stop256i = _mm256_setzero_si256();
                 auto direct256i = _mm256_and_si256(local_bit256i, _mm256_set_epi64x(0x1, 0x1, 0x1, 0));
 
                 auto value256d = _mm256_load_pd(value_partition);
                 auto x256d = load_x(x, column_index_partition, 0);
-
-                sum256d = _mm256_mul_pd(value256d, x256d);
+                auto sum256d = _mm256_mul_pd(value256d, x256d);
 
                 // step 1. thread-level seg sum
 #if ANONYMOUSLIB_CSR5_SIGMA > 23
                 int ly = 0;
 #endif
-
+                auto first_sum256d = _mm256_setzero_pd();
                 for (int i = 1; i < ANONYMOUSLIB_CSR5_SIGMA; i++) {
-                    x256d = load_x(x, column_index_partition, i * ANONYMOUSLIB_CSR5_OMEGA);
-
 #if ANONYMOUSLIB_CSR5_SIGMA > 23
                     int norm_i = i - (32 - bit_y_offset - bit_scansum_offset);
 
@@ -156,12 +154,11 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                     local_bit256i = _mm256_and_si256(_mm256_cvtepu32_epi64(_mm_srli_epi32(descriptor128i, norm_i)),
                                                      _mm256_set1_epi64x(0x1));
 #else
-                    local_bit256i = _mm256_and_si256(_mm256_cvtepu32_epi64(_mm_srli_epi32(descriptor128i, 31 - i)),
-                                                     _mm256_set1_epi64x(0x1));
+                    local_bit256i = get_local_bit(descriptor128i, i);
 #endif
 
-                    int store_to_offchip = _mm256_testz_si256(
-                      local_bit256i, _mm256_set1_epi64x(std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF)));
+                    constexpr auto all_set_mask = std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF);
+                    int store_to_offchip = _mm256_testz_si256(local_bit256i, _mm256_set1_epi64x(all_set_mask));
 
                     if (!store_to_offchip) {
                         y_idx128i = empty_rows ? _mm_i32gather_epi32(&partition_descriptor_offset[offset_pointer],
@@ -212,6 +209,7 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                         stop256i = _mm256_add_epi64(stop256i, local_bit256i);
                     }
 
+                    x256d = load_x(x, column_index_partition, i * ANONYMOUSLIB_CSR5_OMEGA);
                     value256d = _mm256_load_pd(&value_partition[i * ANONYMOUSLIB_CSR5_OMEGA]);
                     sum256d = _mm256_fmadd_pd(value256d, x256d, sum256d);
                 }
