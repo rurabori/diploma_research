@@ -97,7 +97,6 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                 vT* y_local = &y[row_start + 1];
                 const int offset_pointer = empty_rows ? partition_descriptor_offset_pointer[par_id] : 0;
 
-                // TODO: do we really need to cast away const here?
                 const auto* partition_descriptor128i
                   = reinterpret_cast<const __m128i*>(&partition_descriptor[partition_descriptor_base]);
 
