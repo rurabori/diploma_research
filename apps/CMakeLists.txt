@@ -1,1 +1,2 @@
 add_subdirectory(conjugate_gradient)
+add_subdirectory(cpuid_research)
