@@ -80,9 +80,6 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
         alignas(32) uint64_t s_cond[8]; // allocate a cache line
         alignas(32) int s_y_idx[16];    // allocate a cache line
 
-        __m128i y_idx128i;
-        __m256i tmp256i;
-
 #pragma omp for schedule(static, chunk)
         for (int par_id = 0; par_id < p - 1; par_id++) {
             const auto partition_offset_base = par_id * ANONYMOUSLIB_CSR5_OMEGA;
@@ -161,9 +158,9 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                     int store_to_offchip = _mm256_testz_si256(local_bit256i, _mm256_set1_epi64x(all_set_mask));
 
                     if (!store_to_offchip) {
-                        y_idx128i = empty_rows ? _mm_i32gather_epi32(&partition_descriptor_offset[offset_pointer],
-                                                                     y_offset128i, 4)
-                                               : y_offset128i;
+                        auto y_idx128i = empty_rows ? _mm_i32gather_epi32(&partition_descriptor_offset[offset_pointer],
+                                                                          y_offset128i, 4)
+                                                    : y_offset128i;
 
                         // mask scatter store
                         _mm_store_si128(reinterpret_cast<__m128i*>(std::data(s_y_idx)), y_idx128i);
@@ -193,7 +190,7 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
 
                         y_offset128i = _mm_add_epi32(y_offset128i, _mm_set_epi32(inc3, inc2, inc1, inc0));
 
-                        tmp256i = _mm256_andnot_si256(_mm256_cmpeq_epi64(direct256i, _mm256_set1_epi64x(0x1)),
+                        auto tmp256i = _mm256_andnot_si256(_mm256_cmpeq_epi64(direct256i, _mm256_set1_epi64x(0x1)),
                                                       _mm256_cmpeq_epi64(local_bit256i, _mm256_set1_epi64x(0x1)));
                         first_sum256d = _mm256_add_pd(
                           _mm256_and_pd(_mm256_castsi256_pd(_mm256_cmpeq_epi64(tmp256i, _mm256_set1_epi64x(0))),
@@ -214,7 +211,7 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                     sum256d = _mm256_fmadd_pd(value256d, x256d, sum256d);
                 }
 
-                tmp256i = _mm256_cmpeq_epi64(direct256i, _mm256_set1_epi64x(0x1));
+                auto tmp256i = _mm256_cmpeq_epi64(direct256i, _mm256_set1_epi64x(0x1));
 
                 first_sum256d = _mm256_and_pd(_mm256_castsi256_pd(tmp256i), first_sum256d);
                 tmp256i = _mm256_cmpeq_epi64(tmp256i, _mm256_set1_epi64x(0));
@@ -251,9 +248,9 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
 
                 last_sum256d = _mm256_add_pd(last_sum256d, _mm256_and_pd(_mm256_castsi256_pd(tmp256i), sum256d));
 
-                y_idx128i = empty_rows
-                              ? _mm_i32gather_epi32(&partition_descriptor_offset[offset_pointer], y_offset128i, 4)
-                              : y_offset128i;
+                auto y_idx128i = empty_rows
+                                   ? _mm_i32gather_epi32(&partition_descriptor_offset[offset_pointer], y_offset128i, 4)
+                                   : y_offset128i;
 
                 _mm256_store_si256(reinterpret_cast<__m256i*>(std::data(s_cond)), direct256i);
                 _mm_store_si128(reinterpret_cast<__m128i*>(std::data(s_y_idx)), y_idx128i);
