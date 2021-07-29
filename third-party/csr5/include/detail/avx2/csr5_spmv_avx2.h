@@ -85,12 +85,14 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
             const auto partition_offset_base = par_id * ANONYMOUSLIB_CSR5_OMEGA;
             const auto partition_descriptor_base = partition_offset_base * num_packet;
 
+            // column indices for this partition.
             const iT* column_index_partition = &column_index[partition_offset_base * c_sigma];
+            // values for this partition.
             const vT* value_partition = &value[partition_offset_base * c_sigma];
 
             // TODO: check if the signedness used is needed.
             auto row_start = static_cast<iT>(partition_pointer[par_id]);
-            const iT row_stop = partition_pointer[par_id + 1] & 0x7FFFFFFF;
+            const iT row_stop = strip_dirty(partition_pointer[par_id + 1]);
 
             if (row_start == row_stop) {
                 // fast track through reduction
@@ -121,13 +123,19 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                 // new row
                 bool first_all_direct = par_id == tid * chunk && first_direct;
 
+                // set the 0th bit of the descriptor to 1.
                 descriptor128i = _mm_or_si128(descriptor128i, _mm_set_epi32(0, 0, 0, std::bit_cast<int>(0x80000000)));
+
+                // load bits for next 4 reductions.
                 local_bit256i = get_local_bit(descriptor128i, 0);
 
+                // start256i = !local_bit256i (speaking in bools). Meaning it's true if no row started here.
                 auto start256i = _mm256_sub_epi64(_mm256_set1_epi64x(0x1), local_bit256i);
+
                 auto stop256i = _mm256_setzero_si256();
                 auto direct256i = _mm256_and_si256(local_bit256i, _mm256_set_epi64x(0x1, 0x1, 0x1, 0));
 
+                // do the first sum.
                 auto value256d = _mm256_load_pd(value_partition);
                 auto x256d = load_x(x, column_index_partition, 0);
                 auto sum256d = _mm256_mul_pd(value256d, x256d);
@@ -157,7 +165,9 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                     constexpr auto all_set_mask = std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF);
                     int store_to_offchip = _mm256_testz_si256(local_bit256i, _mm256_set1_epi64x(all_set_mask));
 
+                    // any of the bits mark start of a new row.
                     if (!store_to_offchip) {
+                        // if empty rows we need to use empty_offset[y_offset]
                         auto y_idx128i = empty_rows ? _mm_i32gather_epi32(&partition_descriptor_offset[offset_pointer],
                                                                           y_offset128i, 4)
                                                     : y_offset128i;
@@ -165,75 +175,72 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                         // mask scatter store
                         _mm_store_si128(reinterpret_cast<__m128i*>(std::data(s_y_idx)), y_idx128i);
                         _mm256_store_pd(s_sum, sum256d);
+
+                        // s_cond means we have a new row started here (direct256i keeps track if any row was started),
+                        // thus we need to store the partial sum we've done to
                         _mm256_store_si256(reinterpret_cast<__m256i*>(std::data(s_cond)),
                                            _mm256_and_si256(direct256i, local_bit256i));
-                        int inc0 = 0;
-                        int inc1 = 0;
-                        int inc2 = 0;
-                        int inc3 = 0;
-                        if (s_cond[0]) {
-                            y_local[s_y_idx[0]] = s_sum[0];
-                            inc0 = 1;
-                        }
-                        if (s_cond[1]) {
-                            y_local[s_y_idx[1]] = s_sum[1];
-                            inc1 = 1;
-                        }
-                        if (s_cond[2]) {
-                            y_local[s_y_idx[2]] = s_sum[2];
-                            inc2 = 1;
-                        }
-                        if (s_cond[3]) {
-                            y_local[s_y_idx[3]] = s_sum[3];
-                            inc3 = 1;
-                        }
+                        const auto store_if_new_row = [&s_cond, &y_local, &s_y_idx, &s_sum](auto idx) {
+                            if (!s_cond[idx])
+                                return 0;
+                            y_local[s_y_idx[idx]] = s_sum[idx];
+                            return 1;
+                        };
 
-                        y_offset128i = _mm_add_epi32(y_offset128i, _mm_set_epi32(inc3, inc2, inc1, inc0));
+                        // if any of the lanes stored, we need to increase its index (new row == new output in Y).
+                        y_offset128i
+                          = _mm_add_epi32(y_offset128i, _mm_set_epi32(store_if_new_row(3), store_if_new_row(2),
+                                                                      store_if_new_row(1), store_if_new_row(0)));
 
-                        auto tmp256i = _mm256_andnot_si256(_mm256_cmpeq_epi64(direct256i, _mm256_set1_epi64x(0x1)),
-                                                      _mm256_cmpeq_epi64(local_bit256i, _mm256_set1_epi64x(0x1)));
-                        first_sum256d = _mm256_add_pd(
-                          _mm256_and_pd(_mm256_castsi256_pd(_mm256_cmpeq_epi64(tmp256i, _mm256_set1_epi64x(0))),
-                                        first_sum256d),
-                          _mm256_and_pd(_mm256_castsi256_pd(_mm256_cmpeq_epi64(
-                                          tmp256i, _mm256_set1_epi64x(std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF)))),
-                                        sum256d));
+                        // -1 if direct==0 (AKA no row active yet) && local bit is set (AKA start of new row).
+                        // end of red subsegment in CSR5 paper.
+                        const auto localbit_mask = _mm256_cmpeq_epi64(local_bit256i, _mm256_set1_epi64x(0x1));
+                        const auto mask
+                          = _mm256_andnot_si256(_mm256_cmpeq_epi64(direct256i, _mm256_set1_epi64x(0x1)), localbit_mask);
 
-                        sum256d = _mm256_and_pd(
-                          _mm256_castsi256_pd(_mm256_cmpeq_epi64(local_bit256i, _mm256_set1_epi64x(0))), sum256d);
+                        // if mask is -1 (AKA uint64_t::max) we take values from first_sum256d, else we take from
+                        // sum256d.
+                        first_sum256d = _mm256_add_pd(_mm256_andnot_pd(_mm256_castsi256_pd(mask), first_sum256d),
+                                                      _mm256_and_pd(_mm256_castsi256_pd(mask), sum256d));
 
+                        // zero out the parts of sum which have localbit set (AKA starting new row).
+                        sum256d = _mm256_andnot_pd(_mm256_castsi256_pd(localbit_mask), sum256d);
+
+                        // set direct to know if we've started a row yet.
                         direct256i = _mm256_or_si256(direct256i, local_bit256i);
+                        // TODO: understand.
                         stop256i = _mm256_add_epi64(stop256i, local_bit256i);
                     }
 
+                    // process the next column in bitmap.
                     x256d = load_x(x, column_index_partition, i * ANONYMOUSLIB_CSR5_OMEGA);
                     value256d = _mm256_load_pd(&value_partition[i * ANONYMOUSLIB_CSR5_OMEGA]);
                     sum256d = _mm256_fmadd_pd(value256d, x256d, sum256d);
                 }
 
+                // check if any lane had a row start in there.
                 auto tmp256i = _mm256_cmpeq_epi64(direct256i, _mm256_set1_epi64x(0x1));
-
-                first_sum256d = _mm256_and_pd(_mm256_castsi256_pd(tmp256i), first_sum256d);
-                tmp256i = _mm256_cmpeq_epi64(tmp256i, _mm256_set1_epi64x(0));
-                first_sum256d = _mm256_add_pd(first_sum256d, _mm256_and_pd(_mm256_castsi256_pd(tmp256i), sum256d));
+                // null out the elements of first_sum256d which didn't have a row starting there.
+                first_sum256d = _mm256_add_pd(_mm256_and_pd(_mm256_castsi256_pd(tmp256i), first_sum256d),
+                                              _mm256_andnot_pd(_mm256_castsi256_pd(tmp256i), sum256d));
 
                 auto last_sum256d = sum256d;
-
+                // make a mask out of it.
                 tmp256i = _mm256_cmpeq_epi64(start256i, _mm256_set1_epi64x(0x1));
                 sum256d = _mm256_and_pd(_mm256_castsi256_pd(tmp256i), first_sum256d);
 
-                sum256d = _mm256_permute4x64_pd(sum256d, 0x39);
-                sum256d = _mm256_and_pd(
-                  _mm256_castsi256_pd(_mm256_setr_epi64x(
-                    std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF), std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF),
-                    std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF), 0x0000000000000000)),
-                  sum256d);
+                sum256d = _mm256_permute4x64_pd(sum256d, make_permute_seq(1, 2, 3, 0));
+                const auto zero_last_mask = _mm256_castsi256_pd(_mm256_set_epi64x(
+                  0x0000000000000000, std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF),
+                  std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF), std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF)));
+                sum256d = _mm256_and_pd(zero_last_mask, sum256d);
 
                 const auto tmp_sum256d = sum256d;
                 sum256d = hscan_avx(sum256d);
 
                 scansum_offset128i = _mm_add_epi32(scansum_offset128i, _mm_set_epi32(3, 2, 1, 0));
 
+                // lower is scansum offset, upper undefined.
                 tmp256i = _mm256_castsi128_si256(scansum_offset128i);
                 tmp256i = _mm256_permutevar8x32_epi32(tmp256i, _mm256_set_epi32(3, 3, 2, 2, 1, 1, 0, 0));
                 tmp256i = _mm256_add_epi32(tmp256i, tmp256i);

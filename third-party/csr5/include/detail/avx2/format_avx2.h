@@ -144,7 +144,7 @@ int generate_partition_pointer(const size_t sigma, const size_t num_non_zero,
  * @brief Sets the bit flag of each first non-0 element in a tile to true.
  */
 template<typename iT, typename uiT>
-void set_partition_descriptor_bit_flags(const iT* row_pointer, const std::span<const uiT> partition_pointer,
+void set_partition_descriptor_bit_flags(const iT* row_start_offsets, const std::span<const uiT> partition_pointer,
                                         uiT* partition_descriptor, const size_t sigma, const size_t bit_all_offset,
                                         const size_t num_packet) {
     iterate_partitions(partition_pointer, [&](auto partition_id, auto row_start, auto row_stop) {
@@ -152,7 +152,7 @@ void set_partition_descriptor_bit_flags(const iT* row_pointer, const std::span<c
         const auto location_base = partition_id * ANONYMOUSLIB_CSR5_OMEGA * num_packet;
 
         for (auto rid = row_start; rid <= row_stop; rid++) {
-            const auto idx = static_cast<size_t>(row_pointer[rid]);
+            const auto idx = static_cast<size_t>(row_start_offsets[rid]);
             // if we aren't in the correct partition, skip.
             if (partition_id != idx / (ANONYMOUSLIB_CSR5_OMEGA * sigma))
                 continue;
