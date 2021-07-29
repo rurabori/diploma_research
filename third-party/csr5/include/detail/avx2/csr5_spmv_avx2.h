@@ -58,6 +58,19 @@ inline __m256i get_local_bit(__m128i descriptor, int offset = 0) {
     return _mm256_and_si256(_mm256_cvtepu32_epi64(_mm_srli_epi32(descriptor, 31 - offset)), _mm256_set1_epi64x(0x1));
 }
 
+inline __m256d shuffle_by_scansum(__m256d sum, __m128i scansum) {
+    // add base relative offsets, cast to 256 bits.
+    auto shuffle_mask = _mm256_castsi128_si256(_mm_add_epi32(scansum, _mm_set_epi32(3, 2, 1, 0)));
+    // copy each 32bit part from the lower 128 bits to its neighbour.
+    shuffle_mask = _mm256_permutevar8x32_epi32(shuffle_mask, _mm256_set_epi32(3, 3, 2, 2, 1, 1, 0, 0));
+    // x2 as we're shuffling 32-bit halves but aliasing 64-bit doubles (e.g 1st double is at index 2 etc.).
+    shuffle_mask = _mm256_add_epi32(shuffle_mask, shuffle_mask);
+    // +1 to every second to have "upper" and "lower" parts of the doubles.
+    shuffle_mask = _mm256_add_epi32(shuffle_mask, _mm256_set_epi32(1, 0, 1, 0, 1, 0, 1, 0));
+    // shuffle by the created mask.
+    return _mm256_castsi256_pd(_mm256_permutevar8x32_epi32(_mm256_castpd_si256(sum), shuffle_mask));
+}
+
 template<typename iT, typename uiT, typename vT>
 void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT* x, const uiT* partition_pointer,
                               const uiT* partition_descriptor, const iT* partition_descriptor_offset_pointer,
@@ -236,24 +249,16 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                 sum256d = _mm256_and_pd(zero_last_mask, sum256d);
 
                 const auto tmp_sum256d = sum256d;
+                // inclusive prefix scan.
                 sum256d = hscan_avx(sum256d);
 
-                scansum_offset128i = _mm_add_epi32(scansum_offset128i, _mm_set_epi32(3, 2, 1, 0));
-
-                // lower is scansum offset, upper undefined.
-                tmp256i = _mm256_castsi128_si256(scansum_offset128i);
-                tmp256i = _mm256_permutevar8x32_epi32(tmp256i, _mm256_set_epi32(3, 3, 2, 2, 1, 1, 0, 0));
-                tmp256i = _mm256_add_epi32(tmp256i, tmp256i);
-                tmp256i = _mm256_add_epi32(tmp256i, _mm256_set_epi32(1, 0, 1, 0, 1, 0, 1, 0));
-
-                sum256d = _mm256_sub_pd(
-                  _mm256_castsi256_pd(_mm256_permutevar8x32_epi32(_mm256_castpd_si256(sum256d), tmp256i)), sum256d);
+                // in[i] = in[i + seg_offset[i]] - in[i]
+                sum256d = _mm256_sub_pd(shuffle_by_scansum(sum256d, scansum_offset128i), sum256d);
+                // in[i] -= tmp[i]
                 sum256d = _mm256_add_pd(sum256d, tmp_sum256d);
 
                 tmp256i = _mm256_cmpgt_epi64(start256i, stop256i);
-                tmp256i = _mm256_cmpeq_epi64(tmp256i, _mm256_set1_epi64x(0));
-
-                last_sum256d = _mm256_add_pd(last_sum256d, _mm256_and_pd(_mm256_castsi256_pd(tmp256i), sum256d));
+                last_sum256d = _mm256_add_pd(last_sum256d, _mm256_andnot_pd(_mm256_castsi256_pd(tmp256i), sum256d));
 
                 auto y_idx128i = empty_rows
                                    ? _mm_i32gather_epi32(&partition_descriptor_offset[offset_pointer], y_offset128i, 4)
