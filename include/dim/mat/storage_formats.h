@@ -31,7 +31,7 @@ struct coo
     StorageContainer<uint32_t> col_indices;
     bool symmetric{false};
 
-    coo(dimensions_t dimensions, size_t non_zero_count, bool symmetric)
+    coo(dimensions_t dimensions, size_t non_zero_count, bool symmetric = false)
       : dimensions{dimensions},
         values(non_zero_count),
         row_indices(non_zero_count),
@@ -57,16 +57,25 @@ struct coo
 template<typename ValueType, template<typename> typename StorageContainer = cache_aligned_vector>
 struct csr
 {
+    using values_t = StorageContainer<ValueType>;
+    using indices_t = StorageContainer<uint32_t>;
+
     dimensions_t dimensions{};
-    StorageContainer<ValueType> values;
-    StorageContainer<uint32_t> row_start_offsets;
-    StorageContainer<uint32_t> col_indices;
+    values_t values;
+    indices_t row_start_offsets;
+    indices_t col_indices;
 
     csr(dimensions_t dimensions, size_t non_zero_count)
       : dimensions{dimensions},
         values(non_zero_count),
         row_start_offsets(dimensions.rows + 1),
         col_indices(non_zero_count) {}
+
+    csr(dimensions_t dimensions, values_t values, indices_t row_start_offsets, indices_t col_indices)
+      : dimensions{dimensions},
+        values{std::move(values)},
+        row_start_offsets{std::move(row_start_offsets)},
+        col_indices{std::move(col_indices)} {}
 
     template<template<typename> typename StorageTy>
     static csr from_coo(const coo<ValueType, StorageTy>& coo) {

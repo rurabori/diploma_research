@@ -6,7 +6,6 @@
 #include <dim/mat/storage_formats.h>
 
 #include <mmio/mmio.h>
-
 #include <scn/scn.h>
 
 #include <filesystem>
@@ -37,6 +36,10 @@ auto read_coo(FILE* file, dim::mat::dimensions_t dimensions, size_t non_zero, bo
           = scn::scan(remaining, "{} {} {} ", retval.row_indices[idx], retval.col_indices[idx], retval.values[idx]);
         if (!result)
             throw std::runtime_error{"scan failed"};
+
+        // make 0 based.
+        --retval.row_indices[idx];
+        --retval.col_indices[idx];
 
         remaining = result.string_view();
     }
