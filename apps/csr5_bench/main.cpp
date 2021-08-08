@@ -75,7 +75,7 @@ struct arguments
     }
 
     static arguments from_main(int argc, const char* argv[]) {
-        TCLAP::CmdLine commandline{"Conjugate Gradient.", ' ', conjugate_gradient_VER};
+        TCLAP::CmdLine commandline{"Conjugate Gradient.", ' ', csr5_bench_VER};
 
         TCLAP::ValueArg<std::string> matrix_name_arg{"m", "matrix-path", "Path to matrix", true, "", "string"};
         commandline.add(matrix_name_arg);

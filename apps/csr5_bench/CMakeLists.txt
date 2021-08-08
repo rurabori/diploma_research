@@ -5,12 +5,12 @@ find_package(magic_enum REQUIRED)
 find_package(MPI REQUIRED)
 find_package(scn REQUIRED)
 
-add_executable(conjugate_gradient main.cpp spmv_algos.hpp timed_section.h)
-brr_target_init(conjugate_gradient)
-add_versioning(conjugate_gradient)
+add_executable(csr5_bench main.cpp spmv_algos.hpp timed_section.h)
+brr_target_init(csr5_bench)
+add_versioning(csr5_bench)
 
 target_link_libraries(
-  conjugate_gradient
+  csr5_bench
   PRIVATE mmio
           csr5
           OpenMP::OpenMP_CXX
@@ -24,7 +24,7 @@ target_link_libraries(
           scn::scn)
 
 if(${enable_cuda})
-  target_sources(conjugate_gradient csr5_cuda.cu cuda_algo_facade)
-  target_compile_definitions(conjugate_gradient PRIVATE CUDA_ENABLED)
-  target_link_libraries(conjugate_gradient PRIVATE csr5_cuda)
+  target_sources(csr5_bench csr5_cuda.cu cuda_algo_facade)
+  target_compile_definitions(csr5_bench PRIVATE CUDA_ENABLED)
+  target_link_libraries(csr5_bench PRIVATE csr5_cuda)
 endif()
