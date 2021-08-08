@@ -11,17 +11,7 @@
 #include <tclap/ValueArg.h>
 
 #include <hdf5/H5Cpp.h>
-#include <hdf5/H5DataSet.h>
-#include <hdf5/H5DataSpace.h>
-#include <hdf5/H5DataType.h>
 #include <hdf5/H5File.h>
-#include <hdf5/H5FloatType.h>
-#include <hdf5/H5Fpublic.h>
-#include <hdf5/H5Group.h>
-#include <hdf5/H5PredType.h>
-#include <hdf5/H5StrType.h>
-#include <hdf5/H5Tpublic.h>
-#include <hdf5/H5public.h>
 
 #include <concepts>
 #include <filesystem>
@@ -60,15 +50,6 @@ struct arguments
                          .append = append_arg.getValue()};
     }
 };
-
-template<std::ranges::contiguous_range Ty>
-void write_dataset(H5::Group& group, const std::string& name, const Ty& data, const H5::DataType& input_type,
-                   const H5::DataType& storage_type) {
-    hsize_t dims[1] = {std::size(data)};
-
-    H5::DataSpace dataspace{1, std::data(dims)};
-    group.createDataSet(name, storage_type, dataspace).write(std::data(data), input_type);
-}
 
 int main(int argc, const char* argv[]) {
     using dim::io::matrix_market::load_as_csr;
