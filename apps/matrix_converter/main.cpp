@@ -4,7 +4,6 @@
 #include <dim/io/matrix_market.h>
 
 #include <string>
-#include <sys/types.h>
 #include <tclap/Arg.h>
 #include <tclap/CmdLine.h>
 #include <tclap/SwitchArg.h>
