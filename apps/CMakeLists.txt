@@ -1,1 +1,3 @@
 add_subdirectory(conjugate_gradient)
+add_subdirectory(dist_spmv)
+add_subdirectory(hdf5_converter)

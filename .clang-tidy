@@ -18,7 +18,8 @@ Checks:          '*,-google-runtime-references,
                     -readability-static-accessed-through-instance,
                     -google-readability-todo,
                     -altera-struct-pack-*,
-                    -portability-simd-intrinsics'
+                    -portability-simd-intrinsics,
+                    -android-*'
 HeaderFilterRegex: '^((?!third-party).)*$'
 AnalyzeTemporaryDtors: false
 FormatStyle:     file

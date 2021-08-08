@@ -5,8 +5,7 @@ find_package(magic_enum REQUIRED)
 find_package(MPI REQUIRED)
 find_package(scn REQUIRED)
 
-add_executable(conjugate_gradient main.cpp matrix_storage_formats.h
-                                  spmv_algos.hpp timed_section.h)
+add_executable(conjugate_gradient main.cpp spmv_algos.hpp timed_section.h)
 brr_target_init(conjugate_gradient)
 add_versioning(conjugate_gradient)
 
@@ -19,6 +18,8 @@ target_link_libraries(
           tclap::tclap
           magic_enum::magic_enum
           dim::memory
+          dim::mat
+          dim::io
           MPI::MPI_CXX
           scn::scn)
 

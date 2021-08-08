@@ -16,8 +16,8 @@ class CSPConan(ConanFile):
         "revision": "auto"
     }
 
-    requires = ['doctest/2.4.0', 'benchmark/1.5.2',
-                'fmt/8.0.0', 'tclap/1.2.3', 'magic_enum/0.7.2', 'stx/1.0.1', 'scnlib/0.4']
+    requires = ['doctest/2.4.0', 'benchmark/1.5.2', 'fmt/8.0.0', 'tclap/1.2.3',
+                'magic_enum/0.7.2', 'stx/1.0.1', 'scnlib/0.4', 'hdf5/1.12.0']
 
     def _configure_cmake(self):
         cmake = CMake(self)

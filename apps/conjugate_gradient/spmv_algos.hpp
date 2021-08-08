@@ -5,7 +5,7 @@
 #include "cuda_algo_facade.h"
 #endif
 
-#include "matrix_storage_formats.h"
+#include <dim/mat/storage_formats.h>
 #include "timed_section.h"
 #include <anonymouslib_avx2.h>
 #include <numeric>
@@ -15,7 +15,7 @@
 namespace cg::spmv_algos {
 
 template<typename ValueType, template<typename> typename StorageTy>
-void cpu_sequential(const matrix_storage_formats::csr<ValueType, StorageTy>& matrix, std::span<ValueType> rhs,
+void cpu_sequential(const dim::mat::csr<ValueType, StorageTy>& matrix, std::span<ValueType> rhs,
                     std::span<ValueType> output) {
     for (size_t row = 0; row < matrix.dimensions.rows; ++row) {
         double sum{};
@@ -30,7 +30,7 @@ void cpu_sequential(const matrix_storage_formats::csr<ValueType, StorageTy>& mat
 }
 
 template<typename ValueType>
-auto create_csr5_handle(matrix_storage_formats::csr<ValueType, matrix_storage_formats::cache_aligned_vector>& matrix) {
+auto create_csr5_handle(dim::mat::csr<ValueType, dim::mat::cache_aligned_vector>& matrix) {
     csr5::avx2::anonymouslibHandle<int, unsigned int, ValueType> handle{matrix.dimensions.rows, matrix.dimensions.cols};
 
     handle.inputCSR(matrix.values.size(), reinterpret_cast<int*>(matrix.row_start_offsets.data()),
@@ -50,7 +50,7 @@ void cpu_avx2(csr5::avx2::anonymouslibHandle<int, unsigned int, ValueType>& A, s
 }
 
 template<typename ValueType>
-void cpu_avx2(matrix_storage_formats::csr<ValueType, matrix_storage_formats::cache_aligned_vector>& matrix,
+void cpu_avx2(dim::mat::csr<ValueType, dim::mat::cache_aligned_vector>& matrix,
               std::span<ValueType> rhs, std::span<ValueType> output) {
     csr5::avx2::anonymouslibHandle<int, unsigned int, ValueType> handle{static_cast<int>(matrix.dimensions.rows),
                                                                         static_cast<int>(matrix.dimensions.cols)};
@@ -64,7 +64,7 @@ void cpu_avx2(matrix_storage_formats::csr<ValueType, matrix_storage_formats::cac
 }
 
 #ifdef CUDA_ENABLED
-void cuda_complete_bench(matrix_storage_formats::csr<double, matrix_storage_formats::cache_aligned_vector>& matrix,
+void cuda_complete_bench(dim::mat::csr<double, dim::mat::cache_aligned_vector>& matrix,
                          std::span<double> rhs, std::span<double> output) {
     bench_csr5_cuda(static_cast<int>(matrix.dimensions.rows), static_cast<int>(matrix.dimensions.cols),
                     static_cast<int>(matrix.values.size()), reinterpret_cast<int*>(matrix.row_start_offsets.data()),
