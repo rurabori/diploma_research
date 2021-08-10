@@ -1,5 +1,5 @@
 find_package(scn REQUIRED)
-find_package(HDF5 REQUIRED)
+find_package(HDF5 REQUIRED CONFIG)
 
 brr_add_library(dim_io STATIC)
 add_library(dim::io ALIAS dim_io)

@@ -1,7 +1,7 @@
 find_package(PkgConfig REQUIRED)
 find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
-find_package(HDF5 REQUIRED)
+find_package(HDF5 REQUIRED CONFIG)
 
 pkg_check_modules(PETSC REQUIRED IMPORTED_TARGET PETSc)
 
