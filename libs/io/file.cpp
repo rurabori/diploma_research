@@ -7,7 +7,7 @@ void file_deleter_t::operator()(FILE* file) { std::fclose(file); }
 auto open(const std::filesystem::path& path, const char* mode) -> file_t {
     file_t retval{std::fopen(path.c_str(), mode)};
     if (!retval)
-        throw std::system_error{errno, std::generic_category(), "File couldn't be opened."};
+        throw std::system_error{errno, std::generic_category(), path.string()};
 
     return retval;
 }
