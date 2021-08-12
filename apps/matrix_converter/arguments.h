@@ -21,6 +21,7 @@ struct arguments
     std::optional<path> vector_input{};
     std::filesystem::path output{};
     std::string matrix_group_name{};
+    std::string vector_group_name{};
     bool append{false};
     spdlog::level::level_enum log_level{};
 

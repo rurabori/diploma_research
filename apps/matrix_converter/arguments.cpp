@@ -31,9 +31,13 @@ arguments arguments::from_main(int argc, const char* argv[]) {
     TCLAP::ValueArg<std::string> output_arg{"o", "output", "Path to output matrix", true, "", "string"};
     commandline.add(output_arg);
 
-    TCLAP::ValueArg<std::string> group_name_arg{"g",   "group-name", "matrix group name in HDF5 file",
-                                                false, "A",          "string"};
-    commandline.add(group_name_arg);
+    TCLAP::ValueArg<std::string> matrix_group_name_arg{
+      "g", "matix-group-name", "matrix group name in HDF5 file", false, "A", "string"};
+    commandline.add(matrix_group_name_arg);
+
+    TCLAP::ValueArg<std::string> vector_group_name_arg{
+      "x", "vector-group-name", "vector group name in HDF5 file", false, "x", "string"};
+    commandline.add(vector_group_name_arg);
 
     TCLAP::ValueArg<std::string> verbosity{"l",   "log-level", "logger level",
                                            false, "warn",      "{trace,debug,info,warn,error,critical}"};
@@ -51,7 +55,8 @@ arguments arguments::from_main(int argc, const char* argv[]) {
     return arguments{.matrix_input = get_optional_path(input_matrix_arg),
                      .vector_input = get_optional_path(input_vector_arg),
                      .output = output_arg.getValue(),
-                     .matrix_group_name = group_name_arg.getValue(),
+                     .matrix_group_name = matrix_group_name_arg.getValue(),
+                     .vector_group_name = vector_group_name_arg.getValue(),
                      .append = append_arg.getValue(),
                      .log_level = get_log_level(verbosity.getValue())};
 }
