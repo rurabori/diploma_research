@@ -1,10 +1,7 @@
-#include <exception>
-#include <filesystem>
 #include <fmt/core.h>
-#include <iostream>
 
-#include <memory>
 #include <petsc.h>
+#include <petscerror.h>
 #include <petscoptions.h>
 #include <petscsys.h>
 #include <petscviewerhdf5.h>
@@ -14,6 +11,12 @@
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
+
+#include <exception>
+#include <filesystem>
+#include <iostream>
+#include <memory>
+#include <system_error>
 
 #include "version.h"
 
@@ -28,6 +31,28 @@ struct petsc_guard
 
     ~petsc_guard() { PetscFinalize(); }
 };
+
+struct petsc_error_checker
+{
+    const char* file;
+    const int line;
+    const char* function;
+
+    [[nodiscard]] int contain_errq(int errc) const {
+        if (errc != 0) [[unlikely]]
+            return PetscError(PETSC_COMM_SELF, line, function, file, errc, PETSC_ERROR_REPEAT, " ");
+
+        return 0;
+    }
+
+    void operator%(int errc) const {
+        if (contain_errq(errc) != 0)
+            throw std::system_error{errc, std::generic_category(), "petsc failed."};
+    }
+};
+
+// NOLINTNEXTLINE - this is the cleanest way to avoid petsc handling control flow too much.
+#define petsc_try petsc_error_checker{__FILE__, __LINE__, PETSC_FUNCTION_NAME} %
 
 int get_rank() {
     int rank{};
@@ -45,58 +70,48 @@ struct arguments
     std::array<char, PETSC_MAX_PATH_LEN> input_matrix{"input.mat"};
     std::array<char, 150> matrix_name{"A"};
 
-    auto create() -> int {
-        PetscBool found{PETSC_FALSE};
+    auto create() -> void {
+        petsc_try[&] {
+            PetscBool found{PETSC_FALSE};
+            petsc_try PetscOptionsBegin(PETSC_COMM_WORLD, nullptr, "Options for this program", nullptr);
 
-        auto ierr = PetscOptionsBegin(PETSC_COMM_WORLD, nullptr, "Options for this program", nullptr);
+            petsc_try PetscOptionsString("-log_directory", "directory in which to store logfiles, defaults to cwd",
+                                         nullptr, std::data(log_directory), std::data(log_directory),
+                                         std::size(log_directory), &found);
 
-        ierr = PetscOptionsString("-log_directory", "directory in which to store logfiles, defaults to cwd", nullptr,
-                                  std::data(log_directory), std::data(log_directory), std::size(log_directory), &found);
-        CHKERRQ(ierr);
+            petsc_try PetscOptionsString("-matrix_file", "load the input matrix from the specified file", nullptr,
+                                         std::data(input_matrix), std::data(input_matrix), std::size(input_matrix),
+                                         &found);
 
-        ierr = PetscOptionsString("-matrix_file", "load the input matrix from the specified file", nullptr,
-                                  std::data(input_matrix), std::data(input_matrix), std::size(input_matrix), &found);
-        CHKERRQ(ierr);
+            petsc_try PetscOptionsString("-matrix_name", "name of the matrix to load (names group in HDF5 file)",
+                                         nullptr, std::data(matrix_name), std::data(matrix_name),
+                                         std::size(matrix_name), &found);
 
-        ierr = PetscOptionsString("-matrix_name", "name of the matrix to load (names group in HDF5 file)", nullptr,
-                                  std::data(matrix_name), std::data(matrix_name), std::size(matrix_name), &found);
-        CHKERRQ(ierr);
-
-        PetscOptionsEnd();
-
-        return ierr;
+            PetscOptionsEnd();
+            return 0;
+        }
+        ();
     }
 };
 
 auto is_help_set() -> bool {
     auto help_set = PetscBool{};
-    auto ierr = PetscOptionsHasName(nullptr, nullptr, "-help", &help_set);
+    petsc_try PetscOptionsHasName(nullptr, nullptr, "-help", &help_set);
 
     return help_set == PETSC_TRUE;
 }
 
-auto petsc_main(const arguments& args, std::shared_ptr<spdlog::logger> logger) -> int {
+auto petsc_main(const arguments& args, std::shared_ptr<spdlog::logger> logger) -> void {
     PetscViewer in{};
-    auto ierr = PetscViewerHDF5Open(MPI_COMM_WORLD, std::data(args.input_matrix), FILE_MODE_READ, &in);
-    CHKERRQ(ierr);
+    petsc_try PetscViewerHDF5Open(MPI_COMM_WORLD, std::data(args.input_matrix), FILE_MODE_READ, &in);
 
     Mat A{};
-    ierr = MatCreate(PETSC_COMM_WORLD, &A);
-    CHKERRQ(ierr);
-    ierr = PetscObjectSetName(reinterpret_cast<PetscObject>(A), std::data(args.matrix_name));
-    CHKERRQ(ierr);
-    ierr = MatLoad(A, in);
-    CHKERRQ(ierr);
-
-    ierr = MatView(A, PETSC_VIEWER_STDOUT_SELF);
-    CHKERRQ(ierr);
-
-    ierr = MatDestroy(&A);
-    CHKERRQ(ierr);
-    ierr = PetscViewerDestroy(&in);
-    CHKERRQ(ierr);
-
-    return ierr;
+    petsc_try MatCreate(PETSC_COMM_WORLD, &A);
+    petsc_try PetscObjectSetName(reinterpret_cast<PetscObject>(A), std::data(args.matrix_name));
+    petsc_try MatLoad(A, in);
+    petsc_try MatView(A, PETSC_VIEWER_STDOUT_SELF);
+    petsc_try MatDestroy(&A);
+    petsc_try PetscViewerDestroy(&in);
 }
 
 int main(int argc, char* argv[]) try {
