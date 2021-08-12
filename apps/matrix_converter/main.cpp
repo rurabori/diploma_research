@@ -1,6 +1,7 @@
 #include <dim/io/h5.h>
 #include <dim/io/matrix_market.h>
 
+#include <filesystem>
 #include <optional>
 #include <ranges>
 #include <stdexcept>
@@ -38,11 +39,13 @@ H5::Group create_group_recurse(H5::Group base, std::string_view parts) {
 
 void store_matrix(const arguments& arguments, H5::H5File& file) {
     using dim::io::matrix_market::load_as_csr;
+    using std::filesystem::file_size;
 
     if (!arguments.matrix_input)
         return;
 
-    spdlog::info("loading matrix in Matrix Market format from '{}'", arguments.matrix_input->string());
+    spdlog::info("loading matrix in Matrix Market format from '{}', size: {:.3f}MiB", arguments.matrix_input->string(),
+                 static_cast<double>(file_size(*arguments.matrix_input)) / 1'048'576);
 
     spdlog::stopwatch stopwatch{};
     const auto csr = load_as_csr<double>(*arguments.matrix_input);
