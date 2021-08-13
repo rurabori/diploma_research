@@ -1,11 +1,7 @@
 #ifndef APPS_MATRIX_CONVERTER_ARGUMENTS
 #define APPS_MATRIX_CONVERTER_ARGUMENTS
 
-#include <tclap/Arg.h>
-#include <tclap/ArgException.h>
-#include <tclap/CmdLine.h>
-#include <tclap/SwitchArg.h>
-#include <tclap/ValueArg.h>
+#include <structopt/app.hpp>
 
 #include <filesystem>
 #include <optional>
@@ -13,19 +9,24 @@
 
 #include <spdlog/common.h>
 
-struct arguments
+struct dim_cli
 {
     using path = std::filesystem::path;
+    using log_level_t = spdlog::level::level_enum;
 
-    std::optional<path> matrix_input{};
-    std::optional<path> vector_input{};
-    std::filesystem::path output{};
-    std::string matrix_group_name{};
-    std::string vector_group_name{};
-    bool append{false};
-    spdlog::level::level_enum log_level{};
+    struct store_matrix_t : structopt::sub_command
+    {
+        path input;
+        path output;
+        std::optional<std::string> group_name{"A"};
+        std::optional<bool> append{false};
+    };
+    store_matrix_t store_matrix;
 
-    static arguments from_main(int argc, const char* argv[]);
+    std::optional<log_level_t> log_level{log_level_t::warn};
 };
+
+STRUCTOPT(dim_cli::store_matrix_t, input, output);
+STRUCTOPT(dim_cli, store_matrix, log_level);
 
 #endif /* APPS_MATRIX_CONVERTER_ARGUMENTS */

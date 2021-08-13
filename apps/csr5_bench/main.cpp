@@ -52,7 +52,7 @@ auto generate_random_vector(size_t required_size) {
     return x;
 }
 
-struct arguments
+struct matrix_converter
 {
     enum class algorithm_t
     {
@@ -74,7 +74,7 @@ struct arguments
         return algorithm_t::cpu_sequential;
     }
 
-    static arguments from_main(int argc, const char* argv[]) {
+    static matrix_converter from_main(int argc, const char* argv[]) {
         TCLAP::CmdLine commandline{"Conjugate Gradient.", ' ', csr5_bench_VER};
 
         TCLAP::ValueArg<std::string> matrix_name_arg{"m", "matrix-path", "Path to matrix", true, "", "string"};
@@ -88,14 +88,14 @@ struct arguments
         commandline.add(algorithm_arg);
 
         commandline.parse(argc, argv);
-        return arguments{.matrix_file = matrix_name_arg.getValue(),
+        return matrix_converter{.matrix_file = matrix_name_arg.getValue(),
                          .debug = debug_arg.getValue(),
                          .algorithm = get_algoritm(algorithm_arg.getValue())};
     }
 };
 
 int main(int argc, const char* argv[]) {
-    auto arguments = arguments::from_main(argc, argv);
+    auto arguments = matrix_converter::from_main(argc, argv);
     auto matrix = dim::io::matrix_market::load_as_csr<double>(arguments.matrix_file);
 
     auto consumed_memory
@@ -111,11 +111,11 @@ int main(int argc, const char* argv[]) {
 
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
     switch (arguments.algorithm) {
-        case arguments::algorithm_t::cpu_sequential: {
+        case matrix_converter::algorithm_t::cpu_sequential: {
             report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_sequential(matrix, std::span{x}, std::span{Y}); });
             break;
         }
-        case arguments::algorithm_t::cpu_avx2: {
+        case matrix_converter::algorithm_t::cpu_avx2: {
             auto handle = cg::spmv_algos::create_csr5_handle(matrix);
             report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_avx2(handle, std::span{x}, std::span{Y}); });
             handle.destroy();

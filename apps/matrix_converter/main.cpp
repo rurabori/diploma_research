@@ -19,6 +19,7 @@
 #include <string_view>
 
 #include "arguments.h"
+#include "version.h"
 
 H5::Group create_group_recurse(H5::Group base, std::string_view parts) {
     while (!parts.empty()) {
@@ -37,21 +38,20 @@ H5::Group create_group_recurse(H5::Group base, std::string_view parts) {
     return base;
 }
 
-void store_matrix(const arguments& arguments, H5::H5File& file) {
+void store_matrix(const dim_cli::store_matrix_t& arguments) {
     using dim::io::matrix_market::load_as_csr;
     using std::filesystem::file_size;
 
-    if (!arguments.matrix_input)
-        return;
-
-    spdlog::info("loading matrix in Matrix Market format from '{}', size: {:.3f}MiB", arguments.matrix_input->string(),
-                 static_cast<double>(file_size(*arguments.matrix_input)) / 1'048'576);
+    spdlog::info("loading matrix in Matrix Market format from '{}', size: {:.3f}MiB", arguments.input.string(),
+                 static_cast<double>(file_size(arguments.input)) / 1'048'576);
 
     spdlog::stopwatch stopwatch{};
-    const auto csr = load_as_csr<double>(*arguments.matrix_input);
+    const auto csr = load_as_csr<double>(arguments.input);
     spdlog::info("load and conversion to CSR took: {}s", stopwatch);
 
-    auto matrix_group = create_group_recurse(file.openGroup("/"), arguments.matrix_group_name);
+    H5::H5File file{arguments.output, *arguments.append ? H5F_ACC_RDWR | H5F_ACC_CREAT : H5F_ACC_TRUNC};
+
+    auto matrix_group = create_group_recurse(file.openGroup("/"), *arguments.group_name);
     spdlog::info("storing matrix as group '{}' to {}", matrix_group.getObjName(), file.getFileName());
 
     stopwatch.reset();
@@ -59,12 +59,12 @@ void store_matrix(const arguments& arguments, H5::H5File& file) {
     spdlog::info("storing CSR to HDF5 took: {}s", stopwatch);
 }
 
-int main(int argc, const char* argv[]) try {
-    const auto arguments = arguments::from_main(argc, argv);
-    spdlog::set_level(arguments.log_level);
+int main(int argc, char* argv[]) try {
+    auto arguments = structopt::app(matrix_converter_FULL_NAME, matrix_converter_VER).parse<dim_cli>(argc, argv);
+    spdlog::set_level(*arguments.log_level);
 
-    H5::H5File file{arguments.output, arguments.append ? H5F_ACC_RDWR | H5F_ACC_CREAT : H5F_ACC_TRUNC};
-    store_matrix(arguments, file);
+    if (arguments.store_matrix.has_value())
+        store_matrix(arguments.store_matrix);
 
     return 0;
 } catch (const H5::Exception& e) {
