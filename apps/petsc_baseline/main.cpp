@@ -17,7 +17,6 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
-#include <spdlog/stopwatch.h>
 #include <system_error>
 
 #include "version.h"

@@ -96,6 +96,8 @@ auto read_matlab_compatible(const H5::Group& group) -> mat::csr<double, Storage>
     return retval;
 }
 
+auto read_vector(const H5::Group& group, const std::string& dataset_name) -> std::vector<double>;
+
 } // namespace dim::io::h5
 
 #endif /* INCLUDE_DIM_IO_H5 */

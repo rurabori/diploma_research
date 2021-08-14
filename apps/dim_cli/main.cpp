@@ -1,3 +1,4 @@
+#include <H5Fpublic.h>
 #include <dim/io/h5.h>
 #include <dim/io/matrix_market.h>
 
@@ -39,6 +40,7 @@ H5::Group create_group_recurse(H5::Group base, std::string_view parts) {
 }
 
 void store_matrix(const dim_cli::store_matrix_t& arguments) {
+    using dim::io::h5::write_matlab_compatible;
     using dim::io::matrix_market::load_as_csr;
     using std::filesystem::file_size;
 
@@ -55,16 +57,47 @@ void store_matrix(const dim_cli::store_matrix_t& arguments) {
     spdlog::info("storing matrix as group '{}' to {}", matrix_group.getObjName(), file.getFileName());
 
     stopwatch.reset();
-    dim::io::h5::write_matlab_compatible(matrix_group, csr);
+    write_matlab_compatible(matrix_group, csr);
     spdlog::info("storing CSR to HDF5 took: {}s", stopwatch);
 }
 
+auto compare_results(const dim_cli::compare_results_t& args) -> int {
+    using dim::io::h5::read_vector;
+    constexpr auto nearly_equal = [](auto l, auto r) { return std::abs(l - r) <= (0.01 * std::abs(r)); };
+    constexpr auto load_vec_and_info = [](auto&& path, auto&& group_name, auto&& dataset_name) {
+        const auto in = H5::H5File{path, H5F_ACC_RDONLY};
+        const auto group = in.openGroup(group_name);
+
+        return std::pair{fmt::format("{}:{}{}", in.getFileName(), group.getObjName(), dataset_name),
+                         read_vector(group, dataset_name)};
+    };
+
+    H5::H5File in{args.input_file, H5F_ACC_RDONLY};
+
+    const auto [lhs_id, lhs] = load_vec_and_info(args.input_file, *args.lhs_group, *args.lhs_dataset);
+    const auto [rhs_id, rhs]
+      = load_vec_and_info(args.input_file_2 ? *args.input_file_2 : args.input_file, *args.rhs_group, *args.rhs_dataset);
+
+    const auto correct = std::ranges::equal(lhs, rhs, nearly_equal);
+
+    if (!correct) {
+        spdlog::error("vectors {} and {} are not equal", lhs_id, rhs_id);
+        return 1;
+    }
+
+    spdlog::info("vectors {} and {} are equal", lhs_id, rhs_id);
+    return 0;
+}
+
 int main(int argc, char* argv[]) try {
-    auto arguments = structopt::app(matrix_converter_FULL_NAME, matrix_converter_VER).parse<dim_cli>(argc, argv);
+    auto arguments = structopt::app(dim_cli_FULL_NAME, dim_cli_VER).parse<dim_cli>(argc, argv);
     spdlog::set_level(*arguments.log_level);
 
     if (arguments.store_matrix.has_value())
         store_matrix(arguments.store_matrix);
+
+    if (arguments.compare_results.has_value())
+        return compare_results(arguments.compare_results);
 
     return 0;
 } catch (const H5::Exception& e) {

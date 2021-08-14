@@ -4,7 +4,7 @@ find_package(structopt REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(magic_enum REQUIRED)
 
-brr_add_executable(matrix_converter)
+brr_add_executable(dim_cli)
 target_link_libraries(
-  matrix_converter PRIVATE fmt::fmt HDF5::HDF5 dim::io structopt::structopt
-                           spdlog::spdlog magic_enum::magic_enum)
+  dim_cli PRIVATE fmt::fmt HDF5::HDF5 dim::io structopt::structopt
+                  spdlog::spdlog magic_enum::magic_enum)
