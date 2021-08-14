@@ -20,6 +20,9 @@ auto arguments::create() -> void {
         petsc_try PetscOptionsString("-matrix_name", "name of the matrix to load (names group in HDF5 file)", nullptr,
                                      std::data(matrix_name), std::data(matrix_name), std::size(matrix_name), &found);
 
+        petsc_try PetscOptionsString("-result_name", "name of result vector (names group in HDF5 file)", nullptr,
+                                     std::data(result_name), std::data(result_name), std::size(result_name), &found);
+
         PetscOptionsEnd();
         return 0;
     }

@@ -58,8 +58,9 @@ auto petsc_main(const arguments& args, std::shared_ptr<spdlog::logger> logger) -
 
     auto X = vec_t::uninitialized();
     auto Y = vec_t::uninitialized();
-
     petsc_try MatCreateVecs(A, X.value_ptr(), Y.value_ptr());
+
+    petsc_try PetscObjectSetName(Y, std::data(args.result_name));
 
     petsc_try VecSet(X, 1.0);
 
