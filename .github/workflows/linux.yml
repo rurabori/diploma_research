@@ -59,7 +59,10 @@ jobs:
       - name: Install
         run: cmake --build ${{github.workspace}}/build --target install
 
+      - name: Move artifacts
+        run: mv ${{github.workspace}}/install install
+
       - uses: actions/upload-artifact@v2
         with:
           name: ${{matrix.artifact_name}}
-          path: ${{github.workspace}}/install/
+          path: install
