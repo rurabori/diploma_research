@@ -61,4 +61,9 @@ jobs:
           name: ${{matrix.artifact_name}}
           path: |
             ${{github.workspace}}/build/apps/dim_cli/dim_cli
+            
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{matrix.artifact_name}}
+          path: |
             ${{github.workspace}}/build/apps/petsc_baseline/petsc_baseline
