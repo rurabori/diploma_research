@@ -23,6 +23,7 @@ jobs:
           - image: rurabori/diploma:debian-10
             cc: clang-11
             cxx: clang++-11
+            additional_cmake_options: -DCMAKE_CXX_FLAGS="-stdlib=libc++"
 
     runs-on: ubuntu-latest
     container:
