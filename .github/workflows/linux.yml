@@ -56,7 +56,7 @@ jobs:
 
       - uses: actions/upload-artifact@v2
         with:
-          name: binaries
+          name: binaries-${{matrix.image}}
           path: |
             ${{github.workspace}}/build/apps/dim_cli/dim_cli
             ${{github.workspace}}/build/apps/petsc_baseline/petsc_baseline
