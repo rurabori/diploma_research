@@ -28,7 +28,7 @@ jobs:
           context: ./
           file: ./dockerfiles/build_images/debian-10/Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/debian-10
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/diploma:debian-10
 
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
