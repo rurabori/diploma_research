@@ -1,5 +1,4 @@
 #include <H5Fpublic.h>
-#include <bits/ranges_algobase.h>
 #include <doctest/doctest.h>
 
 #include <dim/io/h5.h>
