@@ -8,3 +8,5 @@ brr_add_executable(dim_cli)
 target_link_libraries(
   dim_cli PRIVATE fmt::fmt HDF5::HDF5 dim::io structopt::structopt
                   spdlog::spdlog magic_enum::magic_enum)
+
+install(TARGETS dim_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
