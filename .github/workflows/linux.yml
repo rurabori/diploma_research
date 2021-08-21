@@ -19,11 +19,13 @@ jobs:
             cc: clang-12
             cxx: clang++-12
             additional_cmake_options: -DCMAKE_CXX_CLANG_TIDY="clang-tidy-12"
+            artifact_name: ubuntu-20.04
 
           - image: rurabori/diploma:debian-10
             cc: clang-11
             cxx: clang++-11
             additional_cmake_options: -DCMAKE_CXX_FLAGS="-stdlib=libc++"
+            artifact_name: debian-10
 
     runs-on: ubuntu-latest
     container:
@@ -56,7 +58,7 @@ jobs:
 
       - uses: actions/upload-artifact@v2
         with:
-          name: binaries-${{matrix.image}}
+          name: ${{matrix.artifact_name}}
           path: |
             ${{github.workspace}}/build/apps/dim_cli/dim_cli
             ${{github.workspace}}/build/apps/petsc_baseline/petsc_baseline
