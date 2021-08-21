@@ -21,8 +21,8 @@ jobs:
             additional_cmake_options: -DCMAKE_CXX_CLANG_TIDY="clang-tidy-12"
 
           - image: rurabori/diploma:debian-10
-            cc: gcc-11
-            cxx: g++-11
+            cc: clang-11
+            cxx: clang++-11
 
     runs-on: ubuntu-latest
     container:
