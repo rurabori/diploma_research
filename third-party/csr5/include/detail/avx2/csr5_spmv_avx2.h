@@ -155,7 +155,7 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
             bool first_all_direct = par_id == tid * chunk && first_direct;
 
             // set the 0th bit of the descriptor to 1.
-            descriptor128i = _mm_or_si128(descriptor128i, _mm_set_epi32(0, 0, 0, std::bit_cast<int>(0x80000000)));
+            descriptor128i = _mm_or_si128(descriptor128i, _mm_set_epi32(0, 0, 0, (int)0x80000000));
 
             // load bits for next 4 reductions.
             local_bit256i = get_local_bit(descriptor128i, 0);
@@ -193,7 +193,7 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                 local_bit256i = get_local_bit(descriptor128i, i);
 #endif
 
-                constexpr auto all_set_mask = std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF);
+                constexpr auto all_set_mask = (int64_t)0xFFFFFFFFFFFFFFFF;
                 int store_to_offchip = _mm256_testz_si256(local_bit256i, _mm256_set1_epi64x(all_set_mask));
 
                 // any of the bits mark start of a new row.
@@ -215,7 +215,7 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
                     // if mask is -1 (AKA uint64_t::max) we take values from first_sum256d, else we take from
                     // sum256d.
                     first_sum256d = _mm256_or_pd(_mm256_andnot_pd(_mm256_castsi256_pd(mask), first_sum256d),
-                                                  _mm256_and_pd(_mm256_castsi256_pd(mask), sum256d));
+                                                 _mm256_and_pd(_mm256_castsi256_pd(mask), sum256d));
 
                     // zero out the parts of sum which have localbit set (AKA starting new row).
                     sum256d = _mm256_andnot_pd(_mm256_castsi256_pd(localbit_mask), sum256d);
@@ -236,7 +236,7 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
             auto tmp256i = _mm256_cmpeq_epi64(direct256i, _mm256_set1_epi64x(0x1));
             // take elements wh
             first_sum256d = _mm256_or_pd(_mm256_and_pd(_mm256_castsi256_pd(tmp256i), first_sum256d),
-                                          _mm256_andnot_pd(_mm256_castsi256_pd(tmp256i), sum256d));
+                                         _mm256_andnot_pd(_mm256_castsi256_pd(tmp256i), sum256d));
 
             auto last_sum256d = sum256d;
             // make a mask out of it.
@@ -244,9 +244,9 @@ void spmv_csr5_compute_kernel(const iT* column_index, const vT* value, const vT*
             sum256d = _mm256_and_pd(_mm256_castsi256_pd(tmp256i), first_sum256d);
 
             sum256d = _mm256_permute4x64_pd(sum256d, make_permute_seq(1, 2, 3, 0));
-            const auto zero_last_mask = _mm256_castsi256_pd(_mm256_set_epi64x(
-              0x0000000000000000, std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF),
-              std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF), std::bit_cast<int64_t>(0xFFFFFFFFFFFFFFFF)));
+            const auto zero_last_mask
+              = _mm256_castsi256_pd(_mm256_set_epi64x(0x0000000000000000, (int64_t)0xFFFFFFFFFFFFFFFF,
+                                                      (int64_t)0xFFFFFFFFFFFFFFFF, (int64_t)0xFFFFFFFFFFFFFFFF));
             sum256d = _mm256_and_pd(zero_last_mask, sum256d);
 
             const auto tmp_sum256d = sum256d;

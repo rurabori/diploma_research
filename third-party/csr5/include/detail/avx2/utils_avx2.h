@@ -7,10 +7,11 @@
 namespace csr5::avx2 {
 
 // TODO: this relies on permutation argument being imm8, research if that is correct.
-template<std::integral... Ty>
-consteval int make_permute_seq(Ty... seq) {
+template<typename... Ty>
+constexpr int make_permute_seq(Ty... seq) {
     int value{};
-    for (size_t off = 0; auto pos : std::array{seq...})
+    size_t off = 0; 
+    for (auto pos : std::array{seq...})
         value |= pos << (off++ * 8 / sizeof...(seq));
 
     return value;

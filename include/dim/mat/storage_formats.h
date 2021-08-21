@@ -38,7 +38,7 @@ struct coo
         col_indices(non_zero_count),
         symmetric{symmetric} {}
 
-    template<std::invocable<ValueType, uint32_t, uint32_t> Callable>
+    template<typename /*std::invocable<ValueType, uint32_t, uint32_t>*/ Callable>
     void iterate(Callable&& callable) const noexcept {
         for (size_t i = 0; i < values.size(); ++i) {
             const auto row = row_indices[i];
@@ -90,10 +90,10 @@ struct csr
         // the number of actually non-0 elements is the last element in the offset array.
         csr retval{coo.dimensions, csr_row_counter.back()};
         // copy the offset array into the struct.
-        std::ranges::copy(csr_row_counter, retval.row_start_offsets.begin());
+        std::copy(csr_row_counter.begin(), csr_row_counter.end(), retval.row_start_offsets.begin());
 
         // reuse the csr_row_counter as offset counter for rows.
-        std::ranges::fill(csr_row_counter, 0);
+        std::fill(csr_row_counter.begin(), csr_row_counter.end(), 0);
         coo.iterate([&](auto value, auto row, auto col) {
             const auto row_start = retval.row_start_offsets[row];
             const auto offset = row_start + csr_row_counter[row]++;

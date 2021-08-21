@@ -11,12 +11,14 @@
 #include <numeric>
 #include <ranges>
 #include <span>
+#include <dim/span.h>
+
 
 namespace cg::spmv_algos {
 
 template<typename ValueType, template<typename> typename StorageTy>
-void cpu_sequential(const dim::mat::csr<ValueType, StorageTy>& matrix, std::span<ValueType> rhs,
-                    std::span<ValueType> output) {
+void cpu_sequential(const dim::mat::csr<ValueType, StorageTy>& matrix, dim::span<ValueType> rhs,
+                    dim::span<ValueType> output) {
     for (size_t row = 0; row < matrix.dimensions.rows; ++row) {
         double sum{};
         for (auto i = matrix.row_start_offsets[row]; i < matrix.row_start_offsets[row + 1]; ++i) {
@@ -43,15 +45,15 @@ auto create_csr5_handle(dim::mat::csr<ValueType, dim::mat::cache_aligned_vector>
 }
 
 template<typename ValueType>
-void cpu_avx2(csr5::avx2::anonymouslibHandle<int, unsigned int, ValueType>& A, std::span<ValueType> rhs,
-              std::span<ValueType> output) {
+void cpu_avx2(csr5::avx2::anonymouslibHandle<int, unsigned int, ValueType>& A, dim::span<ValueType> rhs,
+              dim::span<ValueType> output) {
     A.setX(rhs.data());
     A.spmv(1.0, output.data());
 }
 
 template<typename ValueType>
 void cpu_avx2(dim::mat::csr<ValueType, dim::mat::cache_aligned_vector>& matrix,
-              std::span<ValueType> rhs, std::span<ValueType> output) {
+              dim::span<ValueType> rhs, dim::span<ValueType> output) {
     csr5::avx2::anonymouslibHandle<int, unsigned int, ValueType> handle{static_cast<int>(matrix.dimensions.rows),
                                                                         static_cast<int>(matrix.dimensions.cols)};
 
@@ -65,7 +67,7 @@ void cpu_avx2(dim::mat::csr<ValueType, dim::mat::cache_aligned_vector>& matrix,
 
 #ifdef CUDA_ENABLED
 void cuda_complete_bench(dim::mat::csr<double, dim::mat::cache_aligned_vector>& matrix,
-                         std::span<double> rhs, std::span<double> output) {
+                         dim::span<double> rhs, dim::span<double> output) {
     bench_csr5_cuda(static_cast<int>(matrix.dimensions.rows), static_cast<int>(matrix.dimensions.cols),
                     static_cast<int>(matrix.values.size()), reinterpret_cast<int*>(matrix.row_start_offsets.data()),
                     reinterpret_cast<int*>(matrix.col_indices.data()), matrix.values.data(), rhs.data(), output.data());

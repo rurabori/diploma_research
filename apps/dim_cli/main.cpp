@@ -78,7 +78,7 @@ auto compare_results(const dim_cli::compare_results_t& args) -> int {
     const auto [rhs_id, rhs]
       = load_vec_and_info(args.input_file_2 ? *args.input_file_2 : args.input_file, *args.rhs_group, *args.rhs_dataset);
 
-    const auto correct = std::ranges::equal(lhs, rhs, nearly_equal);
+    const auto correct = std::equal(lhs.begin(), lhs.end(), rhs.begin(), nearly_equal);
 
     if (!correct) {
         spdlog::error("vectors {} and {} are not equal", lhs_id, rhs_id);

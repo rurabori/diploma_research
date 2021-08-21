@@ -43,9 +43,10 @@ TEST_CASE("test matlab/petsc compatible HDF5 roundtrip") {
     auto matrix_group = file.openGroup(group_name);
     const auto result = dim::io::h5::read_matlab_compatible(matrix_group);
 
-    REQUIRE(std::ranges::equal(result.values, sample.values));
-    REQUIRE(std::ranges::equal(result.col_indices, sample.col_indices));
-    REQUIRE(std::ranges::equal(result.row_start_offsets, sample.row_start_offsets));
+    REQUIRE(std::equal(result.values.begin(), result.values.begin(), sample.values.begin()));
+    REQUIRE(std::equal(result.col_indices.begin(), result.col_indices.begin(), sample.col_indices.begin()));
+    REQUIRE(
+      std::equal(result.row_start_offsets.begin(), result.row_start_offsets.begin(), sample.row_start_offsets.begin()));
     REQUIRE_EQ(result.dimensions.cols, sample.dimensions.cols);
     REQUIRE_EQ(result.dimensions.rows, sample.dimensions.rows);
 }

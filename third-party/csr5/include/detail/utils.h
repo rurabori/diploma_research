@@ -55,7 +55,7 @@ void print_1darray(T* input, int l) {
  * @param N the number of values that need to be stored.
  * @return constexpr size_t he amount of bits needed to store N values.F
  */
-template<std::integral Ty>
+template<typename Ty>
 constexpr size_t get_needed_storage(Ty N) {
     size_t retval{1};
 
@@ -65,7 +65,7 @@ constexpr size_t get_needed_storage(Ty N) {
     return retval;
 }
 
-template<std::integral Ty>
+template<typename Ty>
 constexpr size_t bit_size = sizeof(Ty) * CHAR_BIT;
 
 template<typename Callable>

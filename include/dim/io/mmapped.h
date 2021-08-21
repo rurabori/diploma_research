@@ -10,6 +10,8 @@
 #include <system_error>
 #include <utility>
 
+#include <dim/span.h>
+
 namespace dim::io {
 
 class mmapped
@@ -53,8 +55,8 @@ public:
     }
 
     template<typename As>
-    auto as() -> std::span<As> {
-        return std::span{reinterpret_cast<As*>(_memory), _size / sizeof(As)};
+    auto as() -> dim::span<As> {
+        return dim::span{reinterpret_cast<As*>(_memory), _size / sizeof(As)};
     }
 };
 

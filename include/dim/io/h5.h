@@ -14,7 +14,7 @@
 namespace dim::io::h5 {
 
 namespace detail {
-    template<std::ranges::contiguous_range Ty>
+    template<typename /*std::ranges::contiguous_range*/ Ty>
     void write_dataset(H5::Group& group, const std::string& name, const Ty& data, const H5::DataType& input_type,
                        const H5::DataType& storage_type) {
         hsize_t dims[1] = {std::size(data)};
@@ -90,8 +90,8 @@ auto read_matlab_compatible(const H5::Group& group) -> mat::csr<double, Storage>
     const auto num_cols
       = read_scalar_datatype<uint32_t>(group, "MATLAB_sparse", H5::PredType::STD_U64LE, H5::PredType::NATIVE_UINT32);
 
-    retval_t retval{mat::dimensions_t{.rows = static_cast<uint32_t>(row_start_offsets.size() - 1), .cols = num_cols},
-                    std::move(values), std::move(row_start_offsets), std::move(col_indices)};
+    retval_t retval{mat::dimensions_t{static_cast<uint32_t>(row_start_offsets.size() - 1), num_cols}, std::move(values),
+                    std::move(row_start_offsets), std::move(col_indices)};
 
     return retval;
 }

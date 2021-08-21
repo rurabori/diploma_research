@@ -11,13 +11,6 @@
 #include <stdexcept>
 #include <vector>
 
-#include <mm_malloc.h>
-#include <mmio/mmio.h>
-
-// TODO: make more standard/portable.
-#include <sys/mman.h>
-#include <sys/stat.h>
-
 #include <fmt/chrono.h>
 #include <fmt/format.h>
 
@@ -47,7 +40,7 @@ auto generate_random_vector(size_t required_size) {
 
     std::mt19937_64 prng{std::random_device{}()};
     std::uniform_real_distribution<double> dist{0., 1.};
-    std::ranges::generate(x, [&] { return dist(prng); });
+    std::generate(x.begin(), x.end(), [&] { return dist(prng); });
 
     return x;
 }
@@ -112,18 +105,18 @@ int main(int argc, const char* argv[]) {
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
     switch (arguments.algorithm) {
         case arguments::algorithm_t::cpu_sequential: {
-            report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_sequential(matrix, std::span{x}, std::span{Y}); });
+            report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_sequential(matrix, dim::span{x}, dim::span{Y}); });
             break;
         }
         case arguments::algorithm_t::cpu_avx2: {
             auto handle = cg::spmv_algos::create_csr5_handle(matrix);
-            report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_avx2(handle, std::span{x}, std::span{Y}); });
+            report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_avx2(handle, dim::span{x}, dim::span{Y}); });
             handle.destroy();
             break;
         }
 #ifdef CUDA_ENABLED
         case arguments::algorithm_t::cuda: {
-            cg::spmv_algos::cuda_complete_bench(matrix, std::span{x}, std::span{Y});
+            cg::spmv_algos::cuda_complete_bench(matrix, dim::span{x}, dim::span{Y});
             break;
         }
 #endif
@@ -131,10 +124,10 @@ int main(int argc, const char* argv[]) {
 
     if (arguments.debug) {
         auto Y_ref = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
-        cg::spmv_algos::cpu_sequential(matrix, std::span{x}, std::span{Y_ref});
+        cg::spmv_algos::cpu_sequential(matrix, dim::span{x}, dim::span{Y_ref});
 
-        const auto correct
-          = std::ranges::equal(Y, Y_ref, [](auto l, auto r) { return std::abs(l - r) <= (0.01 * std::abs(r)); });
+        const auto correct = std::equal(Y.begin(), Y.end(), Y_ref.begin(),
+                                        [](auto l, auto r) { return std::abs(l - r) <= (0.01 * std::abs(r)); });
         fmt::print(stderr, "SpMV correct: {}\n", correct);
     }
 

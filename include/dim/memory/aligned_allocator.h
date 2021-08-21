@@ -31,7 +31,7 @@ struct cache_aligned_allocator_t
 template<typename ValueType1, typename ValueType2>
 constexpr bool operator==(const cache_aligned_allocator_t<ValueType1>&,
                           const cache_aligned_allocator_t<ValueType2>&) noexcept {
-    return std::same_as<ValueType1, ValueType2>;
+    return std::is_same_v<ValueType1, ValueType2>;
 }
 
 template<typename ValueType1, typename ValueType2>

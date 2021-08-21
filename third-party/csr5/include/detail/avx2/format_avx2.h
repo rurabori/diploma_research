@@ -14,6 +14,8 @@
 #include <type_traits>
 #include <utility>
 
+#include <dim/span.h>
+
 #include <dim/memory/aligned_allocator.h>
 
 namespace csr5::avx2 {
@@ -27,7 +29,7 @@ namespace csr5::avx2 {
  * @param which the bit to be set (0 means MSB, 1 means MSB - 1 etc.)
  * @return constexpr Integral a value with needed bit set.
  */
-template<std::integral Integral>
+template<typename Integral>
 constexpr Integral set_bit(size_t which) {
     return Integral{1} << bit_size<Integral> - 1 - which;
 }
@@ -39,7 +41,7 @@ constexpr Integral set_bit(size_t which) {
  * @param which the bit to be set (0 means MSB, 1 means MSB - 1 etc.)
  * @return constexpr bool true if bit is set, false otherwise.
  */
-template<std::integral Integral>
+template<typename Integral>
 constexpr bool has_bit_set(Integral value, size_t which) {
     return value & set_bit<Integral>(which);
 }
@@ -47,23 +49,23 @@ constexpr bool has_bit_set(Integral value, size_t which) {
 template<typename Integral>
 constexpr Integral msb = set_bit<Integral>(0);
 
-template<std::integral Ty>
+template<typename Ty>
 bool is_dirty(Ty value) {
     return value & msb<Ty>;
 }
 
-template<std::integral Ty>
+template<typename Ty>
 Ty mark_dirty(Ty value) {
     return value | msb<Ty>;
 }
 
-template<std::integral Ty>
+template<typename Ty>
 Ty strip_dirty(Ty value) {
     return value & ~msb<Ty>;
 }
 
 template<bool StripDirty = true, typename uiT, typename Callable>
-void iterate_partitions(const std::span<uiT> partitions, Callable&& callable) {
+void iterate_partitions(const dim::span<uiT> partitions, Callable&& callable) {
     constexpr auto conditional_strip = [](auto value) { return StripDirty ? strip_dirty(value) : value; };
 
 #pragma omp parallel for
@@ -75,11 +77,11 @@ void iterate_partitions(const std::span<uiT> partitions, Callable&& callable) {
 }
 
 template<typename iT>
-bool is_dirty(const std::span<const iT> row) {
-    return std::ranges::adjacent_find(row) != row.end();
+bool is_dirty(const dim::span<const iT> row) {
+    return std::adjacent_find(row.begin(), row.end()) != row.end();
 }
 
-template<std::integral Integral>
+template<typename Integral>
 constexpr size_t set_bit_count(const Integral value, const size_t start = 0, const size_t count = bit_size<Integral>) {
     size_t result{};
 
@@ -91,19 +93,19 @@ constexpr size_t set_bit_count(const Integral value, const size_t start = 0, con
 }
 
 template<typename ValueType>
-constexpr size_t count_consecutive_equal_elements(const std::span<ValueType> data, const ValueType& example) {
-    return static_cast<size_t>(
-      std::distance(data.begin(), std::ranges::find_if_not(data, [&](auto&& val) { return val == example; })));
+constexpr size_t count_consecutive_equal_elements(const dim::span<ValueType> data, const ValueType& example) {
+    return static_cast<size_t>(std::distance(
+      data.begin(), std::find_if_not(data.begin(), data.end(), [&](auto&& val) { return val == example; })));
 }
 
 template<typename RangeLike, typename ValueType>
-constexpr size_t upper_bound_idx(RangeLike&& range, const ValueType& val) {
-    auto&& it = std::ranges::upper_bound(std::forward<RangeLike>(range), val);
-    return static_cast<size_t>(std::distance(std::begin(std::forward<RangeLike>(range)), it) - 1);
+constexpr size_t upper_bound_idx(const RangeLike& range, const ValueType& val) {
+    auto&& it = std::upper_bound(range.begin(), range.end(), val);
+    return static_cast<size_t>(std::distance(range.begin(), it) - 1);
 }
 
 template<typename iT, typename uiT>
-void generate_partition_pointer_s1_kernel(std::span<const iT> row_start_offsets, const std::span<uiT> partition,
+void generate_partition_pointer_s1_kernel(dim::span<const iT> row_start_offsets, const dim::span<uiT> partition,
                                           const size_t sigma, const size_t nnz) {
 #pragma omp parallel for
     for (size_t global_id = 0; global_id < partition.size(); global_id++) {
@@ -116,7 +118,7 @@ void generate_partition_pointer_s1_kernel(std::span<const iT> row_start_offsets,
 }
 
 template<typename iT, typename uiT>
-void generate_partition_pointer_s2_kernel(const std::span<const iT> row_start_offsets, const std::span<uiT> partition) {
+void generate_partition_pointer_s2_kernel(const dim::span<const iT> row_start_offsets, const dim::span<uiT> partition) {
     iterate_partitions(partition, [&](auto partition_id, auto start, auto stop) {
         if (start == stop)
             return;
@@ -128,8 +130,8 @@ void generate_partition_pointer_s2_kernel(const std::span<const iT> row_start_of
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
 int generate_partition_pointer(const size_t sigma, const size_t num_non_zero,
-                               const std::span<ANONYMOUSLIB_UIT> partition,
-                               const std::span<const ANONYMOUSLIB_IT> row_start_offsets) {
+                               const dim::span<ANONYMOUSLIB_UIT> partition,
+                               const dim::span<const ANONYMOUSLIB_IT> row_start_offsets) {
     // step 1. binary search row pointer
     generate_partition_pointer_s1_kernel<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(row_start_offsets, partition, sigma,
                                                                             num_non_zero);
@@ -144,7 +146,7 @@ int generate_partition_pointer(const size_t sigma, const size_t num_non_zero,
  * @brief Sets the bit flag of each first non-0 element in a tile to true.
  */
 template<typename iT, typename uiT>
-void set_partition_descriptor_bit_flags(const iT* row_start_offsets, const std::span<const uiT> partition_pointer,
+void set_partition_descriptor_bit_flags(const iT* row_start_offsets, const dim::span<const uiT> partition_pointer,
                                         uiT* partition_descriptor, const size_t sigma, const size_t bit_all_offset,
                                         const size_t num_packet) {
     iterate_partitions(partition_pointer, [&](auto partition_id, auto row_start, auto row_stop) {
@@ -177,9 +179,9 @@ void set_partition_descriptor_bit_flags(const iT* row_start_offsets, const std::
     });
 }
 
-auto num_set_bits_in_bitflag(size_t bit_all_offset, size_t sigma, size_t col_idx,
-                             std::invocable<size_t, size_t> auto&& read_packet) {
-    using packet_type = std::remove_cvref_t<decltype(read_packet(0, 0))>;
+template<typename ReadPacketFn>
+auto num_set_bits_in_bitflag(size_t bit_all_offset, size_t sigma, size_t col_idx, ReadPacketFn&& read_packet) {
+    using packet_type = std::remove_cv_t<std::remove_reference_t<decltype(read_packet(0, 0))>>;
     const auto first_packet_bit_flag_size = bit_size<packet_type> - bit_all_offset;
 
     struct
@@ -215,9 +217,9 @@ auto num_set_bits_in_bitflag(size_t bit_all_offset, size_t sigma, size_t col_idx
     return result;
 }
 
-template<std::invocable<size_t, size_t> ReadPacket>
-void calculate_segn_scan_and_present(const size_t sigma, const size_t bit_all_offset, const std::span<int> segn_scan,
-                                     const std::span<bool> present, const ReadPacket& read_packet) {
+template<typename ReadPacket>
+void calculate_segn_scan_and_present(const size_t sigma, const size_t bit_all_offset, const dim::span<int> segn_scan,
+                                     const dim::span<bool> present, const ReadPacket& read_packet) {
 #pragma omp simd
     for (size_t col_idx = 0; col_idx < ANONYMOUSLIB_CSR5_OMEGA; ++col_idx) {
         const auto [first_set, num_set] = num_set_bits_in_bitflag(bit_all_offset, sigma, col_idx, read_packet);
@@ -231,7 +233,7 @@ void calculate_segn_scan_and_present(const size_t sigma, const size_t bit_all_of
     std::exclusive_scan(segn_scan.begin(), segn_scan.end(), segn_scan.begin(), 0);
 }
 
-template<std::integral uiT>
+template<typename uiT>
 auto create_packet_accessor(uiT* partition_descriptor, size_t partition_id, size_t num_packets) {
     const auto base_descriptor_index = partition_id * ANONYMOUSLIB_CSR5_OMEGA * num_packets;
 
@@ -241,7 +243,7 @@ auto create_packet_accessor(uiT* partition_descriptor, size_t partition_id, size
 }
 
 template<typename iT, typename uiT>
-void set_partition_descriptor_y_and_segsum_offsets(const std::span<const uiT> partitions, uiT* partition_descriptor,
+void set_partition_descriptor_y_and_segsum_offsets(const dim::span<const uiT> partitions, uiT* partition_descriptor,
                                                    iT* partition_descriptor_offset_pointer, const size_t sigma,
                                                    const size_t num_packet, const size_t bit_y_offset,
                                                    const size_t bit_scansum_offset) {
@@ -276,7 +278,7 @@ void set_partition_descriptor_y_and_segsum_offsets(const std::span<const uiT> pa
 
             const auto scansum_offset
               = present[col_idx]
-                  ? static_cast<uiT>(count_consecutive_equal_elements(std::span{present}.subspan(col_idx + 1), false))
+                  ? static_cast<uiT>(count_consecutive_equal_elements(dim::span{present}.subspan(col_idx + 1), false))
                   : 0;
             first_packet |= scansum_offset << (bit_size<decltype(first_packet)> - bit_all_offset);
 
@@ -288,7 +290,7 @@ void set_partition_descriptor_y_and_segsum_offsets(const std::span<const uiT> pa
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
 int generate_partition_descriptor(const size_t sigma, const size_t bit_y_offset, const size_t bit_scansum_offset,
                                   const size_t num_packet, const ANONYMOUSLIB_IT* row_pointer,
-                                  const std::span<const ANONYMOUSLIB_UIT> partition_pointer,
+                                  const dim::span<const ANONYMOUSLIB_UIT> partition_pointer,
                                   ANONYMOUSLIB_UIT* partition_descriptor,
                                   ANONYMOUSLIB_IT* partition_descriptor_offset_pointer, ANONYMOUSLIB_IT& _num_offsets) {
     size_t bit_all_offset = bit_y_offset + bit_scansum_offset;
@@ -313,7 +315,7 @@ int generate_partition_descriptor(const size_t sigma, const size_t bit_y_offset,
 }
 
 template<typename iT, typename uiT>
-void generate_partition_descriptor_offset_kernel(std::span<const iT> rows, const std::span<const uiT> partitions,
+void generate_partition_descriptor_offset_kernel(dim::span<const iT> rows, const dim::span<const uiT> partitions,
                                                  const uiT* partition_descriptor,
                                                  const iT* partition_descriptor_offset_pointer,
                                                  iT* partition_descriptor_offset, const size_t num_packet,
@@ -347,8 +349,8 @@ void generate_partition_descriptor_offset_kernel(std::span<const iT> rows, const
 
 template<typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT>
 int generate_partition_descriptor_offset(const size_t sigma, const size_t bit_y_offset, const size_t bit_scansum_offset,
-                                         const size_t num_packet, std::span<const ANONYMOUSLIB_IT> rows,
-                                         const std::span<const ANONYMOUSLIB_UIT> partition_pointer,
+                                         const size_t num_packet, dim::span<const ANONYMOUSLIB_IT> rows,
+                                         const dim::span<const ANONYMOUSLIB_UIT> partition_pointer,
                                          ANONYMOUSLIB_UIT* partition_descriptor,
                                          ANONYMOUSLIB_IT* partition_descriptor_offset_pointer,
                                          ANONYMOUSLIB_IT* partition_descriptor_offset) {
@@ -361,7 +363,7 @@ int generate_partition_descriptor_offset(const size_t sigma, const size_t bit_y_
 
 // R2C==true means CSR->CSR5, otherwise CSR5->CSR
 template<bool R2C, typename T, typename uiT>
-void aosoa_transpose_kernel_smem(T* d_data, const std::span<uiT> partitions, const size_t sigma) {
+void aosoa_transpose_kernel_smem(T* d_data, const dim::span<uiT> partitions, const size_t sigma) {
     const auto transform_index = [&](size_t idx, bool r2c) {
         if (r2c)
             return std::pair{(idx / sigma), (idx % sigma)};
@@ -396,7 +398,7 @@ void aosoa_transpose_kernel_smem(T* d_data, const std::span<uiT> partitions, con
 }
 
 template<bool R2C, typename ANONYMOUSLIB_IT, typename ANONYMOUSLIB_UIT, typename ANONYMOUSLIB_VT>
-int aosoa_transpose(const size_t sigma, const std::span<ANONYMOUSLIB_UIT> partition_pointer,
+int aosoa_transpose(const size_t sigma, const dim::span<ANONYMOUSLIB_UIT> partition_pointer,
                     ANONYMOUSLIB_IT* column_index, ANONYMOUSLIB_VT* value) {
     aosoa_transpose_kernel_smem<R2C, ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(column_index, partition_pointer, sigma);
     aosoa_transpose_kernel_smem<R2C, ANONYMOUSLIB_VT, ANONYMOUSLIB_UIT>(value, partition_pointer, sigma);

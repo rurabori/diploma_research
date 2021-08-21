@@ -12,7 +12,7 @@ struct petsc_error_checker
     const char* function;
 
     [[nodiscard]] int contain_errq(int errc) const {
-        if (errc != 0) [[unlikely]]
+        if (errc != 0)
             return PetscError(PETSC_COMM_SELF, line, function, file, errc, PETSC_ERROR_REPEAT, " ");
 
         return 0;

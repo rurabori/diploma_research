@@ -7,8 +7,7 @@ auto matrix_size_t::from_file(FILE* file) -> matrix_size_t {
     int non_zero{};
     mm_read_mtx_crd_size(file, &rows, &cols, &non_zero);
 
-    return {.dimensions = {.rows = static_cast<uint32_t>(rows), .cols = static_cast<uint32_t>(cols)},
-            .num_non_zero = static_cast<size_t>(non_zero)};
+    return {{static_cast<uint32_t>(rows), static_cast<uint32_t>(cols)}, static_cast<size_t>(non_zero)};
 }
 
 } // namespace dim::io::matrix_market
