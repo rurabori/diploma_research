@@ -1,2 +1,2 @@
 # add the rolling distro
-deb http://ftp.debian.org/debian sid main
+deb http://deb.debian.org/debian buster-backports main

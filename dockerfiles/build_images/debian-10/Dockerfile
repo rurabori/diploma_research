@@ -2,25 +2,18 @@ FROM debian:10
 
 ARG cmake_version="3.21.1"
 
-# prerequisites for adding new deb repos.
-RUN apt update
-RUN apt install -y gnupg ca-certificates software-properties-common curl libc6-dev
+# add new repositories.
+COPY dockerfiles/build_images/debian-10/additional_sources.list /etc/apt/sources.list.d/additional_sources.list
 
+RUN apt update
 # install now so that apt doesn't try to update glibc.
 RUN apt install -y curl libc6-dev
 # development requirements
 RUN apt install -y mpi-default-dev pkgconf petsc-dev python3 python3-pip
-
-# add new repositories.
-COPY dockerfiles/build_images/debian-10/additional_sources.list /etc/apt/sources.list.d/additional_sources.list
-
-# update to get packages from added repos.
-RUN apt update
-
 # build requirements
-RUN apt install -y ninja-build apt
-# gcc-10
-RUN apt install -y --no-install-recommends gcc-10 g++-10
+RUN apt install -y ninja-build
+
+RUN apt install -y --no-install-recommends clang-11 libomp-11-dev
 
 RUN pip3 install conan
 
