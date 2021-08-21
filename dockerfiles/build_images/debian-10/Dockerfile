@@ -19,8 +19,8 @@ RUN apt update
 
 # build requirements
 RUN apt install -y ninja-build apt
-# gcc-11
-RUN apt install -y --no-install-recommends gcc-11 g++-11
+# gcc-10
+RUN apt install -y --no-install-recommends gcc-10 g++-10
 
 RUN pip3 install conan
 
