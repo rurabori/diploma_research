@@ -18,6 +18,7 @@ jobs:
           - image: rurabori/diploma:ubuntu-20.04
             cc: clang-12
             cxx: clang++-12
+            additional_cmake_options: -DCMAKE_CXX_CLANG_TIDY="clang-tidy-12"
 
           - image: rurabori/diploma:debian-10
             cc: gcc-11
@@ -44,7 +45,7 @@ jobs:
           key: ${{ runner.os }}-${{ hashFiles('conanfile.py') }}-${{ env.BUILD_TYPE }}-${{ env.CC }}-${{ env.CXX }}
 
       - name: Configure CMake
-        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -Denable_cuda_backend="OFF" -DCMAKE_CXX_CLANG_TIDY="clang-tidy-12" -G "Ninja"
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -Denable_cuda_backend="OFF" ${{matrix.additional_cmake_options}}-G "Ninja"
       
       - name: Build
         run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
