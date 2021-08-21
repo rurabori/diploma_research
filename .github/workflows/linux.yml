@@ -56,16 +56,12 @@ jobs:
       - name: Test
         run: ctest -C ${{env.BUILD_TYPE}} --test-dir ${{github.workspace}}/build
 
-      - run: ls -lashR ${{github.workspace}}/build
-
       - uses: actions/upload-artifact@v2
         with:
           name: ${{matrix.artifact_name}}
-          path: |
-            ${{github.workspace}}/build/apps/dim_cli/dim_cli
+          path: "${{github.workspace}}/build/apps/dim_cli/dim_cli"
             
       - uses: actions/upload-artifact@v2
         with:
           name: ${{matrix.artifact_name}}
-          path: |
-            ${{github.workspace}}/build/apps/petsc_baseline/petsc_baseline
+          path: "${{github.workspace}}/build/apps/petsc_baseline/petsc_baseline"
