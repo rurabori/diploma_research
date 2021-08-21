@@ -6,7 +6,6 @@
 #include <sys/stat.h>
 
 #include <cstddef>
-#include <span>
 #include <system_error>
 #include <utility>
 

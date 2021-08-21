@@ -9,8 +9,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <numeric>
-#include <ranges>
-#include <span>
 #include <type_traits>
 #include <utility>
 

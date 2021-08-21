@@ -1,7 +1,6 @@
 #ifndef INCLUDE_DIM_MEMORY_ALIGNED_ALLOCATOR
 #define INCLUDE_DIM_MEMORY_ALIGNED_ALLOCATOR
 
-#include <concepts>
 #include <cstddef>
 #include <new>
 #include <vector>

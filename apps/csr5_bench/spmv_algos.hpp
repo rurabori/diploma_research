@@ -1,5 +1,5 @@
-#ifndef APPS_CONJUGATE_GRADIENT_SPMV_ALGOS
-#define APPS_CONJUGATE_GRADIENT_SPMV_ALGOS
+#ifndef APPS_CSR5_BENCH_SPMV_ALGOS
+#define APPS_CSR5_BENCH_SPMV_ALGOS
 
 #ifdef CUDA_ENABLED
 #include "cuda_algo_facade.h"
@@ -9,8 +9,6 @@
 #include "timed_section.h"
 #include <anonymouslib_avx2.h>
 #include <numeric>
-#include <ranges>
-#include <span>
 #include <dim/span.h>
 
 
@@ -76,4 +74,4 @@ void cuda_complete_bench(dim::mat::csr<double, dim::mat::cache_aligned_vector>& 
 
 } // namespace cg::spmv_algos
 
-#endif /* APPS_CONJUGATE_GRADIENT_SPMV_ALGOS */
+#endif /* APPS_CSR5_BENCH_SPMV_ALGOS */

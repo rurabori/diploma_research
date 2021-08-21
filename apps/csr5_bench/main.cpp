@@ -6,8 +6,6 @@
 #include <filesystem>
 #include <iterator>
 #include <random>
-#include <ranges>
-#include <span>
 #include <stdexcept>
 #include <vector>
 

@@ -4,7 +4,6 @@
 
 #include <filesystem>
 #include <optional>
-#include <ranges>
 #include <stdexcept>
 #include <string>
 
