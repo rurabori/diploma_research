@@ -7,7 +7,6 @@
 #include <petscsys.h>
 #include <petscviewerhdf5.h>
 
-#include <petscsystypes.h>
 #include <petscviewer.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>
