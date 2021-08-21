@@ -12,13 +12,24 @@ env:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        include:
+          - image: rurabori/diploma:ubuntu-20.04
+            cc: clang-12
+            cxx: clang++-12
+
+          - image: rurabori/diploma:debian-10
+            cc: gcc-11
+            cxx: g++-11
+
     runs-on: ubuntu-latest
     container:
-      image: rurabori/diploma:ubuntu-20.04
+      image: ${{matrix.image}}
 
     env:
-      CXX: clang++-12
-      CC: clang-12
+      CC: ${{matrix.cc}}
+      CXX: ${{matrix.cxx}}
       CUDACXX: /usr/local/cuda/bin/nvcc
       CONAN_USER_HOME: ${{github.workspace}}
 
