@@ -17,8 +17,6 @@ COPY dockerfiles/build_images/debian-10/additional_sources.list /etc/apt/sources
 # update to get packages from added repos.
 RUN apt update
 
-# disable dialogs or curl will complain.
-RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
 # build requirements
 RUN apt install -y ninja-build apt
 # gcc-11
