@@ -24,7 +24,7 @@ jobs:
           - image: rurabori/diploma:debian-10
             cc: clang-11
             cxx: clang++-11
-            additional_cmake_options: -DCMAKE_CXX_FLAGS="-stdlib=libc++"
+            additional_cmake_options: -DCMAKE_CXX_FLAGS="-stdlib=libc++ -static-libc++ -static-libc++abi"
             artifact_name: debian-10
 
     runs-on: ubuntu-latest
