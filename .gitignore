@@ -2,3 +2,6 @@
 build
 # matrices are kind of big, don't push to git.
 resources/matrices
+
+
+.venv
