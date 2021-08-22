@@ -14,8 +14,8 @@ auto arguments::create() -> void {
         petsc_try PetscOptionsString("-matrix_file", "load the input matrix from the specified file", nullptr,
                                      std::data(input_matrix), std::data(input_matrix), std::size(input_matrix), &found);
 
-        petsc_try PetscOptionsString("-result_file", "store the result in this file", nullptr, std::data(input_matrix),
-                                     std::data(input_matrix), std::size(input_matrix), &found);
+        petsc_try PetscOptionsString("-result_file", "store the result in this file", nullptr, std::data(output_file),
+                                     std::data(output_file), std::size(output_file), &found);
 
         petsc_try PetscOptionsString("-matrix_name", "name of the matrix to load (names group in HDF5 file)", nullptr,
                                      std::data(matrix_name), std::data(matrix_name), std::size(matrix_name), &found);
