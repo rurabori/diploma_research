@@ -24,7 +24,7 @@ jobs:
           - image: rurabori/diploma:debian-10
             cc: clang-12
             cxx: clang++-12
-            additional_cmake_options: -DCMAKE_CXX_FLAGS="-stdlib=libc++"
+            additional_cmake_options: -CMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/cmake/toolchains/debian-10-llvm-12-libcpp.cmake"
             artifact_name: debian-10
 
     runs-on: ubuntu-latest
