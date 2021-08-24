@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ${{ env.CONAN_USER_HOME }}/.conan
-          key: ${{matrix.image}}-${{ runner.os }}-${{ hashFiles('conanfile.py') }}-${{ env.BUILD_TYPE }}-${{ env.CC }}-${{ env.CXX }}
+          key: ${{matrix.image}}-${{ runner.os }}-${{ hashFiles('conanfile.py') }}-${{ env.BUILD_TYPE }}-${{ env.CC }}-${{ env.CXX }}-20
 
       - name: Configure CMake
         working-directory: ${{github.workspace}}
