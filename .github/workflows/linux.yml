@@ -22,8 +22,8 @@ jobs:
             artifact_name: ubuntu-20.04
 
           - image: rurabori/diploma:debian-10
-            cc: clang-11
-            cxx: clang++-11
+            cc: clang-12
+            cxx: clang++-12
             additional_cmake_options: -DCMAKE_CXX_FLAGS="-stdlib=libc++"
             artifact_name: debian-10
 
