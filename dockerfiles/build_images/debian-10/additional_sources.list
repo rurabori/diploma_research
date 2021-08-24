@@ -1,2 +1,6 @@
 # add the rolling distro
 deb http://deb.debian.org/debian buster-backports main
+
+# llvm-12
+deb http://apt.llvm.org/buster/ llvm-toolchain-buster-12 main
+deb-src http://apt.llvm.org/buster/ llvm-toolchain-buster-12 main
