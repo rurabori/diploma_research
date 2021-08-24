@@ -12,6 +12,8 @@ RUN apt install -y gnupg ca-certificates software-properties-common
 RUN apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key
 COPY dockerfiles/build_images/debian-10/additional_sources.list /etc/apt/sources.list.d/additional_sources.list
 
+# now we should have new packages.
+RUN apt update
 
 # development requirements
 RUN apt install -y mpi-default-dev pkgconf petsc-dev python3 python3-pip
