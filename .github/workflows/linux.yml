@@ -24,7 +24,7 @@ jobs:
           - image: rurabori/diploma:debian-10
             cc: clang-12
             cxx: clang++-12
-            additional_cmake_options: -CMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/cmake/toolchains/debian-10-llvm-12-libcpp.cmake"
+            additional_cmake_options: -DCMAKE_TOOLCHAIN_FILE="cmake/toolchains/debian-10-llvm-12-libcpp.cmake"
             artifact_name: debian-10
 
     runs-on: ubuntu-latest
@@ -48,6 +48,7 @@ jobs:
           key: ${{matrix.image}}-${{ runner.os }}-${{ hashFiles('conanfile.py') }}-${{ env.BUILD_TYPE }}-${{ env.CC }}-${{ env.CXX }}
 
       - name: Configure CMake
+        working-directory: ${{github.workspace}}
         run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -Denable_cuda_backend="OFF" -DCMAKE_INSTALL_PREFIX="${{github.workspace}}/install"  ${{matrix.additional_cmake_options}}  -G "Ninja"
 
       - name: Build
