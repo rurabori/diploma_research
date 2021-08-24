@@ -19,7 +19,7 @@ RUN apt update
 RUN apt install -y mpi-default-dev pkgconf petsc-dev python3 python3-pip
 # build requirements
 RUN apt install -y ninja-build
-RUN apt install -y --no-install-recommends clang-12 libomp-12-dev libc++-12-dev libc++abi-12-dev
+RUN apt install -y clang-12 libomp-12-dev libc++-12-dev libc++abi-12-dev libunwind-dev
 
 RUN pip3 install conan
 
