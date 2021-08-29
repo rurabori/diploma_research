@@ -1,11 +1,12 @@
-#include <H5Fpublic.h>
-#include <dim/io/h5.h>
-#include <dim/io/matrix_market.h>
 
+#include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 #include <hdf5/H5Cpp.h>
 #include <hdf5/H5Exception.h>
@@ -16,9 +17,14 @@
 #include <spdlog/logger.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
-#include <string_view>
+
+#include <scn/scn.h>
+
+#include <dim/io/h5.h>
+#include <dim/io/matrix_market.h>
 
 #include "arguments.h"
+#include "subcommands/download.h"
 #include "version.h"
 
 H5::Group create_group_recurse(H5::Group base, std::string_view parts) {
@@ -97,6 +103,9 @@ int main(int argc, char* argv[]) try {
 
     if (arguments.compare_results.has_value())
         return compare_results(arguments.compare_results);
+
+    if (arguments.download.has_value())
+        return download(arguments.download);
 
     return 0;
 } catch (const H5::Exception& e) {

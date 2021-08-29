@@ -98,7 +98,7 @@ int main(int argc, const char* argv[]) {
 
     auto dimensions = matrix.dimensions;
 
-    auto x = generate_random_vector(dimensions.cols);
+    auto x = std::vector<double>(dimensions.cols, 1.);
 
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
     switch (arguments.algorithm) {

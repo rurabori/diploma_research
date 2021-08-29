@@ -42,11 +42,19 @@ struct dim_cli
     };
     compare_results_t compare_results;
 
+    struct download_t : structopt::sub_command
+    {
+        std::string url;
+        std::optional<path> destination_dir{std::filesystem::current_path()};
+    };
+    download_t download;
+
     std::optional<log_level_t> log_level{log_level_t::warn};
 };
 
 STRUCTOPT(dim_cli::compare_results_t, input_file, input_file_2, lhs_group, rhs_group);
 STRUCTOPT(dim_cli::store_matrix_t, input, output);
-STRUCTOPT(dim_cli, store_matrix, compare_results, log_level);
+STRUCTOPT(dim_cli::download_t, url, destination_dir);
+STRUCTOPT(dim_cli, store_matrix, compare_results, download, log_level);
 
 #endif /* APPS_DIM_CLI_ARGUMENTS */

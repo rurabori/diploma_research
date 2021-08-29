@@ -18,7 +18,7 @@ endmacro()
 macro(glob_sources)
   # common sources.
   file(
-    GLOB
+    GLOB_RECURSE
     sources
     CONFIGURE_DEPENDS
     *.c
