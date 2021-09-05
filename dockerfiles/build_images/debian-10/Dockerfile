@@ -2,7 +2,6 @@ FROM debian:10
 
 ARG cmake_version="3.21.1"
 
-
 RUN apt update
 # install now so that apt doesn't try to update glibc.
 RUN apt install -y curl libc6-dev
