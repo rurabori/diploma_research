@@ -12,11 +12,14 @@ RUN apt install -y gnupg ca-certificates software-properties-common
 RUN apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key
 COPY dockerfiles/build_images/debian-10/additional_sources.list /etc/apt/sources.list.d/additional_sources.list
 
+COPY dockerfiles/build_images/debian-10/petsc-3.15.tar.gz /usr/lib/petsc-3.15.tar.gz
+RUN cd /usr/lib && tar xvfz petsc-3.15.tar.gz && rm petsc-3.15.tar.gz
+
 # now we should have new packages.
 RUN apt update
 
 # development requirements
-RUN apt install -y mpi-default-dev pkgconf petsc-dev python3 python3-pip
+RUN apt install -y mpi-default-dev pkgconf python3 python3-pip
 # build requirements
 RUN apt install -y ninja-build
 RUN apt install -y clang-12 libomp-12-dev libc++-12-dev libc++abi-12-dev libunwind-dev
