@@ -18,12 +18,14 @@ jobs:
           - image: rurabori/diploma:ubuntu-20.04
             cc: clang-12
             cxx: clang++-12
+            pkg_config_path: "" # empty for now, if we make ubuntu builds of PETSc we might need this.
             additional_cmake_options: -DCMAKE_CXX_CLANG_TIDY="clang-tidy-12"
             artifact_name: ubuntu-20.04
 
           - image: rurabori/diploma:debian-10
             cc: clang-12
             cxx: clang++-12
+            pkg_config_path: /usr/lib/petsc/lib/pkgconfig
             additional_cmake_options: -DCMAKE_TOOLCHAIN_FILE="cmake/toolchains/debian-10-llvm-12-libcpp.cmake"
             artifact_name: debian-10
 
@@ -36,6 +38,7 @@ jobs:
       CXX: ${{matrix.cxx}}
       CUDACXX: /usr/local/cuda/bin/nvcc
       CONAN_USER_HOME: ${{github.workspace}}
+      PKG_CONFIG_PATH: ${{matrix.pkg_config_path}}
 
     steps:
       - uses: actions/checkout@v2
