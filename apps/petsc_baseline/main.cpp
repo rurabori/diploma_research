@@ -43,7 +43,7 @@ auto is_help_set() -> bool {
     return help_set == PETSC_TRUE;
 }
 
-auto petsc_main(const arguments& args, std::shared_ptr<spdlog::logger> logger) -> void {
+auto petsc_main(const arguments& args) -> void {
     using viewer_t = guard<PetscViewer, PetscViewerHDF5Open, PetscViewerDestroy>;
     using mat_t = guard<Mat, MatCreate, MatDestroy>;
     using vec_t = guard<Vec, VecCreate, VecDestroy>;
@@ -74,20 +74,16 @@ int main(int argc, char* argv[]) try {
     arguments args{};
     args.create();
 
-    auto logger = spdlog::basic_logger_mt(petsc_baseline_FULL_NAME, create_logger_name(std::data(args.log_directory)));
+    spdlog::set_default_logger(
+      spdlog::basic_logger_mt(petsc_baseline_FULL_NAME, create_logger_name(std::data(args.log_directory))));
 
     if (is_help_set())
         return 0;
 
-    try {
-        petsc_main(args, logger);
-    } catch (std::exception& e) {
-        logger->critical("failed with {}, aborting.", e.what());
-        return 1;
-    }
+    petsc_main(args);
 
     return 0;
 } catch (std::exception& e) {
-    std::cerr << "Error: " << e.what() << '\n';
+    spdlog::critical("failed with {}, aborting.", e.what());
     return 1;
 }

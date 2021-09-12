@@ -3,6 +3,7 @@
 
 #include <stdexcept>
 
+#include <fmt/format.h>
 #include <petsc.h>
 
 struct petsc_error_checker
@@ -20,7 +21,7 @@ struct petsc_error_checker
 
     void operator%(int errc) const {
         if (contain_errq(errc) != 0)
-            throw std::system_error{errc, std::generic_category(), "petsc failed."};
+            throw std::runtime_error{fmt::format("petsc failed: {}", errc)};
     }
 };
 
