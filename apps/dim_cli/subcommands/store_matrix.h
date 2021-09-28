@@ -3,5 +3,5 @@
 
 #include "../arguments.h"
 
-void store_matrix(const dim_cli::store_matrix_t& arguments);
+auto store_matrix(const dim_cli::store_matrix_t& arguments) -> int;
 #endif /* APPS_DIM_CLI_SUBCOMMANDS_STORE_MATRIX */

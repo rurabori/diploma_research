@@ -42,7 +42,7 @@ auto create_matrix_storage_props(const dim_cli::store_matrix_t& arguments) {
 
 } // namespace
 
-void store_matrix(const dim_cli::store_matrix_t& arguments) {
+auto store_matrix(const dim_cli::store_matrix_t& arguments) -> int {
     using dim::io::h5::write_matlab_compatible;
     using dim::io::matrix_market::load_as_csr;
     using std::filesystem::file_size;
@@ -62,4 +62,6 @@ void store_matrix(const dim_cli::store_matrix_t& arguments) {
     stopwatch.reset();
     write_matlab_compatible(matrix_group, csr, create_matrix_storage_props(arguments));
     spdlog::info("storing CSR to HDF5 took: {}s", stopwatch);
+    
+    return 0;
 }

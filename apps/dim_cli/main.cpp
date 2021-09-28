@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) try {
     spdlog::set_level(*arguments.log_level);
 
     if (arguments.store_matrix.has_value())
-        store_matrix(arguments.store_matrix);
+        return store_matrix(arguments.store_matrix);
 
     if (arguments.compare_results.has_value())
         return compare_results(arguments.compare_results);
@@ -71,8 +71,7 @@ int main(int argc, char* argv[]) try {
     if (arguments.download.has_value())
         return download(arguments.download);
 
-
-    fmt::print("{}", app.help());    
+    fmt::print("{}", app.help());
 
     return 0;
 } catch (const H5::Exception& e) {
