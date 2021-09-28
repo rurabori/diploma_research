@@ -8,7 +8,6 @@
 #include <cstdio>
 #include <ctime>
 #include <memory>
-#include <ranges>
 #include <span>
 #include <stdexcept>
 #include <system_error>
