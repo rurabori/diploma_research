@@ -1,5 +1,6 @@
 Checks:          '*,-google-runtime-references,
                     -fuchsia*,
+                    -altera*,
                     -modernize-use-trailing-return-type,
                     -readability-implicit-bool-conversion,
                     -*-braces-around-statements,
