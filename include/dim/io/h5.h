@@ -11,6 +11,7 @@
 
 #include <dim/mat/storage_formats.h>
 #include <memory>
+#include <optional>
 #include <span>
 #include <stdexcept>
 
@@ -25,7 +26,7 @@ struct dataset_props_t
 };
 
 namespace detail {
-    template<std::ranges::contiguous_range Ty>
+    template<typename /*std::ranges::contiguous_range*/ Ty>
     void write_dataset(H5::Group& group, const std::string& name, const Ty& data, const H5::DataType& input_type,
                        const H5::DataType& storage_type, std::span<const hsize_t> dims,
                        const H5::DSetCreatPropList& prop_list) {
@@ -33,7 +34,7 @@ namespace detail {
         group.createDataSet(name, storage_type, dataspace, prop_list).write(std::data(data), input_type);
     }
 
-    template<std::ranges::contiguous_range Ty>
+    template<typename /*std::ranges::contiguous_range*/ Ty>
     void write_dataset(H5::Group& group, const std::string& name, const Ty& data, const H5::DataType& input_type,
                        const H5::DataType& storage_type, const dataset_props_t& dataset_props) {
         hsize_t dims[1] = {std::size(data)};
