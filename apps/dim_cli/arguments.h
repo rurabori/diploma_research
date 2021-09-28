@@ -1,6 +1,7 @@
 #ifndef APPS_DIM_CLI_ARGUMENTS
 #define APPS_DIM_CLI_ARGUMENTS
 
+#include <magic_enum.hpp>
 #include <structopt/app.hpp>
 
 #include <filesystem>
@@ -8,6 +9,13 @@
 #include <stdexcept>
 
 #include <spdlog/common.h>
+
+enum class download_format
+{
+    detect,
+    archive,
+    gzip
+};
 
 struct dim_cli
 {
@@ -20,6 +28,15 @@ struct dim_cli
         path output;
         std::optional<std::string> group_name{"A"};
         std::optional<bool> append{false};
+
+        std::optional<size_t> values_chunk_size;
+        std::optional<int> values_compression;
+
+        std::optional<size_t> col_idx_chunk_size;
+        std::optional<int> col_idx_compression;
+
+        std::optional<size_t> row_start_offsets_chunk_size;
+        std::optional<int> row_start_offsets_compression;
     };
     store_matrix_t store_matrix;
 
@@ -46,6 +63,7 @@ struct dim_cli
     {
         std::string url;
         std::optional<path> destination_dir{std::filesystem::current_path()};
+        std::optional<download_format> format = download_format::detect;
     };
     download_t download;
 
@@ -54,7 +72,7 @@ struct dim_cli
 
 STRUCTOPT(dim_cli::compare_results_t, input_file, input_file_2, lhs_group, rhs_group);
 STRUCTOPT(dim_cli::store_matrix_t, input, output);
-STRUCTOPT(dim_cli::download_t, url, destination_dir);
+STRUCTOPT(dim_cli::download_t, url, destination_dir, format);
 STRUCTOPT(dim_cli, store_matrix, compare_results, download, log_level);
 
 #endif /* APPS_DIM_CLI_ARGUMENTS */
