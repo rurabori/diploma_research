@@ -11,7 +11,6 @@
 
 #include <dim/mat/storage_formats.h>
 #include <memory>
-#include <ranges>
 #include <span>
 #include <stdexcept>
 
