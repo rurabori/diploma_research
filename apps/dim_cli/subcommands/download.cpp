@@ -65,6 +65,18 @@ struct download_ctx
     curlm_t curlm{::curl_multi_init()};
     clock_t::time_point last_status{clock_t::now()};
 
+    auto try_parse_content_length(std::string_view header_entry, std::string_view prefix) -> bool {
+        if (!header_entry.starts_with(prefix))
+            return false;
+
+        header_entry.remove_prefix(prefix.size());
+
+        if (auto result = scn::scan(header_entry, "{}", to_download); !result)
+            spdlog::warn("couldnt parse Content-Length header, reason '{}'", result.error().msg());
+
+        return true;
+    }
+
     explicit download_ctx(const std::string& url) {
         ::curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
 
@@ -81,20 +93,19 @@ struct download_ctx
         };
         ::curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, +data_callback);
         ::curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, this);
+ 
         ::curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
+ 
         constexpr auto header_callback = [](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
-            constexpr auto prefix = std::string_view{"Content-Length:"};
+            auto& self = *reinterpret_cast<download_ctx*>(userdata);
 
             auto entry = std::string_view{ptr, size * nmemb};
 
-            if (!entry.starts_with("Content-Length:"))
-                return size * nmemb;
-
-            entry.remove_prefix(prefix.size());
-
-            auto& self = *reinterpret_cast<download_ctx*>(userdata);
-            if (auto result = scn::scan(entry, "{}", self.to_download); !result)
-                spdlog::warn("couldnt parse Content-Length header, reason '{}'", result.error().msg());
+            // prefixes in {HTTP, FTP}.
+            for (const auto& possible_prefix : {"Content-Length:", "213 "}) {
+                if (self.try_parse_content_length(entry, possible_prefix))
+                    break;
+            }
 
             return size * nmemb;
         };
