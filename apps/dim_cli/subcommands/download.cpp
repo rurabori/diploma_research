@@ -93,9 +93,9 @@ struct download_ctx
         };
         ::curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, +data_callback);
         ::curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, this);
- 
+
         ::curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
- 
+
         constexpr auto header_callback = [](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
             auto& self = *reinterpret_cast<download_ctx*>(userdata);
 
@@ -269,61 +269,61 @@ struct gzip_header
 {
     std::optional<std::string_view> orig_filename;
     std::span<std::byte> data;
-};
 
-auto parse_gzip_header(std::span<std::byte> data) -> gzip_header {
-    constexpr auto gzip_magic = std::array{std::byte{0x1f}, std::byte{0x8b}};
-    constexpr auto compression_deflate = std::byte{0x08};
+    static auto parse(std::span<std::byte> data) -> gzip_header {
+        constexpr auto gzip_magic = std::array{std::byte{0x1f}, std::byte{0x8b}};
+        constexpr auto compression_deflate = std::byte{0x08};
 
-    const auto get_null_terminated = [&] {
-        auto it = std::find(data.begin(), data.end(), std::byte{0});
-        if (it == data.end())
-            throw std::runtime_error{"couldn't find null terminator"};
+        const auto get_null_terminated = [&] {
+            auto it = std::find(data.begin(), data.end(), std::byte{0});
+            if (it == data.end())
+                throw std::runtime_error{"couldn't find null terminator"};
 
-        const auto length = static_cast<size_t>(it - data.begin());
-        auto retval = std::string_view{reinterpret_cast<const char*>(data.data()), length};
+            const auto length = static_cast<size_t>(it - data.begin());
+            auto retval = std::string_view{reinterpret_cast<const char*>(data.data()), length};
 
-        data = data.subspan(length + 1);
-        return retval;
-    };
+            data = data.subspan(length + 1);
+            return retval;
+        };
 
-    gzip_header retval{};
+        gzip_header retval{};
 
-    if (const auto start = data.first(2); !std::equal(start.begin(), start.end(), gzip_magic.begin()))
-        throw std::runtime_error{"gzip magic not found"};
+        if (const auto start = data.first(2); !std::equal(start.begin(), start.end(), gzip_magic.begin()))
+            throw std::runtime_error{"gzip magic not found"};
 
-    data = data.subspan(2);
-
-    if (data[0] != compression_deflate)
-        throw std::runtime_error{fmt::format("only deflate allowed (0x08), got {}", data[0])};
-    data = data.subspan(1);
-
-    const auto header_flags = data[0];
-    // 1 byte header flags + 4 byte timestamp + 1 byte compression flags + 1 byte OS ID.
-    data = data.subspan(1 + 4 + 1 + 1);
-
-    if (has_flags_set(header_flags, gzip_flags::reserved))
-        throw std::runtime_error{"reserved flags set"};
-
-    if (has_flags_set(header_flags, gzip_flags::ext_data)) {
-        const auto to_skip
-          = static_cast<size_t>(std::to_integer<uint16_t>(data[0]) | (std::to_integer<uint16_t>(data[1]) << 8));
-        data = data.subspan(to_skip + 2);
-    }
-
-    if (has_flags_set(header_flags, gzip_flags::orig_filename))
-        retval.orig_filename.emplace(get_null_terminated());
-
-    if (has_flags_set(header_flags, gzip_flags::comment))
-        (void)get_null_terminated(); // we ignore comments for now.
-
-    if (has_flags_set(header_flags, gzip_flags::crc))
         data = data.subspan(2);
 
-    retval.data = data;
+        if (data[0] != compression_deflate)
+            throw std::runtime_error{fmt::format("only deflate allowed (0x08), got {}", data[0])};
+        data = data.subspan(1);
 
-    return retval;
-}
+        const auto header_flags = data[0];
+        // 1 byte header flags + 4 byte timestamp + 1 byte compression flags + 1 byte OS ID.
+        data = data.subspan(1 + 4 + 1 + 1);
+
+        if (has_flags_set(header_flags, gzip_flags::reserved))
+            throw std::runtime_error{"reserved flags set"};
+
+        if (has_flags_set(header_flags, gzip_flags::ext_data)) {
+            const auto to_skip
+              = static_cast<size_t>(std::to_integer<uint16_t>(data[0]) | (std::to_integer<uint16_t>(data[1]) << 8));
+            data = data.subspan(to_skip + 2);
+        }
+
+        if (has_flags_set(header_flags, gzip_flags::orig_filename))
+            retval.orig_filename.emplace(get_null_terminated());
+
+        if (has_flags_set(header_flags, gzip_flags::comment))
+            (void)get_null_terminated(); // we ignore comments for now.
+
+        if (has_flags_set(header_flags, gzip_flags::crc))
+            data = data.subspan(2);
+
+        retval.data = data;
+
+        return retval;
+    }
+};
 
 auto zlib_input_callback(void* userdata, z_const uint8_t** buffer) -> unsigned {
     auto& ctx = *reinterpret_cast<download_ctx*>(userdata);
@@ -360,7 +360,7 @@ void download_gzip(const dim_cli::download_t& args) {
     if (!maybe_data)
         return;
 
-    const auto header = parse_gzip_header(*maybe_data);
+    const auto header = gzip_header::parse(*maybe_data);
     const auto filename = *args.destination_dir / (header.orig_filename ? *header.orig_filename : "unknown.mtx");
 
     z_stream stream{
