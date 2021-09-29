@@ -1,8 +1,10 @@
 #include "store_matrix.h"
+#include "dim/io/format.h"
 
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
 
+#include <dim/io/format.h>
 #include <dim/io/h5.h>
 #include <dim/io/matrix_market.h>
 
@@ -43,12 +45,13 @@ auto create_matrix_storage_props(const dim_cli::store_matrix_t& arguments) {
 } // namespace
 
 auto store_matrix(const dim_cli::store_matrix_t& arguments) -> int {
+    using dim::io::formattable_bytes;
     using dim::io::h5::write_matlab_compatible;
     using dim::io::matrix_market::load_as_csr;
     using std::filesystem::file_size;
 
-    spdlog::info("loading matrix in Matrix Market format from '{}', size: {:.3f}MiB", arguments.input.string(),
-                 static_cast<double>(file_size(arguments.input)) / 1'048'576);
+    spdlog::info("loading matrix in Matrix Market format from '{}', size: {:.3f}", arguments.input.string(),
+                 formattable_bytes{file_size(arguments.input)});
 
     spdlog::stopwatch stopwatch{};
     const auto csr = load_as_csr<double>(arguments.input);
@@ -62,6 +65,6 @@ auto store_matrix(const dim_cli::store_matrix_t& arguments) -> int {
     stopwatch.reset();
     write_matlab_compatible(matrix_group, csr, create_matrix_storage_props(arguments));
     spdlog::info("storing CSR to HDF5 took: {}s", stopwatch);
-    
+
     return 0;
 }

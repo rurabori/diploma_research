@@ -1,4 +1,3 @@
-#include <H5Fpublic.h>
 #include <doctest/doctest.h>
 
 #include <dim/io/h5.h>
