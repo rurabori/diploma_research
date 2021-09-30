@@ -27,6 +27,9 @@
 #include <scn/scn.h>
 
 #include <dim/io/file.h>
+#include <dim/io/format.h>
+
+using dim::io::formattable_bytes;
 
 namespace {
 
@@ -47,8 +50,6 @@ struct archive_deleter_t
     void operator()(archive* a) { ::archive_read_free(a); }
 };
 using archive_t = std::unique_ptr<archive, archive_deleter_t>;
-
-auto to_mib(auto&& value) { return static_cast<double>(value) / 1'048'576; }
 
 auto get_percentage(auto numerator, auto denominator) {
     return (static_cast<double>(numerator) / static_cast<double>(denominator)) * 100;
@@ -158,7 +159,8 @@ struct download_ctx
 
         constexpr auto interval = std::chrono::seconds{5};
         if (const auto now = clock_t::now(); now - last_status > interval) {
-            spdlog::info("downloaded {:.3}MiB ({:.3}%)", to_mib(downloaded), get_percentage(downloaded, to_download));
+            spdlog::info("downloaded {:.3} ({:.3}%)", formattable_bytes{downloaded},
+                         get_percentage(downloaded, to_download));
             last_status = now;
         }
 
@@ -170,10 +172,10 @@ struct download_ctx
 };
 
 void log_download_stats(size_t downloaded_bytes, size_t written_bytes, std::chrono::duration<double> elapsed) {
-    spdlog::info(
-      "download took {}s: downloaded:{:.3}MiB, extracted:{:.3}MiB @ {:.3}MiB/s({:.3}MiB/s with decompression)",
-      elapsed.count(), to_mib(downloaded_bytes), to_mib(written_bytes), to_mib(downloaded_bytes) / elapsed.count(),
-      to_mib(written_bytes) / elapsed.count());
+    spdlog::info("download took {}s: downloaded:{:.3}, extracted:{:.3} @ {:.3}/s({:.3}/s with decompression)",
+                 elapsed.count(), formattable_bytes{downloaded_bytes}, formattable_bytes{written_bytes},
+                 formattable_bytes{static_cast<double>(downloaded_bytes) / elapsed.count()},
+                 formattable_bytes{static_cast<double>(written_bytes) / elapsed.count()});
 }
 
 auto archive_extract_file(struct archive* archive, const std::filesystem::path& destination) -> size_t {
@@ -410,5 +412,6 @@ auto guess_format(std::string_view url) -> download_format {
 } // namespace
 
 auto download(const dim_cli::download_t& args) -> int {
+    spdlog::info("downloading matrix from '{}'", args.url);
     return download(args, *args.format == download_format::detect ? guess_format(args.url) : *args.format);
 }
