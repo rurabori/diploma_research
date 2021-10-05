@@ -1,5 +1,8 @@
 #include <doctest/doctest.h>
 
+#include <iostream>
+#include <string>
+
 #include <dim/io/format.h>
 
 using dim::io::formattable_bytes;
