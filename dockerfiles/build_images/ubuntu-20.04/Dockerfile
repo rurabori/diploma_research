@@ -13,12 +13,12 @@ RUN add-apt-repository ppa:ubuntu-toolchain-r/test && \
 
 # add LLVM remotes and keys.
 RUN apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key && \
-    echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-12 main" >> /etc/apt/sources.list.d/llvm.list
+    echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-13 main" >> /etc/apt/sources.list.d/llvm.list
 
 # update to get packages from added repos.
 RUN apt update
 
-RUN apt install -y clang-12 clang-tidy-12 libomp-12-dev ninja-build curl python3 python3-pip mpi-default-dev pkgconf petsc-dev
+RUN apt install -y clang-13 clang-tidy-13 libomp-13-dev ninja-build curl python3 python3-pip mpi-default-dev pkgconf petsc-dev
 
 RUN pip3 install conan
 
