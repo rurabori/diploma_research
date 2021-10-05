@@ -1,4 +1,4 @@
-name: CI to Docker Hub
+name: Docker build Ubuntu 20.04
 on:
   push:
     branches: [main]
