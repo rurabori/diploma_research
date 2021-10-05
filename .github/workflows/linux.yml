@@ -16,17 +16,17 @@ jobs:
       matrix:
         include:
           - image: rurabori/diploma:ubuntu-20.04
-            cc: clang-12
-            cxx: clang++-12
+            cc: clang-13
+            cxx: clang++-13
             pkg_config_path: "" # empty for now, if we make ubuntu builds of PETSc we might need this.
-            additional_cmake_options: -DCMAKE_CXX_CLANG_TIDY="clang-tidy-12"
+            additional_cmake_options: -DCMAKE_CXX_CLANG_TIDY="clang-tidy-13"
             artifact_name: ubuntu-20.04
 
           - image: rurabori/diploma:debian-10
-            cc: clang-12
-            cxx: clang++-12
+            cc: clang-13
+            cxx: clang++-13
             pkg_config_path: /usr/lib/petsc/lib/pkgconfig
-            additional_cmake_options: -DCMAKE_TOOLCHAIN_FILE="cmake/toolchains/debian-10-llvm-12-libcpp.cmake"
+            additional_cmake_options: -DCMAKE_TOOLCHAIN_FILE="cmake/toolchains/debian-10-llvm-13-libcpp.cmake"
             artifact_name: debian-10
 
     runs-on: ubuntu-latest
