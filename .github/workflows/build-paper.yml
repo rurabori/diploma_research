@@ -1,0 +1,26 @@
+name: Build thesis
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/paper/**"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Out Repo
+        uses: actions/checkout@v2
+        with:
+          lfs: true
+
+      - name: Github Action for LaTeX
+        uses: xu-cheng/latex-action@v2
+        with:
+          root_file: thesis.tex
+          working_directory: docs/paper
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: thesis
+          path: build/latex/*.pdf
