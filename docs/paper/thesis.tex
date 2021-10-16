@@ -20,6 +20,12 @@
 
 \usepackage{dirtree} %directory tree visualisation
 
+\usepackage{listings}
+\usepackage{amsmath}
+
+% TODO: reenable minted if possible.
+% \usepackage{minted}
+
 % % list of acronyms
 % \usepackage[acronym,nonumberlist,toc,numberedsection=autolabel]{glossaries}
 % \iflanguage{czech}{\renewcommand*{\acronymname}{Seznam pou{\v z}it{\' y}ch zkratek}}{}
@@ -65,15 +71,58 @@
 \section{Sparse matrices}
 
 A matrix is a rectangular array of numbers. The numbers in the array
-are called the entries in the matrix. 
+are called the entries in the matrix. \cite{anton14} Matrix entries are usually addressed
+by the column and row in the rectangle they occupy.
 
-%\cite{anton14}
-
-In numerical analysis and scientific computing, a sparse matrix or sparse array is a matrix in which most of the elements are zero. There is no strict definition regarding the proportion of zero-value elements for a matrix to qualify as sparse but a common criterion is that the number of non-zero elements is roughly equal to the number of rows or columns. By contrast, if most of the elements are non-zero, the matrix is considered dense.
+In numerical analysis and scientific computing, a sparse matrix or sparse array
+is a matrix in which most of the elements are zero. There is no strict definition
+regarding the proportion of zero-value elements for a matrix to qualify as sparse
+but a common criterion is that the number of non-zero elements is roughly equal
+to the number of rows or columns. By contrast, if most of the elements are non-zero,
+the matrix is considered dense.
 The number of zero-valued elements divided by the total number of elements (e.g., m × n for an m × n matrix) is sometimes referred to as the sparsity of the matrix.
-\cite{efficientSDMM}
+\cite{efficientSDMM} The number of non zero elements of a sparse matrix is usually denoted
+as $n_{nz}$.
+
+To better illustrate the storage formats, let us define sparse matrix $A$.
+\begin{equation*}
+	A =
+	\begin{pmatrix}
+		1 & 0 & 2 & 0 \\
+		0 & 3 & 0 & 0 \\
+		4 & 0 & 5 & 0 \\
+		6 & 0 & 0 & 7
+	\end{pmatrix}
+\end{equation*}
 
 \section{Coordinate (COO)}
+
+Coordinate storage format, commonly referred to as COO.
+The data structure consists of three arrays of length $n_{nz}$\cite{saad03:IMS}:
+
+% TODO: this may be nicer if formated with minted or something similar.
+\begin{enumerate}
+	\itemsep=0em
+	\item[vals] a real array containing all the real (or complex) values of the nonzero elements of A in any order.
+	\item[row\_idx] an integer array containing their row indices.
+	\item[col\_idx] a second integer array containing their column indices.
+\end{enumerate}
+
+Thus $A$ would be stored as:
+
+\begin{center}
+	\begin{tabular}{ |l||c|c|c|c|c|c|c| }
+		\hline
+		vals     & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+		\hline
+		row\_idx & 0 & 0 & 1 & 2 & 2 & 3 & 3 \\
+		\hline
+		col\_idx & 0 & 2 & 1 & 0 & 2 & 0 & 3 \\
+		\hline
+	\end{tabular}
+\end{center}
+
+
 \section{Compressed Sparse Row (CSR)}
 \section{Compressed Sparse Columns (CSC/CSS)}
 \section{Compressed Saprse Row 5 (CSR5)}
@@ -100,6 +149,7 @@ The number of zero-valued elements divided by the total number of elements (e.g.
 \begin{description}
 	\item[CSR5] Compressed Sparse Row 5
 	\item[GUI] Graphical user interface
+	\item[$n_{nz}$] Number of non-zero elements in a sparse matrix.
 	\item[XML] Extensible markup language
 \end{description}
 

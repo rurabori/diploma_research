@@ -6,3 +6,9 @@ build_cont
 resources/matrices
 tmp
 .venv
+
+# minted doesn't work with a different output directory.
+docs/paper
+!docs/paper/thesis.tex
+!docs/paper/ref.bib
+!docs/paper/.latexmkrc
