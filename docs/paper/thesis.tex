@@ -29,7 +29,7 @@
 % EDIT THIS
 % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % 
 
-\department{Department of Computer Science}
+\department{Department of Theoretical Computer Science}
 \title{Distrubuted Sparse Matrix-Vector Multiplication}
 \authorGN{Boris} %author's given name/names
 \authorFN{Rúra} %author's surname
@@ -46,7 +46,9 @@
 % \website{http://site.example/thesis} %optional thesis URL
 
 
+
 \begin{document}
+
 
 % \newacronym{CVUT}{{\v C}VUT}{{\v C}esk{\' e} vysok{\' e} u{\v c}en{\' i} technick{\' e} v Praze}
 % \newacronym{FIT}{FIT}{Fakulta informa{\v c}n{\' i}ch technologi{\' i}}
@@ -54,9 +56,29 @@
 \setsecnumdepth{part}
 \chapter{Introduction}
 
-
-
 \setsecnumdepth{all}
+
+\chapter{Sparse matrix storage formats}
+
+% TODO: chapter summary
+
+\section{Sparse matrices}
+
+A matrix is a rectangular array of numbers. The numbers in the array
+are called the entries in the matrix. 
+
+%\cite{anton14}
+
+In numerical analysis and scientific computing, a sparse matrix or sparse array is a matrix in which most of the elements are zero. There is no strict definition regarding the proportion of zero-value elements for a matrix to qualify as sparse but a common criterion is that the number of non-zero elements is roughly equal to the number of rows or columns. By contrast, if most of the elements are non-zero, the matrix is considered dense.
+The number of zero-valued elements divided by the total number of elements (e.g., m × n for an m × n matrix) is sometimes referred to as the sparsity of the matrix.
+\cite{efficientSDMM}
+
+\section{Coordinate (COO)}
+\section{Compressed Sparse Row (CSR)}
+\section{Compressed Sparse Columns (CSC/CSS)}
+\section{Compressed Saprse Row 5 (CSR5)}
+\cite{liu2015csr5}
+
 \chapter{State-of-the-art}
 
 \chapter{Analysis and design}
@@ -68,7 +90,7 @@
 
 
 \bibliographystyle{iso690}
-% \bibliography{mybibliographyfile}
+\bibliography{ref}
 
 \setsecnumdepth{all}
 \appendix
@@ -76,6 +98,7 @@
 \chapter{Acronyms}
 % \printglossaries
 \begin{description}
+	\item[CSR5] Compressed Sparse Row 5
 	\item[GUI] Graphical user interface
 	\item[XML] Extensible markup language
 \end{description}
