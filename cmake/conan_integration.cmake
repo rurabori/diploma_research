@@ -73,6 +73,10 @@ function(_get_msvc_ide_version result)
     set(${result}
         16
         PARENT_SCOPE)
+  elseif(NOT MSVC_VERSION VERSION_LESS 1930 AND MSVC_VERSION VERSION_LESS 1940)
+    set(${result}
+        17
+        PARENT_SCOPE)
   else()
     message(
       FATAL_ERROR "Conan: Unknown MSVC compiler version [${MSVC_VERSION}]")
@@ -530,7 +534,7 @@ function(_collect_settings result)
       PARENT_SCOPE)
 endfunction()
 
-function(conan_cmake_autodetect detected_settings ${ARGV})
+function(conan_cmake_autodetect detected_settings)
   _conan_detect_build_type(${ARGV})
   _conan_check_system_name()
   _conan_check_language()

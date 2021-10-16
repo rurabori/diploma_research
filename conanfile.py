@@ -7,7 +7,7 @@ class CSPConan(ConanFile):
     author = "Boris Rúra boris.rura@avast.com"
     settings = "os", "compiler", "build_type", "arch"
 
-    generators = "virtualenv", "cmake_paths", "cmake_find_package_multi"
+    generators = "virtualenv", "CMakeDeps"
 
     scm = {
         "type": "git",
