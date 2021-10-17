@@ -16,7 +16,6 @@ if(${invoke_conan})
     INSTALL_FOLDER ${__conan_config_files_dir}
     ENV CC=${CMAKE_C_COMPILER}
     ENV CXX=${CMAKE_CXX_COMPILER}
-    PROFILE default
     BUILD missing)
   # cmake-format: on
   list(APPEND CMAKE_PREFIX_PATH ${__conan_config_files_dir})
