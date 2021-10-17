@@ -1,4 +1,6 @@
 $pdf_mode = 1;
+$dvi_mode = 0;
+$postscript_mode = 0;
 
 $bibtex = 'bibtex %O %B';
 $bibtex_use = 2;

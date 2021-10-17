@@ -21,8 +21,10 @@
 \usepackage{dirtree} %directory tree visualisation
 
 \usepackage{listings}
-\usepackage{amsmath}
+\lstset{basicstyle=\ttfamily, language=C++}
 
+\usepackage{amsmath}
+\usepackage{tabularx}
 % TODO: reenable minted if possible.
 % \usepackage{minted}
 
@@ -55,7 +57,7 @@
 
 \begin{document}
 
-
+\tableofcontents
 % \newacronym{CVUT}{{\v C}VUT}{{\v C}esk{\' e} vysok{\' e} u{\v c}en{\' i} technick{\' e} v Praze}
 % \newacronym{FIT}{FIT}{Fakulta informa{\v c}n{\' i}ch technologi{\' i}}
 
@@ -82,7 +84,7 @@ to the number of rows or columns. By contrast, if most of the elements are non-z
 the matrix is considered dense.
 The number of zero-valued elements divided by the total number of elements (e.g., m × n for an m × n matrix) is sometimes referred to as the sparsity of the matrix.
 \cite{efficientSDMM} The number of non zero elements of a sparse matrix is usually denoted
-as $n_{nz}$.
+as $n_{nz}$ number of columns as $n$ and number of rows as $m$.
 
 To better illustrate the storage formats, let us define sparse matrix $A$.
 \begin{equation*}
@@ -110,7 +112,8 @@ The data structure consists of three arrays of length $n_{nz}$\cite{saad03:IMS}:
 
 Thus $A$ would be stored as:
 
-\begin{center}
+\begin{table}[h!]
+	\centering
 	\begin{tabular}{ |l||c|c|c|c|c|c|c| }
 		\hline
 		vals     & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
@@ -120,18 +123,63 @@ Thus $A$ would be stored as:
 		col\_idx & 0 & 2 & 1 & 0 & 2 & 0 & 3 \\
 		\hline
 	\end{tabular}
-\end{center}
+	\caption{$A$ stored in COO format}
+\end{table}
 
 
 \section{Compressed Sparse Row (CSR)}
-\section{Compressed Sparse Columns (CSC/CSS)}
-\section{Compressed Saprse Row 5 (CSR5)}
-\cite{liu2015csr5}
+
+Compressed Sparse Row is probably the most popular format for storing general sparse matrices.
+\cite{saad03:IMS} Similarly to the coordinate format, it too consists of three arrays.
+
+% TODO: better lstinline.
+\begin{enumerate}
+	\itemsep=0em
+	\item[vals] a real array of size $n_{nz}$ containing all the real (or complex) values of the nonzero elements of $A$
+		stored in row major order.
+	\item[col\_idx] a second integer array of size $n_{nz}$ containing their column indices.
+	\item[row\_ptr] an integer array of size $m + 1$ containing offsets into \lstinline{vals} and
+		\lstinline!col_idx!, at which each row of the matrix begins.
+\end{enumerate}
+
+This involves nonnegligible savings in storage.
+
+\begin{table}[h!]
+	\centering
+	\begin{tabular}{ |l||c|c|c|c|c|c|c| }
+		\hline
+		vals     & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+		\hline
+		col\_idx & 0 & 2 & 1 & 0 & 2 & 0 & 3 \\
+		\hline
+	\end{tabular} \\
+	\begin{tabular}{ |l||c|c|c|c|c| }
+		\hline
+		row\_ptr & 0 & 2 & 3 & 5 & 6 \\
+		\hline
+	\end{tabular}
+	\caption{$A$ stored in CSR format}
+\end{table}
+
+\section{Compressed Sparse Row 5 (CSR5)}
+
+To achieve near-optimal load balance for matrices with any sparsity structures,
+all nonzero entries are partitioned to multiple 2D tiles of the same size.
+The CSR5 format has two tuning parameters: $\omega$ and $\sigma$, where $\omega$
+is a tile’s width and $\sigma$ is its height. \cite{liu2015csr5}
+
+Further, extra information is needed to efficiently compute
+SpMV. For each tile, a tile pointer \lstinline!tile_ptr! and a tile descriptor \lstinline!tile_desc! are introduced. 
+Meanwhile, the three arrays, i.e., row pointer \lstinline!row_ptr!, column index \lstinline!col_idx! and value val, 
+of the classic CSR format are directly integrated. The only difference is that the \lstinline!col_idx! data and the \lstinline!vals!
+data in each complete tile are in-place transposed (i.e., from row-major order to column-major order) for coalesced memory access from contiguous SIMD lanes.
+
+\lstinline!tile_ptr! stores the for index of the first entry of the tile.
 
 \chapter{State-of-the-art}
-
+test
 \chapter{Analysis and design}
-
+test
 \chapter{Realisation}
 
 \setsecnumdepth{part}
