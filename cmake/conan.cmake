@@ -9,15 +9,26 @@ option(
 
 if(${invoke_conan})
   set(__conan_config_files_dir ${CMAKE_BINARY_DIR}/__conan_config_files)
-  # cmake-format: off
-  conan_cmake_run(
-    CONANFILE conanfile.py
-    SETTINGS compiler.cppstd=${CMAKE_CXX_STANDARD}
-    INSTALL_FOLDER ${__conan_config_files_dir}
-    ENV CC=${CMAKE_C_COMPILER}
-    ENV CXX=${CMAKE_CXX_COMPILER}
-    BUILD missing)
-  # cmake-format: on
+  set(__conan_configurations_to_build ${CMAKE_BUILD_TYPE})
+  if("${CMAKE_BUILD_TYPE}" STREQUAL "")
+    list(APPEND __conan_configurations_to_build "Release" "Debug"
+         "RelWithDebInfo")
+  endif()
+
+  foreach(__conan_build_type ${__conan_configurations_to_build})
+    # cmake-format: off
+    conan_cmake_run(
+      CONANFILE conanfile.py
+      SETTINGS  compiler.cppstd=${CMAKE_CXX_STANDARD} 
+                build_type=${__conan_build_type}
+      INSTALL_FOLDER ${__conan_config_files_dir}
+      ENV CC=${CMAKE_C_COMPILER}
+      ENV CXX=${CMAKE_CXX_COMPILER}
+      BUILD missing
+      UPDATE)
+    # cmake-format: on
+  endforeach()
+
   list(APPEND CMAKE_PREFIX_PATH ${__conan_config_files_dir})
 endif()
 
