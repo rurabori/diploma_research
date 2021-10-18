@@ -108,10 +108,15 @@ int main(int argc, const char* argv[]) {
         }
         case arguments::algorithm_t::cpu_avx2: {
             // TODO: remove, just to see if compilation is alright.
-            const auto csr5 = dim::mat::csr5<>::from_csr(std::move(matrix));
-            auto handle = cg::spmv_algos::create_csr5_handle(matrix);
-            report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_avx2(handle, dim::span{x}, dim::span{Y}); });
-            handle.destroy();
+            auto csr5 = dim::mat::csr5<>::from_csr(std::move(matrix));
+
+            const auto x = csr5.tile_desc[0].columns[3].y_offset;
+            fmt::print("{}\n", x);
+
+            fmt::print("\n");
+            // auto handle = cg::spmv_algos::create_csr5_handle(matrix);
+            // report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_avx2(handle, dim::span{x}, dim::span{Y}); });
+            // handle.destroy();
             break;
         }
 #ifdef CUDA_ENABLED
