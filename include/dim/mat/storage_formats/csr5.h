@@ -1,6 +1,7 @@
 #ifndef INCLUDE_DIM_MAT_STORAGE_FORMATS_CSR5
 #define INCLUDE_DIM_MAT_STORAGE_FORMATS_CSR5
 
+#include <__ranges/concepts.h>
 #include <bit>
 #include <climits>
 #include <concepts>
@@ -8,6 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <numeric>
+#include <ranges>
 
 #include <dim/bit.h>
 #include <dim/mat/storage_formats/base.h>
@@ -38,6 +40,8 @@ struct tile_column_descriptor_t
     [[nodiscard]] constexpr auto num_bits_set(bool is_first) const noexcept -> size_t {
         return static_cast<size_t>(std::popcount(bit_flag | static_cast<storage_t>(is_first)));
     }
+
+    [[nodiscard]] auto operator<=>(const tile_column_descriptor_t& other) const noexcept = default;
 };
 
 template<size_t Sigma, size_t Omega>
@@ -45,6 +49,8 @@ struct tile_descriptor_t
 {
     using tile_column_descriptor = tile_column_descriptor_t<Sigma, Omega>;
     tile_column_descriptor columns[Omega];
+
+    [[nodiscard]] auto operator<=>(const tile_descriptor_t& other) const noexcept = default;
 };
 
 namespace detail {
@@ -64,8 +70,8 @@ namespace detail {
         return value & ~msb<Ty>;
     }
 
-    template<bool StripDirty = true, typename uiT, typename Callable>
-    void iterate_partitions(const dim::span<uiT> partitions, Callable&& callable) {
+    template<bool StripDirty = true, std::ranges::random_access_range Partitions, typename Callable>
+    void iterate_partitions(const Partitions& partitions, Callable&& callable) {
         constexpr auto conditional_strip = [](auto value) { return StripDirty ? strip_dirty(value) : value; };
 
 #pragma omp parallel for
@@ -114,17 +120,16 @@ struct csr5
     StorageContainer<UnsignedType> row_ptr;
 
     size_t tile_count{};
-    // TODO: does the descriptor need to be uint32_t? Might benefit from being 64-bit.
     StorageContainer<UnsignedType> tile_ptr;
     StorageContainer<tile_descriptor_type> tile_desc;
     StorageContainer<UnsignedType> tile_desc_offset_ptr;
     StorageContainer<UnsignedType> tile_desc_offset;
 
 private:
-    [[nodiscard]] auto tile_size() const noexcept -> size_t { return sigma * omega; }
+    [[nodiscard]] static auto tile_size() noexcept -> size_t { return sigma * omega; }
 
     auto set_bit_flag() -> void {
-        detail::iterate_partitions(dim::span{tile_ptr}, [&](auto partition_id, auto row_start, auto row_stop) {
+        detail::iterate_partitions(tile_ptr, [&](auto partition_id, auto row_start, auto row_stop) {
             auto&& current_tile_desc = tile_desc[partition_id];
 
             for (auto rid = row_start; rid <= row_stop; rid++) {
@@ -143,7 +148,7 @@ private:
     }
 
     auto set_tile_descriptor_y_and_segsum_offsets() -> void {
-        detail::iterate_partitions(dim::span{tile_ptr}, [&](auto par_id, auto row_start, auto row_stop) {
+        detail::iterate_partitions(tile_ptr, [&](auto par_id, auto row_start, auto row_stop) {
             // skip empty rows.
             if (row_start == row_stop)
                 return;
@@ -153,14 +158,14 @@ private:
             UnsignedType segn_scan[omega + 1] = {};
             // TODO: check the generated assembly, this will probably not be simd-friendly but the rcount should be
             // faster, check assembly and benchmark.
-            tile_col_storage present{};
+            tile_col_storage present{1 << omega};
 
 #pragma omp simd
             for (size_t col = 0; col < omega; ++col) {
                 const auto& current_column = current_descriptor.columns[col];
 
-                segn_scan[col] = current_column.num_bits_set(!col);
-                present |= set_rbit<tile_col_storage>(col);
+                segn_scan[col] = static_cast<UnsignedType>(current_column.num_bits_set(!col));
+                present |= segn_scan[col] != 0 ? set_rbit<tile_col_storage>(col) : 0;
             }
 
             std::exclusive_scan(std::begin(segn_scan), std::end(segn_scan), std::begin(segn_scan), 0);
@@ -176,8 +181,8 @@ private:
                 auto&& current_column = current_descriptor.columns[col];
 
                 current_column.y_offset = static_cast<tile_col_storage>(segn_scan[col]);
-                current_column.scansum_offset
-                  = has_rbit_set(present, col) ? std::countr_one(present >> (col + 1)) : tile_col_storage{0};
+                current_column.scansum_offset = static_cast<tile_col_storage>(
+                  has_rbit_set(present, col) ? std::countr_zero(present >> (col + 1)) : 0);
             }
         });
     }
@@ -195,30 +200,65 @@ private:
                                 0);
 
             tile_desc_offset.resize(tile_desc_offset_ptr.back());
-            detail::iterate_partitions(
-              dim::span{tile_ptr}, [&](const auto par_id, const auto row_start, const auto row_stop) {
-                  if (!detail::is_dirty(tile_ptr[par_id]))
-                      return;
+            detail::iterate_partitions(tile_ptr, [&](const auto par_id, const auto row_start, const auto row_stop) {
+                if (!detail::is_dirty(tile_ptr[par_id]))
+                    return;
 
-                  const auto offset_ptr = tile_desc_offset_ptr[par_id];
-                  const auto current_descriptor = tile_desc[par_id];
-                  const auto rows = dim::span{row_ptr};
+                const auto offset_ptr = tile_desc_offset_ptr[par_id];
+                const auto current_descriptor = tile_desc[par_id];
+                const auto rows = dim::span{row_ptr};
 
 #pragma omp unroll
-                  for (size_t col = 0; col < omega; ++col) {
-                      const auto current_column = current_descriptor.columns[col];
-                      auto y_offset = current_column.y_offset;
-                      const auto num_set = current_column.num_bits_set(!col);
+                for (size_t col = 0; col < omega; ++col) {
+                    const auto current_column = current_descriptor.columns[col];
+                    auto y_offset = current_column.y_offset;
+                    const auto num_set = current_column.num_bits_set(!col);
 
-                      for (size_t i = 0; i < num_set; ++i, ++y_offset) {
-                          const auto row_data = rows.subspan(row_start + 1, row_stop - row_start);
-                          const auto idx = par_id * omega * sigma + col * sigma;
+                    for (size_t i = 0; i < num_set; ++i, ++y_offset) {
+                        const auto row_data = rows.subspan(row_start + 1, row_stop - row_start);
+                        const auto idx = par_id * omega * sigma + col * sigma;
 
-                          tile_desc_offset[offset_ptr + y_offset] = detail::upper_bound_idx(row_data, idx);
-                      }
-                  }
-              });
+                        tile_desc_offset[offset_ptr + y_offset]
+                          = static_cast<UnsignedType>(detail::upper_bound_idx(row_data, idx));
+                    }
+                }
+            });
         }
+    }
+
+    auto transpose(std::ranges::random_access_range auto& to_transpose) -> void {
+        using value_t = std::ranges::range_value_t<decltype(to_transpose)>;
+
+        // last tile is incomplete, thus we'd have access violations if we accessed it.
+        const auto tiles = dim::span{tile_ptr}.first(tile_ptr.size() - 1);
+
+        detail::iterate_partitions(tiles, [&](const auto tile_id, const auto row_start, const auto row_stop) {
+            if (row_start == row_stop)
+                return;
+
+            value_t temp[sigma][omega];
+
+            const auto data_offset = tile_id * omega * sigma;
+#pragma omp simd
+            for (size_t col = 0; col < omega; ++col) {
+                const auto col_offset = col * sigma;
+                for (size_t row = 0; row < sigma; ++row)
+                    temp[row][col] = to_transpose[data_offset + col_offset + row];
+            }
+
+#pragma omp unroll
+            for (size_t row = 0; row < sigma; ++row) {
+                const auto row_offset = row * omega;
+#pragma omp simd
+                for (size_t col = 0; col < omega; ++col)
+                    to_transpose[data_offset + row_offset + col] = temp[row][col];
+            }
+        });
+    }
+
+    auto transpose() -> void {
+        transpose(vals);
+        transpose(col_idx);
     }
 
     // TODO: maybe move back to this being a free function.
@@ -266,6 +306,7 @@ public:
 
         val.generate_tile_pointer();
         val.generate_tile_descriptor();
+        val.transpose();
 
         return val;
     }
