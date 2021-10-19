@@ -1,7 +1,6 @@
 #ifndef INCLUDE_DIM_MAT_STORAGE_FORMATS_CSR5
 #define INCLUDE_DIM_MAT_STORAGE_FORMATS_CSR5
 
-#include <__ranges/concepts.h>
 #include <bit>
 #include <climits>
 #include <concepts>
