@@ -43,4 +43,27 @@ TEST_CASE("Test conversion from CSR") {
                               tile_col_desc_t{.y_offset = 2, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000},
                               tile_col_desc_t{.y_offset = 2, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000},
                               tile_col_desc_t{.y_offset = 2, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000}}});
+
+    // TODO: tests for tile_desc_offset when understood better.
+}
+
+TEST_CASE("Test tile descriptor vectorization") {
+    constexpr auto descriptor = tile_desc_t{
+      .columns = {tile_col_desc_t{.y_offset = 0, .scansum_offset = 0, .bit_flag = 0b1000'0100'0010'0001},
+                  tile_col_desc_t{.y_offset = 4, .scansum_offset = 1, .bit_flag = 0b1000'1000'1000'1000},
+                  tile_col_desc_t{.y_offset = 8, .scansum_offset = 2, .bit_flag = 0b1010'1000'1000'1000},
+                  tile_col_desc_t{.y_offset = 13, .scansum_offset = 3, .bit_flag = 0b1010'1010'1010'1010}}};
+
+    const auto vec_equal = [&descriptor](const auto& vec, auto&& accessor) {
+        auto tmp
+          = _mm_cmpeq_epi32(vec, _mm_set_epi32(accessor(descriptor.columns[3]), accessor(descriptor.columns[2]),
+                                               accessor(descriptor.columns[1]), accessor(descriptor.columns[0])));
+        return _mm_movemask_epi8(tmp) == 0xffff;
+    };
+
+    const auto [y_offset, scansum_offset, bit_flag] = descriptor.vectorized();
+
+    REQUIRE(vec_equal(y_offset, [](auto desc) { return desc.y_offset; }));
+    REQUIRE(vec_equal(scansum_offset, [](auto desc) { return desc.scansum_offset; }));
+    REQUIRE(vec_equal(bit_flag, [](auto desc) { return desc.bit_flag; }));
 }
