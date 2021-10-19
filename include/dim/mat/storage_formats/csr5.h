@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <numeric>
 #include <ranges>
+#include <cmath>
 
 #include <dim/bit.h>
 #include <dim/mat/storage_formats/base.h>
