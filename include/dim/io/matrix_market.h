@@ -31,7 +31,7 @@ auto read_coo(FILE* file, dim::mat::dimensions_t dimensions, size_t non_zero, bo
     auto span = map.as<char>().subspan(static_cast<size_t>(::ftell(file)));
 
     size_t idx = 0;
-    for (auto remaining = std::string_view{span.data(), span.size()}; !remaining.empty(); ++idx) {
+    for (auto remaining = std::string_view{span.data(), span.size()}; idx < non_zero && !remaining.empty(); ++idx) {
         const auto result
           = scn::scan(remaining, "{} {} {} ", retval.row_indices[idx], retval.col_indices[idx], retval.values[idx]);
         if (!result)
