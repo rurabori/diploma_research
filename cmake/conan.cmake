@@ -7,8 +7,9 @@ option(
   "Invoke conan from cmake instead of requiring it to be ran before configuring cmake."
   ON)
 
-if(${invoke_conan})
-  set(__conan_config_files_dir ${CMAKE_BINARY_DIR}/__conan_config_files)
+set(__conan_config_files_dir ${CMAKE_BINARY_DIR}/__conan_config_files)
+
+if(${invoke_conan} AND NOT EXISTS "${__conan_config_files_dir}")
   set(__conan_configurations_to_build ${CMAKE_BUILD_TYPE})
   if("${CMAKE_BUILD_TYPE}" STREQUAL "")
     list(APPEND __conan_configurations_to_build "Release" "Debug"
@@ -28,8 +29,10 @@ if(${invoke_conan})
       UPDATE)
     # cmake-format: on
   endforeach()
-
-  list(APPEND CMAKE_PREFIX_PATH ${__conan_config_files_dir})
 endif()
 
 list(APPEND CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR})
+
+if(EXISTS "${__conan_config_files_dir}")
+  list(APPEND CMAKE_PREFIX_PATH ${__conan_config_files_dir})
+endif()
