@@ -169,12 +169,18 @@ The CSR5 format has two tuning parameters: $\omega$ and $\sigma$, where $\omega$
 is a tile’s width and $\sigma$ is its height. \cite{liu2015csr5}
 
 Further, extra information is needed to efficiently compute
-SpMV. For each tile, a tile pointer \lstinline!tile_ptr! and a tile descriptor \lstinline!tile_desc! are introduced. 
-Meanwhile, the three arrays, i.e., row pointer \lstinline!row_ptr!, column index \lstinline!col_idx! and value val, 
+SpMV. For each tile, a tile pointer \lstinline!tile_ptr! and a tile descriptor \lstinline!tile_desc! are introduced.
+Meanwhile, the three arrays, i.e., row pointer \lstinline!row_ptr!, column index \lstinline!col_idx! and value val,
 of the classic CSR format are directly integrated. The only difference is that the \lstinline!col_idx! data and the \lstinline!vals!
 data in each complete tile are in-place transposed (i.e., from row-major order to column-major order) for coalesced memory access from contiguous SIMD lanes.
 
 \lstinline!tile_ptr! stores the for index of the first entry of the tile.
+
+% TODO
+\chapter{HDF5}
+\chapter{OpenMP}
+\chapter{MPI}
+\chapter{C++20 - TBD}
 
 \chapter{State-of-the-art}
 test
