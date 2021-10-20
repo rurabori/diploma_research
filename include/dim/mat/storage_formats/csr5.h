@@ -15,6 +15,7 @@
 #include <dim/mat/storage_formats/base.h>
 #include <dim/mat/storage_formats/csr.h>
 #include <dim/memory/aligned_allocator.h>
+#include <dim/simd.h>
 #include <dim/span.h>
 
 #include <omp.h>
@@ -70,6 +71,11 @@ struct tile_descriptor_t
             __m128i y_offset;
             __m128i scansum_offset;
             __m128i bit_flag;
+
+            [[nodiscard]] __m256i get_local_bit(int which) const noexcept {
+                return _mm256_and_si256(_mm256_cvtepu32_epi64(_mm_srli_epi32(bit_flag, which)),
+                                        _mm256_set1_epi64x(0x1));
+            }
         };
 
         const auto current_desc = _mm_load_si128(reinterpret_cast<const __m128i*>(this));
@@ -128,27 +134,6 @@ namespace detail {
         auto&& it = std::upper_bound(range.begin(), range.end(), val);
         return static_cast<size_t>(std::distance(range.begin(), it) - 1);
     }
-
-    template<typename... Ty>
-    constexpr int make_permute_seq(Ty... seq) {
-        int value{};
-        size_t off = 0;
-        for (auto pos : std::array{seq...})
-            value |= pos << (off++ * 8 / sizeof...(seq));
-
-        return value;
-    }
-
-    inline double hsum_avx(__m256d in256d) {
-        __m256d hsum = _mm256_add_pd(in256d, _mm256_permute2f128_pd(in256d, in256d, make_permute_seq(1, 0)));
-
-        // NOLINTNEXTLINE - initialization would be dead write.
-        double sum;
-        _mm_store_sd(&sum, _mm_hadd_pd(_mm256_castpd256_pd128(hsum), _mm256_castpd256_pd128(hsum)));
-
-        return sum;
-    }
-
 } // namespace detail
 
 template<std::floating_point ValueType = double, std::signed_integral SignedType = int32_t,
@@ -379,11 +364,65 @@ public:
                              x[column_index_partition[offset + 1]], x[column_index_partition[offset]]);
     }
 
+    struct spmv_data_t
+    {
+        dim::span<const ValueType> x;
+        dim::span<ValueType> y;
+        dim::span<ValueType> calibrator;
+    };
+
+    struct spmv_thread_data
+    {
+        static constexpr auto stride = dim::memory::hardware_destructive_interference_size / sizeof(ValueType);
+
+        // these need to be aligned to 32 as the intrinsics require it.
+        const spmv_data_t& data;
+        int tid;
+        UnsignedType start_row_start;
+
+        // these need to be aligned to 32 as the intrinsics require it.
+        alignas(32) ValueType sum[8];
+        alignas(32) ValueType first_sum[8];
+        alignas(32) uint64_t cond[8];
+        alignas(32) int y_idx[16];
+
+        auto store(__m128i y_index, __m256d lsum, __m256i lcond) {
+            _mm_store_si128(reinterpret_cast<__m128i*>(std::data(y_idx)), y_index);
+            _mm256_store_pd(std::data(sum), lsum);
+            _mm256_store_si256(reinterpret_cast<__m256i*>(std::data(cond)), lcond);
+        }
+
+        auto maybe_store(dim::span<ValueType> y, size_t idx) const noexcept {
+            if (!cond[idx])
+                return 0;
+
+            y[y_idx[idx]] = sum[idx];
+            return 1;
+        }
+
+        [[nodiscard]] auto write_to_y(dim::span<ValueType> y) const noexcept -> __m128i {
+            return _mm_set_epi32(maybe_store(y, 3), maybe_store(y, 2), maybe_store(y, 1), maybe_store(y, 0));
+        }
+
+        auto store_tbd(UnsignedType row_start, ValueType val, bool direct) const -> void {
+            if (row_start == start_row_start && !direct) {
+                // we're in the first tile of chunk assigned to this thread, and the tile is unsealed from top. Need to
+                // sync with previous chunk. Throw into the calibrator for now.
+                data.calibrator[tid * stride] += val;
+                return;
+            }
+
+            if (direct)
+                data.y[row_start] = val; // we're the first to access this in our chunk.
+            else // TODO: check this case is ok without any synchronization primitives if row spans tiles through
+                 // multiple chunks.
+                data.y[row_start] += val; // not the first to access this in our chunk.
+        }
+    };
+
     // TODO: understand this better.
     auto partition_fast_track(dim::span<const ValueType> values, dim::span<const UnsignedType> column_index,
-                              dim::span<const ValueType> x, dim::span<ValueType> y, dim::span<ValueType> calibrator,
-                              bool direct, UnsignedType start_row_start, UnsignedType row_start, UnsignedType tile_id,
-                              UnsignedType stride) const noexcept {
+                              dim::span<const ValueType> x) const noexcept -> ValueType {
         auto sum256d = _mm256_setzero_pd();
 
         // fmadd of a single tile where all elements are from a same row.
@@ -395,51 +434,24 @@ public:
         }
 
         // total sum for this tile.
-        const auto sum = detail::hsum_avx(sum256d);
-
-        if (row_start == start_row_start && !direct) {
-            // we're in the first tile of chunk assigned to this thread, and the tile is unsealed from top. Need to sync
-            // with previous chunk. Throw into the calibrator for now.
-            calibrator[tile_id * stride] += sum;
-        } else {
-            if (direct)
-                y[row_start] = sum; // we're the first to access this in our chunk.
-            else // TODO: check this case is ok without any synchronization primitives if row spans tiles through
-                 // multiple chunks.
-                y[row_start] += sum; // not the first to access this in our chunk.
-        }
+        return simd::hsum_avx(sum256d);
     }
 
-    auto load_tile_info(UnsignedType tile_id) const noexcept {
-        static_assert(sizeof(tile_descriptor_type) == 16, "spmv only implemented over 32-bit tile column descriptors");
-        const auto current_desc = _mm_load_si128(&tile_desc[tile_id]);
-        // const auto y_offset = _mm_slli_epi32(current_desc, )
-    }
-
-    auto spmv_full_partitions(dim::span<const ValueType> x, dim::span<ValueType> y,
-                              dim::span<ValueType> calibrator) const {
+    auto spmv_full_partitions(spmv_data_t spmv_data) const {
         const auto thread_count = static_cast<size_t>(::omp_get_max_threads());
         const auto chunk
           = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(thread_count)));
 
-        const auto stride = dim::memory::hardware_destructive_interference_size / sizeof(ValueType);
         const auto num_thread_active = static_cast<int>(std::ceil(static_cast<double>(tile_count) / chunk));
 
 #pragma omp parallel
         {
             const auto tid = omp_get_thread_num();
-            auto start_row_start = tid < num_thread_active ? strip_dirty(tile_ptr[tid * chunk]) : 0;
 
-            // these need to be aligned to 32 as the intrinsics require it.
-            alignas(32) ValueType s_sum[8];
-            alignas(32) ValueType s_first_sum[8];
-            alignas(32) uint64_t s_cond[8];
-            alignas(32) int s_y_idx[16];
-            const auto store_to_local_arrays = [&](auto&& y_idx, auto&& sum, auto&& cond) {
-                _mm_store_si128(reinterpret_cast<__m128i*>(std::data(s_y_idx)), y_idx);
-                _mm256_store_pd(std::data(s_sum), sum);
-                _mm256_store_si256(reinterpret_cast<__m256i*>(std::data(s_cond)), cond);
-            };
+            spmv_thread_data thread_data{.data = spmv_data,
+                                         .tid = tid,
+                                         .start_row_start
+                                         = tid < num_thread_active ? detail::strip_dirty(tile_ptr[tid * chunk]) : 0};
 
             // TODO: make sense of this +-1 ...
 #pragma omp for schedule(static, chunk)
@@ -452,36 +464,151 @@ public:
 
                 const auto current_descriptor = tile_desc[tile_id];
 
+                const auto fast_direct = has_rbit_set(current_descriptor.columns[0].bit_flag, 0);
+
                 // the tile only has elements from a single row.
                 if (row_start == row_stop) {
                     // the row starts at this tile (blue).
-                    const auto fast_direct = has_rbit_set(current_descriptor.bit_flag, 0);
-                    partition_fast_track(values, column_index, x, y, calibrator, fast_direct, start_row_start,
-                                         row_start, tile_id, stride);
+                    thread_data.store_tbd(row_start, partition_fast_track(values, column_index, spmv_data.x),
+                                          fast_direct);
                     continue;
                 }
 
                 const auto empty_rows = detail::is_dirty(row_start);
                 row_start = detail::strip_dirty(row_start);
 
-                auto y_local = y.subspan(row_start + 1);
-                const auto store_if_new_row = [&s_cond, &y_local, &s_y_idx, &s_sum](auto idx) {
-                    if (!s_cond[idx])
-                        return 0;
-                    y_local[s_y_idx[idx]] = s_sum[idx];
-                    return 1;
-                };
+                // TODO: careful with the offsets here. We never write directly to the first element.
+                auto y_local = spmv_data.y.subspan(row_start);
 
                 const auto offset_pointer = empty_rows ? tile_desc_offset_ptr[tile_id] : 0;
                 const auto compute_y_idx = [this, empty_rows, offset_pointer](auto&& offset) {
                     return empty_rows ? _mm_i32gather_epi32(&tile_desc_offset[offset_pointer], offset, 4) : offset;
                 };
+
+                auto vec = current_descriptor.vectorized();
+
+                // remember if the first element of this partition is the first element of a new row
+                auto local_bit256i = vec.get_local_bit(0);
+                _mm256_store_si256(reinterpret_cast<__m256i*>(std::data(thread_data.cond)), local_bit256i);
+
+                // remember if the first element of the first partition of the current thread is the first element of a
+                // new row
+                const bool first_all_direct = tile_id == tid * chunk && fast_direct;
+
+                // set the 0th bit of the descriptor to 1.
+                // NOLINTNEXTLINE - clang doesn't support bit_cast yet.
+                vec.bit_flag = _mm_or_si128(vec.bit_flag, _mm_set_epi32(0, 0, 0, 1));
+
+                // load bits for next 4 reductions.
+                local_bit256i = vec.get_local_bit(0);
+
+                // start256i = !local_bit256i (speaking in bools). Meaning it's true if no row started here.
+                auto start256i = _mm256_sub_epi64(_mm256_set1_epi64x(0x1), local_bit256i);
+
+                auto stop256i = _mm256_setzero_si256();
+                auto direct256i = _mm256_and_si256(local_bit256i, _mm256_set_epi64x(0x1, 0x1, 0x1, 0));
+
+                // do the first sum.
+                auto value256d = _mm256_load_pd(spmv_data.values.data());
+                auto x256d = load_x(spmv_data.x, column_index, 0);
+                auto sum256d = _mm256_mul_pd(value256d, x256d);
+
+                // move the first column y_offset by one, that write is handled at the end of this function.
+                vec.y_offset = _mm_add_epi32(vec.y_offset, _mm_set_epi32(0, 0, 0, 1));
+
+                // step 1. thread-level seg sum
+                auto first_sum256d = _mm256_setzero_pd();
+                for (UnsignedType i = 1; i < sigma; ++i) {
+                    local_bit256i = vec.get_local_bit(i);
+
+                    // any of the bits mark start of a new row.
+                    if (simd::any_bit_set(local_bit256i)) {
+                        // if empty rows we need to use empty_offset[y_offset]
+                        auto y_idx128i = compute_y_idx(vec.y_offset128i);
+
+                        // green section capped from both sides.
+                        const auto full_row = _mm256_and_si256(direct256i, local_bit256i);
+                        thread_data.store(y_idx128i, sum256d, full_row);
+
+                        // if any of the lanes stored, we need to increase its index (new row == new output in Y).
+                        vec.y_offset128i = _mm_add_epi32(vec.y_offset128i, thread_data.write_to_y(y_local));
+
+                        const auto localbit_mask = _mm256_cmpeq_epi64(local_bit256i, _mm256_set1_epi64x(0x1));
+                        const auto row_active_mask = _mm256_cmpeq_epi64(direct256i, _mm256_set1_epi64x(0x1));
+
+                        // for lane i:
+                        // first_sum[i] = !row_active[i] && localbit[i] ? sum256d : first_sum256d.
+                        // thus, if we're at the end of a red section, we store the sum here to reuse after the loop is
+                        // done (no other red section can occur in this lane).
+                        const auto mask = _mm256_andnot_si256(row_active_mask, localbit_mask);
+                        first_sum256d = simd::merge_vec(first_sum256d, sum256d, mask);
+
+                        // zero out the parts of sum which have localbit set (AKA starting new row).
+                        sum256d = _mm256_andnot_pd(_mm256_castsi256_pd(localbit_mask), sum256d);
+                        // set direct to know if we've started a row yet.
+                        direct256i = _mm256_or_si256(direct256i, local_bit256i);
+                        // increase count of total rows started.
+                        stop256i = _mm256_add_epi64(stop256i, local_bit256i);
+                    }
+
+                    // process the next row in bitmap.
+                    x256d = load_x(spmv_data.x, column_index, i * omega);
+                    value256d = _mm256_load_pd(&values[i * omega]);
+                    sum256d = _mm256_fmadd_pd(value256d, x256d, sum256d);
+                }
+
+                // for lane i:
+                // first_sum[i] = row_active[i] ? first_sum256[i] : sum256[i]
+                // thus if any row has started in lane i, first_sum is unchanged, but if none started,
+                // we have a full red column and first_sum256d is the actual sum so far.
+                const auto any_row_active = _mm256_cmpeq_epi64(direct256i, _mm256_set1_epi64x(0x1));
+                first_sum256d = simd::merge_vec(sum256d, first_sum256d, any_row_active);
+
+                // save the sum for later.
+                auto last_sum256d = sum256d;
+
+                // for lane i:
+                // sum[i] = col_uncapped_from_top[i] ? first_sum[i] : 0.
+                // leaving only sums of columns which start by red section untouched.
+                const auto col_uncapped_from_top = _mm256_cmpeq_epi64(start256i, _mm256_set1_epi64x(0x1));
+                sum256d = _mm256_and_pd(_mm256_castsi256_pd(col_uncapped_from_top), first_sum256d);
+
+                // rotl(1)
+                sum256d = _mm256_permute4x64_pd(sum256d, simd::make_permute_seq(1, 2, 3, 0));
+                const auto zero_last_mask = _mm256_castsi256_pd(
+                  _mm256_set_epi64x(0, all_bits_set<int64_t>, all_bits_set<int64_t>, all_bits_set<int64_t>));
+                // leave only 1, 2, 3 elements in the sum.
+                sum256d = _mm256_and_pd(zero_last_mask, sum256d);
+
+                const auto tmp_sum256d = sum256d;
+                // inclusive prefix scan.
+                sum256d = simd::hscan_avx(sum256d);
+
+                // in[i] = in[i + seg_offset[i]] - in[i] + tmp[i]
+                sum256d = _mm256_add_pd(_mm256_sub_pd(simd::shuffle_relative(sum256d, vec.scansum_offset128i), sum256d),
+                                        tmp_sum256d);
+
+                // no row started and no row ended in the column (start256i is 1 if first bit flag in column isn't set,
+                // and stop is 0 if no other bit was set).
+                auto tmp256i = _mm256_cmpgt_epi64(start256i, stop256i);
+                // only add parts which had any rows starting here (bitflag set).
+                last_sum256d = _mm256_add_pd(last_sum256d, _mm256_andnot_pd(_mm256_castsi256_pd(tmp256i), sum256d));
+
+                auto y_idx128i = compute_y_idx(vec.y_offset128i);
+                thread_data.store(y_idx128i, last_sum256d, direct256i);
+
+                thread_data.write_to_y(y_local);
+                if (thread_data.cond[0])
+                    _mm256_store_pd(thread_data.first_sum, first_sum256d);
+
+                thread_data.store_tbd(row_start, thread_data.cond[0] ? thread_data.first_sum[0] : thread_data.sum[0],
+                                      first_all_direct);
             }
         }
     }
 
     auto spmv(dim::span<const ValueType> x, dim::span<ValueType> y, dim::span<ValueType> calibrator) const {
-        spmv_full_partitions(x, y, calibrator);
+        spmv_full_partitions(spmv_data_t{.x = x, .y = y, .calibrator = calibrator});
     }
 
     auto spmv(dim::span<const ValueType> x, dim::span<ValueType> y) const {

@@ -62,6 +62,9 @@ constexpr bool has_rbit_set(Integral value, size_t which) {
 template<typename Integral>
 constexpr Integral msb = set_bit<Integral>(0);
 
+template<std::integral Integral>
+constexpr Integral all_bits_set = ~Integral{0};
+
 template<typename Integral>
 constexpr size_t set_bit_count(const Integral value, const size_t start = 0, const size_t count = bit_size<Integral>) {
     size_t result{};
