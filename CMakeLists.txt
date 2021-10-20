@@ -24,6 +24,9 @@ include(cmake/functions.cmake)
 # conan integration.
 include(cmake/conan.cmake)
 
+# code coverage
+include(cmake/coverage.cmake)
+
 # default installation directories for OSes.
 include(GNUInstallDirs)
 
