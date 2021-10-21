@@ -24,6 +24,9 @@
 #include <scn/scn.h>
 #include <stx/panic.h>
 
+#include "dim/io/h5.h"
+#include "dim/mat/storage_formats/csr.h"
+#include "dim/mat/storage_formats/csr5.h"
 #include "spmv_algos.hpp"
 #include "timed_section.h"
 
@@ -87,7 +90,9 @@ struct arguments
 
 int main(int argc, const char* argv[]) {
     auto arguments = arguments::from_main(argc, argv);
-    auto matrix = dim::io::matrix_market::load_as_csr<double>(arguments.matrix_file);
+
+    H5::H5File file{arguments.matrix_file, H5F_ACC_RDONLY};
+    auto matrix = dim::io::h5::read_matlab_compatible(file.openGroup("A"));
 
     auto consumed_memory
       = matrix.col_indices.size() * sizeof(typename decltype(matrix.col_indices)::value_type)
@@ -98,7 +103,7 @@ int main(int argc, const char* argv[]) {
 
     auto dimensions = matrix.dimensions;
 
-    auto x = std::vector<double>(dimensions.cols, 1.);
+    auto x = std::vector<double>(dimensions.cols, 100.);
 
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
     switch (arguments.algorithm) {
@@ -107,16 +112,9 @@ int main(int argc, const char* argv[]) {
             break;
         }
         case arguments::algorithm_t::cpu_avx2: {
-            // TODO: remove, just to see if compilation is alright.
-            auto csr5 = dim::mat::csr5<>::from_csr(std::move(matrix));
+            const auto csr5 = dim::mat::csr5<double>::from_csr(matrix);
 
-            const auto x = csr5.tile_desc[0].columns[3].y_offset;
-            fmt::print("{}\n", x);
-
-            fmt::print("\n");
-            // auto handle = cg::spmv_algos::create_csr5_handle(matrix);
-            // report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_avx2(handle, dim::span{x}, dim::span{Y}); });
-            // handle.destroy();
+            report_timed_section("SpMV", [&] { csr5.spmv(dim::span{x}, dim::span{Y}); });
             break;
         }
 #ifdef CUDA_ENABLED
@@ -128,12 +126,24 @@ int main(int argc, const char* argv[]) {
     }
 
     if (arguments.debug) {
+        constexpr auto comparator
+          = [](auto l, auto r) { return std::abs(l - r) <= std::numeric_limits<double>::epsilon() * 1E5; };
+
         auto Y_ref = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
         cg::spmv_algos::cpu_sequential(matrix, dim::span{x}, dim::span{Y_ref});
 
-        const auto correct = std::equal(Y.begin(), Y.end(), Y_ref.begin(),
-                                        [](auto l, auto r) { return std::abs(l - r) <= (0.01 * std::abs(r)); });
-        fmt::print(stderr, "SpMV correct: {}\n", correct);
+        // const auto correct = std::equal(Y.begin(), Y.end(), Y_ref.begin(),
+        //                                 [](auto l, auto r) { return std::abs(l - r) <= (0.01 * std::abs(r));
+        //                                 });
+        // fmt::print(stderr, "SpMV correct: {}\n", correct);
+
+        for (size_t i = 0; i < Y_ref.size(); ++i) {
+            const auto l = Y_ref[i];
+            const auto r = Y[i];
+
+            if (!comparator(l, r))
+                fmt::print("idx: {} got: {}, expected {}\n", i, r, l);
+        }
     }
 
     return 0;

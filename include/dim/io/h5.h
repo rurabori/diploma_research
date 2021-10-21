@@ -107,7 +107,7 @@ void write_matlab_compatible(H5::Group& group, const mat::csr<double, Storage>& 
                           H5::PredType::STD_U64LE);
 }
 
-template<template<typename> typename Storage = memory::cache_aligned_vector>
+template<template<typename> typename Storage = mat::cache_aligned_vector>
 auto read_matlab_compatible(const H5::Group& group) -> mat::csr<double, Storage> {
     using retval_t = mat::csr<double, Storage>;
     using indices_t = typename retval_t::indices_t;

@@ -64,9 +64,8 @@ struct tile_descriptor_t
         col_storage present{1 << Omega};
     };
 
-    tile_column_descriptor columns[Omega];
+    alignas(32) tile_column_descriptor columns[Omega];
 
-    // TODO: implement for other combinations.
     [[nodiscard]] auto vectorized() const noexcept requires(Omega == 4 && sizeof(tile_column_descriptor) == 4) {
         constexpr auto y_shift_ammount = 32 - tile_column_descriptor::y_offset_needed;
         constexpr auto scansum_lshift_ammount = y_shift_ammount - tile_column_descriptor::scansum_offset_needed;
@@ -80,13 +79,13 @@ struct tile_descriptor_t
             __m128i scansum_offset;
             __m128i bit_flag;
 
-            [[nodiscard]] __m256i get_local_bit(int which) const noexcept {
-                return _mm256_and_si256(_mm256_cvtepu32_epi64(_mm_srli_epi32(bit_flag, which)),
+            [[nodiscard]] __m256i get_local_bit(size_t which) const noexcept {
+                return _mm256_and_si256(_mm256_cvtepu32_epi64(_mm_srli_epi32(bit_flag, static_cast<int>(which))),
                                         _mm256_set1_epi64x(0x1));
             }
         };
 
-        const auto current_desc = _mm_load_si128(reinterpret_cast<const __m128i*>(this));
+        const auto current_desc = _mm_load_si128(reinterpret_cast<const __m128i*>(&columns));
 
         return vectorized_impl{
           .y_offset = _mm_srli_epi32(_mm_slli_epi32(current_desc, y_shift_ammount), y_shift_ammount),
@@ -214,8 +213,9 @@ namespace detail {
         // set, and stop is 0 if no other bit was set).
         const auto not_red_column = _mm256_cmpgt_epi64(start, stop);
 
+        const auto b = _mm256_andnot_pd(_mm256_castsi256_pd(not_red_column), next_prefix_sum);
         // only add parts which had any rows starting here (bitflag set).
-        return _mm256_add_pd(sum, _mm256_andnot_pd(_mm256_castsi256_pd(not_red_column), next_prefix_sum));
+        return _mm256_add_pd(sum, b);
     };
 
 } // namespace detail
@@ -248,11 +248,14 @@ struct csr5
 private:
     [[nodiscard]] static auto tile_size() noexcept -> size_t { return sigma * omega; }
 
+    auto iterate_tiles(std::invocable<size_t, size_t, size_t> auto&& callable) const {
+        detail::iterate_tiles(tile_ptr, callable);
+    }
+
     auto set_bit_flag() -> void {
-        detail::iterate_tiles(tile_ptr, [&](auto tile_id, auto row_start, auto row_stop) {
+        iterate_tiles([&](auto tile_id, auto row_start, auto row_stop) {
             auto&& current_tile_desc = tile_desc[tile_id];
 
-            // TODO: this is a bit wasteful if we have long rows.
             for (auto rid = row_start; rid <= row_stop; rid++) {
                 const auto idx = static_cast<size_t>(row_ptr[rid]);
 
@@ -269,7 +272,7 @@ private:
     }
 
     auto set_tile_descriptor_y_and_segsum_offsets() -> void {
-        detail::iterate_tiles(tile_ptr, [&](auto tile_id, auto row_start, auto row_stop) {
+        iterate_tiles([&](auto tile_id, auto row_start, auto row_stop) {
             // skip tiles which have all elements in the same row (they are fast tracked).
             if (row_start == row_stop)
                 return;
@@ -290,7 +293,7 @@ private:
         std::exclusive_scan(tile_desc_offset_ptr.begin(), tile_desc_offset_ptr.end(), tile_desc_offset_ptr.begin(), 0);
 
         tile_desc_offset.resize(tile_desc_offset_ptr.back());
-        detail::iterate_tiles(tile_ptr, [&](const auto tile_id, const auto row_start, const auto row_stop) {
+        iterate_tiles([&](const auto tile_id, const auto row_start, const auto row_stop) {
             // no empty segments in this tile.
             if (!detail::is_dirty(tile_ptr[tile_id]))
                 return;
@@ -302,10 +305,6 @@ private:
             // this is inclusive.
             const auto rows = dim::span{row_ptr}.subspan(row_start, row_stop - row_start + 1);
             current_descriptor.iterate_columns([&](size_t col, auto desc) {
-                // skip columns which don't have any rows starting in them altogether.
-                if (!desc.bit_flag)
-                    return;
-
                 auto y_offset = desc.y_offset;
                 const auto col_idx_base = tile_id * omega * sigma + col * sigma;
 
@@ -340,11 +339,7 @@ private:
     auto transpose(std::ranges::random_access_range auto& to_transpose) -> void {
         using value_t = std::ranges::range_value_t<decltype(to_transpose)>;
 
-        // last tile is incomplete, thus we'd have access violations if we
-        // accessed it.
-        const auto tiles = dim::span{tile_ptr}.first(tile_ptr.size() - 1);
-
-        detail::iterate_tiles(tiles, [&](const auto tile_id, const auto row_start, const auto row_stop) {
+        iterate_tiles([&](const auto tile_id, const auto row_start, const auto row_stop) {
             if (row_start == row_stop)
                 return;
 
@@ -388,7 +383,7 @@ private:
         }
 
         const auto row_idx = dim::span<const UnsignedType>{row_ptr};
-        detail::iterate_tiles(dim::span{tile_ptr}, [&](auto partition_id, auto start, auto stop) {
+        iterate_tiles([&](auto partition_id, auto start, auto stop) {
             if (start == stop)
                 return;
 
@@ -482,24 +477,51 @@ public:
                  // multiple chunks.
                 data.y[row_start] += val; // not the first to access this in our chunk.
         }
-    };
 
-    // TODO: understand this better.
-    auto partition_fast_track(dim::span<const ValueType> values, dim::span<const UnsignedType> column_index,
-                              dim::span<const ValueType> x) const noexcept -> ValueType {
-        auto sum256d = _mm256_setzero_pd();
+        struct vals_and_x
+        {
+            __m256d vals;
+            __m256d x;
+        };
 
-        // fmadd of a single tile where all elements are from a same row.
+        struct spmv_iteration_data
+        {
+            const spmv_thread_data& thread_data;
+            size_t tile_id;
+            dim::span<const ValueType> vals;
+            dim::span<const UnsignedType> col_idx;
+
+            auto load_vals_and_x(size_t offset) const noexcept -> vals_and_x {
+                offset *= omega;
+
+                return vals_and_x{
+                  .vals = _mm256_load_pd(&vals[offset]),
+                  .x = _mm256_set_pd(thread_data.data.x[col_idx[offset + 3]], thread_data.data.x[col_idx[offset + 2]],
+                                     thread_data.data.x[col_idx[offset + 1]], thread_data.data.x[col_idx[offset]])};
+            }
+
+            auto partition_fast_track() const noexcept -> ValueType {
+                auto sum256d = _mm256_setzero_pd();
+
+                // fmadd of a single tile where all elements are from a same row.
 #pragma unroll
-        for (size_t i = 0; i < sigma; i++) {
-            const auto base_offset = i * omega;
-            sum256d
-              = _mm256_fmadd_pd(_mm256_load_pd(&values[base_offset]), load_x(x, column_index, base_offset), sum256d);
-        }
+                for (size_t i = 0; i < sigma; i++) {
+                    auto curr = load_vals_and_x(i);
+                    sum256d = _mm256_fmadd_pd(curr.vals, curr.x, sum256d);
+                }
 
-        // total sum for this tile.
-        return simd::hsum_avx(sum256d);
-    }
+                // total sum for this tile.
+                return simd::hsum_avx(sum256d);
+            }
+        };
+
+        auto get_iter_data(const csr5& self, size_t tile_id) const noexcept -> spmv_iteration_data {
+            return spmv_iteration_data{.thread_data = *this,
+                                       .tile_id = tile_id,
+                                       .vals = dim::span{self.vals}.subspan(tile_id * tile_size(), tile_size()),
+                                       .col_idx = dim::span{self.col_idx}.subspan(tile_id * tile_size(), tile_size())};
+        }
+    };
 
     auto spmv_full_partitions(spmv_data_t spmv_data) const {
         const auto thread_count = static_cast<size_t>(::omp_get_max_threads());
@@ -517,14 +539,12 @@ public:
                                          .start_row_start
                                          = tid < num_thread_active ? detail::strip_dirty(tile_ptr[tid * chunk]) : 0};
 
-            // TODO: make sense of this +-1 ...
 #pragma omp for schedule(static, chunk)
-            for (size_t tile_id = 0; tile_id < tile_count - 1; ++tile_id) {
-                const auto values = dim::span{vals}.subspan(tile_id * tile_size(), tile_size());
-                const auto column_index = dim::span{col_idx}.subspan(tile_id * tile_size(), tile_size());
+            for (size_t tile_id = 0; tile_id < tile_count; ++tile_id) {
+                const auto iteration_data = thread_data.get_iter_data(*this, tile_id);
 
                 auto row_start = tile_ptr[tile_id];
-                const auto row_stop = detail::strip_dirty(tile_ptr[tile_id]);
+                const auto row_stop = detail::strip_dirty(tile_ptr[tile_id + 1]);
 
                 const auto current_descriptor = tile_desc[tile_id];
 
@@ -533,15 +553,13 @@ public:
                 // the tile only has elements from a single row.
                 if (row_start == row_stop) {
                     // the row starts at this tile (blue).
-                    thread_data.store_to_row_start(row_start, partition_fast_track(values, column_index, spmv_data.x),
-                                                   fast_direct);
+                    thread_data.store_to_row_start(row_start, iteration_data.partition_fast_track(), fast_direct);
                     continue;
                 }
 
                 const auto empty_rows = detail::is_dirty(row_start);
                 row_start = detail::strip_dirty(row_start);
 
-                // TODO: careful with the offsets here. We never write directly to the first element.
                 auto y_local = spmv_data.y.subspan(row_start);
 
                 const auto offset_pointer = empty_rows ? tile_desc_offset_ptr[tile_id] : 0;
@@ -573,9 +591,8 @@ public:
                 auto any_row_started = _mm256_and_si256(local_bit256i, _mm256_set_epi64x(0x1, 0x1, 0x1, 0));
 
                 // do the first sum.
-                auto value256d = _mm256_load_pd(values.data());
-                auto x256d = load_x(spmv_data.x, column_index, 0);
-                auto sum256d = _mm256_mul_pd(value256d, x256d);
+                auto curr = iteration_data.load_vals_and_x(0);
+                auto sum256d = _mm256_mul_pd(curr.vals, curr.x);
 
                 // move the first column y_offset by one, that write is handled at the end of this function.
                 vec.y_offset = _mm_add_epi32(vec.y_offset, _mm_set_epi32(0, 0, 0, 1));
@@ -616,9 +633,8 @@ public:
                     }
 
                     // process the next row in bitmap.
-                    x256d = load_x(spmv_data.x, column_index, i * omega);
-                    value256d = _mm256_load_pd(&values[i * omega]);
-                    sum256d = _mm256_fmadd_pd(value256d, x256d, sum256d);
+                    curr = iteration_data.load_vals_and_x(i);
+                    sum256d = _mm256_fmadd_pd(curr.vals, curr.x, sum256d);
                 }
 
                 // for lane i:
@@ -645,12 +661,52 @@ public:
         }
     }
 
+    auto spmv_calibrator(spmv_data_t spmv_data) const noexcept {
+        constexpr auto stride = spmv_thread_data::stride;
+
+        const auto thread_count = static_cast<size_t>(::omp_get_max_threads());
+        const auto chunk
+          = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(thread_count)));
+        const auto num_thread_active = static_cast<int>(std::ceil(static_cast<double>(tile_count) / chunk));
+
+        int num_cali = num_thread_active < thread_count ? num_thread_active : thread_count;
+
+        for (size_t i = 0; i < num_cali; i++)
+            spmv_data.y[detail::strip_dirty(tile_ptr[i * chunk])] += spmv_data.calibrator[i * stride];
+    }
+
+    auto spmv_tail_partition(spmv_data_t spmv_data) const noexcept {
+        const auto first_tail_element = tile_count * tile_size();
+        const auto tail_start = tail_partition_start();
+
+#pragma omp parallel for
+        for (size_t row = tail_start; row < dimensions.rows; ++row) {
+            auto idx_start = row == tail_start ? first_tail_element : row_ptr[row];
+            auto idx_stop = row_ptr[row + 1];
+
+            ValueType sum = 0;
+            for (auto idx = idx_start; idx < idx_stop; ++idx)
+                sum += vals[idx] * spmv_data.x[col_idx[idx]];
+
+            // row started in some tile before.
+            if (row == tail_start && row_ptr[row] != first_tail_element)
+                spmv_data.y[row] += sum;
+            else
+                spmv_data.y[row] = sum;
+        }
+    }
+
+    auto spmv(spmv_data_t spmv_data) const {
+        spmv_full_partitions(spmv_data);
+        spmv_calibrator(spmv_data);
+        spmv_tail_partition(spmv_data);
+    }
+
     auto spmv(dim::span<const ValueType> x, dim::span<ValueType> y, dim::span<ValueType> calibrator) const {
-        spmv_full_partitions(spmv_data_t{.x = x, .y = y, .calibrator = calibrator});
+        spmv(spmv_data_t{.x = x, .y = y, .calibrator = calibrator});
     }
 
     auto spmv(dim::span<const ValueType> x, dim::span<ValueType> y) const {
-        // TODO: understand the calibrator better.
         StorageContainer<ValueType> calibrator(
           ::omp_get_max_threads() * dim::memory::hardware_destructive_interference_size / sizeof(ValueType),
           ValueType{});
