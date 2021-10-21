@@ -20,7 +20,8 @@ if(enable_coverage
       ccov-${TARGET_NAME}
       COMMAND set LLVM_PROFILE_FILE="$$PWD/${TARGET_NAME}.profraw"
       COMMAND set LLVM_PROFILE_FILE="$$PWD/${TARGET_NAME}.profraw"
-      COMMAND cd ${CMAKE_HOME_DIRECTORY} && $<TARGET_FILE:${TARGET_NAME}> ${ADDITIONAL_ARG} && cd - || (exit 0)
+      COMMAND cd ${CMAKE_HOME_DIRECTORY} && $<TARGET_FILE:${TARGET_NAME}>
+              ${ADDITIONAL_ARG} && cd - || (exit 0)
       COMMAND llvm-profdata-13 merge -sparse ${TARGET_NAME}.profraw -o
               ${TARGET_NAME}.profdata
       # -show-instantiations=true -show-expansions
@@ -31,7 +32,11 @@ if(enable_coverage
         -output-dir ${CMAKE_BINARY_DIR}/report -show-instantiations=true
         -show-expansions=true -show-line-counts -Xdemangler c++filt -Xdemangler
         -n -show-branches=percent
-        # -tab-size=4
+      COMMAND
+        llvm-cov-13 export $<TARGET_FILE:${TARGET_NAME}>
+        -instr-profile=${TARGET_NAME}.profdata
+        "-ignore-filename-regex=\"(external/.*|tests/.*)\"" -format lcov
+        -Xdemangler c++filt -Xdemangler -n > lcov.info
       DEPENDS ${TARGET_NAME}
       BYPRODUCTS ${TARGET_NAME}.profraw ${TARGET_NAME}.profdata
                  ${CMAKE_BINARY_DIR}/report.zip)

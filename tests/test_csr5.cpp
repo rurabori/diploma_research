@@ -32,6 +32,10 @@ TEST_CASE("Test conversion from CSR") {
 
     REQUIRE_FALSE(std::equal(csr5.vals.begin(), csr5.vals.end(), csr.values.begin()));
 
+    // we only have 2 full tiles.
+    REQUIRE_EQ(csr5.tile_count, 2);
+    REQUIRE_EQ(csr5.tail_partition_start(), 154);
+
     REQUIRE_EQ(csr5.tile_desc[0],
                tile_desc_t{
                  .columns = {tile_col_desc_t{.y_offset = 0, .scansum_offset = 0, .bit_flag = 0b1000'0100'0010'0001},
@@ -46,9 +50,12 @@ TEST_CASE("Test conversion from CSR") {
                               tile_col_desc_t{.y_offset = 2, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000},
                               tile_col_desc_t{.y_offset = 2, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000}}});
 
-    //csr5.spmv({}, {});
-
-    // TODO: tests for tile_desc_offset when understood better.
+    // check that we are outputting to the correct row from tiles with empty columns.
+    REQUIRE_EQ(csr5.tile_desc_offset.size(), csr5.tile_count);
+    REQUIRE(dim::mat::detail::is_dirty(csr5.tile_ptr[1]));
+    REQUIRE_EQ(csr5.tile_desc_offset_ptr[1], 0);
+    REQUIRE_EQ(csr5.tile_desc_offset[csr5.tile_desc_offset_ptr[1] + 1],
+               154 - dim::mat::detail::strip_dirty(csr5.tile_ptr[1]));
 }
 
 auto vec_equal(__m128i vec, __m128i vec2) noexcept -> bool {

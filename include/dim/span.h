@@ -11,6 +11,7 @@
 #include <iterator>
 #include <type_traits>
 
+#if !__has_include(<span>)
 namespace luna {
 
 static constexpr size_t dynamic_extent = ~static_cast<size_t>(0);
@@ -453,5 +454,13 @@ using luna::as_writable_bytes;
 using luna::span;
 
 } // namespace dim
+#else
+#include <span>
+namespace dim {
+using std::as_bytes;
+using std::as_writable_bytes;
+using std::span;
+} // namespace dim
 
+#endif
 #endif /* INCLUDE_DIM_SPAN */
