@@ -64,7 +64,7 @@ struct tile_descriptor_t
         col_storage present{1 << Omega};
     };
 
-    alignas(32) tile_column_descriptor columns[Omega];
+    tile_column_descriptor columns[Omega];
 
     [[nodiscard]] auto vectorized() const noexcept requires(Omega == 4 && sizeof(tile_column_descriptor) == 4) {
         constexpr auto y_shift_ammount = 32 - tile_column_descriptor::y_offset_needed;
@@ -85,7 +85,8 @@ struct tile_descriptor_t
             }
         };
 
-        const auto current_desc = _mm_load_si128(reinterpret_cast<const __m128i*>(&columns));
+        const auto* tmp = reinterpret_cast<const int*>(&columns);
+        const auto current_desc = _mm_set_epi32(tmp[3], tmp[2], tmp[1], tmp[0]);
 
         return vectorized_impl{
           .y_offset = _mm_srli_epi32(_mm_slli_epi32(current_desc, y_shift_ammount), y_shift_ammount),
