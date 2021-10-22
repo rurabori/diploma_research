@@ -48,3 +48,49 @@ TEST_CASE("test matlab/petsc compatible HDF5 roundtrip") {
     REQUIRE_EQ(result.dimensions.cols, sample.dimensions.cols);
     REQUIRE_EQ(result.dimensions.rows, sample.dimensions.rows);
 }
+
+auto range_equal(const auto& l, const auto& r) {
+    return l.size() == r.size() && std::equal(l.begin(), l.end(), r.begin());
+}
+
+TEST_CASE("dim::io::csr5_hdf5_roundtrip") {
+    const auto example = dim::mat::csr5<double>{
+      .vals = {1., 2., 3., 4., 5.},
+      .col_idx = {1, 2, 3, 4, 5},
+      .row_ptr = {1, 2, 3, 4, 5},
+      .tile_ptr = {1, 2, 3},
+      .tile_desc = {{.columns = {{.y_offset = 0, .scansum_offset = 0, .bit_flag = 0b1000'0100'0010'0001},
+                                 {.y_offset = 4, .scansum_offset = 0, .bit_flag = 0b1000'1000'1000'1000},
+                                 {.y_offset = 8, .scansum_offset = 0, .bit_flag = 0b1010'1000'1000'1000},
+                                 {.y_offset = 13, .scansum_offset = 0, .bit_flag = 0b1010'1010'1010'1010}}},
+                    {.columns = {{.y_offset = 0, .scansum_offset = 3, .bit_flag = 0b0000'0000'0000'0010},
+                                 {.y_offset = 2, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000},
+                                 {.y_offset = 2, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000},
+                                 {.y_offset = 2, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000}}}},
+      .tile_desc_offset_ptr = {1, 2, 3, 4, 5},
+      .tile_desc_offset = {1, 2, 3, 4, 5}};
+
+    const std::string group_name{"testing"};
+    const auto path = std::filesystem::temp_directory_path() / "test.csr5.hdf5";
+
+    {
+        H5::H5File file{path, H5F_ACC_TRUNC};
+        auto matrix_group = file.createGroup(group_name, 3);
+        dim::io::h5::store(matrix_group, example);
+    }
+
+    // check the file was actually created.
+    REQUIRE(std::filesystem::exists(path));
+
+    H5::H5File file{path, H5F_ACC_RDONLY};
+    auto matrix_group = file.openGroup(group_name);
+    const auto result = dim::io::h5::load_csr5(matrix_group);
+
+    REQUIRE(range_equal(example.vals, result.vals));
+    REQUIRE(range_equal(example.col_idx, result.col_idx));
+    REQUIRE(range_equal(example.row_ptr, result.row_ptr));
+    REQUIRE(range_equal(example.tile_ptr, result.tile_ptr));
+    REQUIRE(range_equal(example.tile_desc, result.tile_desc));
+    REQUIRE(range_equal(example.tile_desc_offset_ptr, result.tile_desc_offset_ptr));
+    REQUIRE(range_equal(example.tile_desc_offset, result.tile_desc_offset));
+}

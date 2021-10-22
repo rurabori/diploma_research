@@ -127,6 +127,10 @@ auto read_matlab_compatible(const H5::Group& group) -> mat::csr<double, Storage>
     return retval;
 }
 
+// TODO: better naming
+auto store(H5::Group& group, const mat::csr5<double>& csr5) -> void;
+auto load_csr5(const H5::Group& group) -> mat::csr5<double>;
+
 auto read_vector(const H5::Group& group, const std::string& dataset_name) -> std::vector<double>;
 
 } // namespace dim::io::h5
