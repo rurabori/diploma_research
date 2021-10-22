@@ -1,6 +1,7 @@
 #include "dim/mat/storage_formats/csr5.h"
 #include <doctest/doctest.h>
 
+#include <dim/bit.h>
 #include <dim/simd.h>
 #include <immintrin.h>
 
@@ -10,7 +11,7 @@ TEST_CASE("simd::any_bit_set") {
 }
 
 auto vec_equal(__m256d vec, __m256d vec2) noexcept -> bool {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(vec, vec2)) == (int)0xffffffff;
+    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(vec, vec2)) == dim::all_bits_set<int>;
 }
 
 TEST_CASE("simd::shuffle") {
@@ -26,10 +27,4 @@ TEST_CASE("simd::hscan_avx") {
     const auto base_vec = _mm256_set_pd(4., 3., 2., 1.);
 
     REQUIRE(vec_equal(dim::simd::hscan_avx(base_vec), _mm256_set_pd(10., 6., 3., 1.)));
-}
-
-TEST_CASE("detail::fast_segmented_sum") {
-    const auto base_vec = _mm256_set_pd(4., 3., 2., 1.);
-    auto vec = dim::mat::detail::fast_segmented_sum(base_vec, _mm_set_epi32(0, 1, 0, 1));
-    auto x = 0;
 }
