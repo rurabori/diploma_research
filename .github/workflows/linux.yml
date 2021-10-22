@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - 'docs/**'
+      - "docs/**"
   pull_request:
     branches: [main]
 
@@ -72,3 +72,4 @@ jobs:
         with:
           name: ${{matrix.artifact_name}}
           path: install
+          retention-days: 1
