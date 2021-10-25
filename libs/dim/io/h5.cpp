@@ -1,14 +1,15 @@
+#include <H5Ppublic.h>
 #include <dim/io/h5.h>
 
 namespace dim::io::h5 {
 
-dataset_props_t::operator H5::DSetCreatPropList() const {
-    H5::DSetCreatPropList prop_list{H5::DSetCreatPropList::DEFAULT};
+dataset_props_t::operator plist_t() const {
+    plist_t prop_list{::H5Pcreate(H5P_DATASET_CREATE)};
     if (chunk_size)
-        prop_list.setChunk(1, std::addressof(*chunk_size));
+        ::H5Pset_chunk(prop_list.get(), 1, std::addressof(*chunk_size));
 
     if (compression_level)
-        prop_list.setDeflate(*compression_level);
+        ::H5Pset_deflate(prop_list.get(), *compression_level);
 
     return prop_list;
 }
