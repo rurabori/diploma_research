@@ -89,3 +89,8 @@ function(brr_add_library target_name type)
       PRIVATE .)
   endif()
 endfunction()
+
+add_custom_target(
+  graphviz ALL
+  "${CMAKE_COMMAND}" "--graphviz=dim" .
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
