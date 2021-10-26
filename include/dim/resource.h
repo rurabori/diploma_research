@@ -9,12 +9,14 @@ namespace dim {
 template<typename TraitsType, typename ResourceType>
 concept resource_deleter = requires(ResourceType res) {
     { TraitsType::destroy(res) } -> std::same_as<void>;
+    { TraitsType::is_valid(res) } -> std::same_as<bool>;
+    { TraitsType::invalid_value() } -> std::same_as<ResourceType>;
 };
 
 template<typename HeldType, resource_deleter<HeldType> Traits>
 class resource_t
 {
-    std::optional<HeldType> _resource;
+    HeldType _resource{Traits::invalid_value()};
 
 public:
     explicit resource_t(HeldType&& resource) : _resource{std::move(resource)} {}
@@ -27,18 +29,18 @@ public:
 
     ~resource_t() noexcept(noexcept(reset())) { reset(); }
 
-    void reset() noexcept(noexcept(Traits::destroy(*_resource))) {
+    void reset() noexcept(noexcept(Traits::destroy(_resource))) {
         if (!_resource)
             return;
 
-        Traits::destroy(*_resource);
-        _resource.reset();
+        Traits::destroy(std::exchange(_resource, Traits::invalid_value()));
     }
 
     // NOLINTNEXTLINE - we want this to be convertible to bool.
-    operator bool() const noexcept { return _resource.has_value(); }
+    operator bool() const noexcept { return Traits::is_valid(_resource); }
 
-    HeldType& get() const noexcept { return *_resource; }
+    HeldType& get() const noexcept { return _resource; }
+    HeldType& get() noexcept { return _resource; }
 };
 
 } // namespace dim
