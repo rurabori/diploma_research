@@ -71,8 +71,8 @@ struct dim_cli
 };
 
 STRUCTOPT(dim_cli::compare_results_t, input_file, input_file_2, lhs_group, rhs_group);
-STRUCTOPT(dim_cli::store_matrix_t, input, output, values_chunk_size, values_compression, col_idx_chunk_size,
-          col_idx_compression, row_start_offsets_chunk_size, row_start_offsets_compression);
+STRUCTOPT(dim_cli::store_matrix_t, input, output, group_name, append, values_chunk_size, values_compression,
+          col_idx_chunk_size, col_idx_compression, row_start_offsets_chunk_size, row_start_offsets_compression);
 STRUCTOPT(dim_cli::download_t, url, destination_dir, format);
 STRUCTOPT(dim_cli, store_matrix, compare_results, download, log_level);
 

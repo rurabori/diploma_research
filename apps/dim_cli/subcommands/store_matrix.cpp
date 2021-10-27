@@ -9,22 +9,6 @@
 #include <dim/io/matrix_market.h>
 
 namespace {
-H5::Group create_group_recurse(H5::Group base, std::string_view parts) {
-    while (!parts.empty()) {
-        // skip leading slashes
-        parts.remove_prefix(parts.find_first_not_of('/'));
-
-        // get the part between the slashes.
-        const auto next_part = parts.substr(0, parts.find_first_of('/'));
-        if (next_part.empty())
-            break;
-
-        base = base.createGroup(std::string{next_part});
-        parts.remove_prefix(next_part.size());
-    }
-
-    return base;
-}
 
 auto create_matrix_storage_props(const dim_cli::store_matrix_t& arguments) {
     using dim::io::h5::matrix_storage_props_t;
@@ -45,6 +29,8 @@ auto create_matrix_storage_props(const dim_cli::store_matrix_t& arguments) {
 } // namespace
 
 auto store_matrix(const dim_cli::store_matrix_t& arguments) -> int {
+    namespace h5 = dim::io::h5;
+
     using dim::io::formattable_bytes;
     using dim::io::h5::write_matlab_compatible;
     using dim::io::matrix_market::load_as_csr;
@@ -57,13 +43,16 @@ auto store_matrix(const dim_cli::store_matrix_t& arguments) -> int {
     const auto csr = load_as_csr<double>(arguments.input);
     spdlog::info("load and conversion to CSR took: {}s", stopwatch);
 
-    H5::H5File file{arguments.output, *arguments.append ? H5F_ACC_RDWR | H5F_ACC_CREAT : H5F_ACC_TRUNC};
+    auto file = h5::file_t{::H5Fcreate(arguments.output.c_str(),
+                                       *arguments.append ? H5F_ACC_RDWR | H5F_ACC_CREAT : H5F_ACC_TRUNC, H5P_DEFAULT,
+                                       H5P_DEFAULT)};
+    auto group
+      = h5::group_t{::H5Gcreate(file.get(), arguments.group_name->c_str(), H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT)};
 
-    auto matrix_group = create_group_recurse(file.openGroup("/"), *arguments.group_name);
-    spdlog::info("storing matrix as group '{}' to {}", matrix_group.getObjName(), file.getFileName());
+    spdlog::info("storing matrix as group '{}' to {}", *arguments.group_name, arguments.output.native());
 
     stopwatch.reset();
-    write_matlab_compatible(matrix_group, csr, create_matrix_storage_props(arguments));
+    write_matlab_compatible(group.get(), csr, create_matrix_storage_props(arguments));
     spdlog::info("storing CSR to HDF5 took: {}s", stopwatch);
 
     return 0;

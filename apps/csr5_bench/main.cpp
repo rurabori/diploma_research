@@ -90,9 +90,11 @@ struct arguments
 
 int main(int argc, const char* argv[]) {
     auto arguments = arguments::from_main(argc, argv);
+    namespace h5 = dim::io::h5;
 
-    H5::H5File file{arguments.matrix_file, H5F_ACC_RDONLY};
-    auto matrix = dim::io::h5::read_matlab_compatible(file.openGroup("A"));
+    auto in = h5::file_t{::H5Fopen(arguments.matrix_file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT)};
+    auto group = h5::group_t{::H5Gopen(in.get(), "A", H5P_DEFAULT)};
+    auto matrix = dim::io::h5::read_matlab_compatible(group.get());
 
     auto consumed_memory
       = matrix.col_indices.size() * sizeof(typename decltype(matrix.col_indices)::value_type)

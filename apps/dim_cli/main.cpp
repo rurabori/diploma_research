@@ -1,4 +1,7 @@
 
+#include <H5Fpublic.h>
+#include <H5Gpublic.h>
+#include <H5Ppublic.h>
 #include <cstddef>
 #include <filesystem>
 #include <memory>
@@ -7,11 +10,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-
-#include <hdf5/H5Cpp.h>
-#include <hdf5/H5Exception.h>
-#include <hdf5/H5File.h>
-#include <hdf5/H5Group.h>
 
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
@@ -30,17 +28,16 @@
 #include "version.h"
 
 auto compare_results(const dim_cli::compare_results_t& args) -> int {
+    namespace h5 = dim::io::h5;
     using dim::io::h5::read_vector;
     constexpr auto nearly_equal = [](auto l, auto r) { return std::abs(l - r) <= (0.01 * std::abs(r)); };
     constexpr auto load_vec_and_info = [](auto&& path, auto&& group_name, auto&& dataset_name) {
-        const auto in = H5::H5File{path, H5F_ACC_RDONLY};
-        const auto group = in.openGroup(group_name);
+        auto in = h5::file_t{::H5Fopen(path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT)};
+        auto group = h5::group_t{::H5Gopen(in.get(), group_name.c_str(), H5P_DEFAULT)};
 
-        return std::pair{fmt::format("{}:{}{}", in.getFileName(), group.getObjName(), dataset_name),
-                         read_vector(group, dataset_name)};
+        return std::pair{fmt::format("{}:{}{}", path.filename().native(), group_name, dataset_name),
+                         read_vector(group.get(), dataset_name)};
     };
-
-    H5::H5File in{args.input_file, H5F_ACC_RDONLY};
 
     const auto [lhs_id, lhs] = load_vec_and_info(args.input_file, *args.lhs_group, *args.lhs_dataset);
     const auto [rhs_id, rhs]
@@ -74,10 +71,7 @@ int main(int argc, char* argv[]) try {
     fmt::print("{}", app.help());
 
     return 0;
-} catch (const H5::Exception& e) {
-    spdlog::critical("HDF5 error @{}: '{}'", e.getFuncName(), e.getDetailMsg());
-    return 1;
 } catch (const std::exception& e) {
     spdlog::critical("exception thrown: {}", e.what());
-    return 2;
+    return 1;
 }
