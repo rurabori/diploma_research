@@ -1,28 +1,24 @@
 #ifndef INCLUDE_DIM_IO_H5
 #define INCLUDE_DIM_IO_H5
 
-#include "dim/memory/aligned_allocator.h"
+#include <H5Apublic.h>
 #include <H5Cpublic.h>
 #include <H5Dpublic.h>
 #include <H5Gpublic.h>
 #include <H5Ppublic.h>
 #include <H5Spublic.h>
-
 #include <H5Tpublic.h>
-#include <hdf5/H5Cpp.h>
-#include <hdf5/H5DataType.h>
-#include <hdf5/H5DcreatProp.h>
-#include <hdf5/H5Group.h>
-#include <hdf5/H5PredType.h>
-
-#include <cstdint>
-#include <dim/resource.h>
 
 #include <dim/mat/storage_formats.h>
+#include <dim/memory/aligned_allocator.h>
+#include <dim/resource.h>
+
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <string>
 
 namespace dim::io::h5 {
 

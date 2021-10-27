@@ -16,11 +16,10 @@ class CSPConan(ConanFile):
         "revision": "auto"
     }
 
-    requires = ['doctest/2.4.6', 'fmt/8.0.1', 'tclap/1.2.4', 'magic_enum/0.7.3',
-                'stx/1.0.1', 'scnlib/0.4', 'hdf5/1.12.0', 'spdlog/1.9.2', 'structopt/0.1.2',
-                'libcurl/7.78.0', 'libarchive/3.5.1'
-                # , 'openmpi/4.1.0'
-                ]
+    requires = ['doctest/2.4.6', 'fmt/8.0.1', 'tclap/1.2.4', 
+                'magic_enum/0.7.3', 'stx/1.0.1', 'scnlib/0.4', 
+                'hdf5/1.12.0@rurabori/stable', 'spdlog/1.9.2', 'structopt/0.1.2',
+                'libcurl/7.78.0', 'libarchive/3.5.1', 'petsc/3.16.0@rurabori/stable']
 
     def _configure_cmake(self):
         cmake= CMake(self)

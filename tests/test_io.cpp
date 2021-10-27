@@ -3,8 +3,6 @@
 #include <dim/io/h5.h>
 #include <dim/mat/storage_formats.h>
 
-#include <hdf5/H5File.h>
-
 #include <filesystem>
 
 namespace h5 = dim::io::h5;
