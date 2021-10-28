@@ -1,6 +1,7 @@
 #include "store_matrix.h"
 #include "dim/io/format.h"
 
+#include <H5Tpublic.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
 
@@ -43,16 +44,13 @@ auto store_matrix(const dim_cli::store_matrix_t& arguments) -> int {
     const auto csr = load_as_csr<double>(arguments.input);
     spdlog::info("load and conversion to CSR took: {}s", stopwatch);
 
-    auto file = h5::file_t{::H5Fcreate(arguments.output.c_str(),
-                                       *arguments.append ? H5F_ACC_RDWR | H5F_ACC_CREAT : H5F_ACC_TRUNC, H5P_DEFAULT,
-                                       H5P_DEFAULT)};
-    auto group
-      = h5::group_t{::H5Gcreate(file.get(), arguments.group_name->c_str(), H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT)};
+    auto file = h5::file_t::create(arguments.output, *arguments.append ? H5F_ACC_RDWR | H5F_ACC_CREAT : H5F_ACC_TRUNC);
+    auto group = file.create_group(*arguments.group_name);
 
     spdlog::info("storing matrix as group '{}' to {}", *arguments.group_name, arguments.output.native());
 
     stopwatch.reset();
-    write_matlab_compatible(group.get(), csr, create_matrix_storage_props(arguments));
+    write_matlab_compatible(group.get_id(), csr, create_matrix_storage_props(arguments));
     spdlog::info("storing CSR to HDF5 took: {}s", stopwatch);
 
     return 0;

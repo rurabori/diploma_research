@@ -1,3 +1,4 @@
+#include <H5Ppublic.h>
 #include <doctest/doctest.h>
 
 #include <dim/io/h5.h>
@@ -29,21 +30,21 @@ TEST_CASE("test matlab/petsc compatible HDF5 roundtrip") {
     const auto path = std::filesystem::temp_directory_path() / "test.hdf5";
 
     {
-        auto props = h5::plist_t{::H5Pcreate(H5P_GROUP_CREATE)};
-        h5_try H5Pset_local_heap_size_hint(props.get(), 3);
+        auto file = h5::file_t::create(path, H5F_ACC_TRUNC);
+        auto props = h5::plist_t::create(H5P_GROUP_CREATE);
+        h5_try H5Pset_local_heap_size_hint(props.get_id(), 3);
 
-        auto file = h5::file_t{::H5Fcreate(path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT)};
-        auto group = h5::group_t{::H5Gcreate(file.get(), group_name.c_str(), H5P_DEFAULT, props.get(), H5P_DEFAULT)};
-        h5::write_matlab_compatible(group.get(), sample);
+        auto group = file.create_group(group_name, h5::plist_t::defaulted(), props, h5::plist_t::defaulted());
+        h5::write_matlab_compatible(group.get_id(), sample);
     } // namespace dim::io::h5;
 
     // check the file was actually created.
     REQUIRE(std::filesystem::exists(path));
 
-    auto file = h5::file_t{::H5Fopen(path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT)};
-    auto matrix_group = h5::group_t{::H5Gopen(file.get(), group_name.c_str(), H5P_DEFAULT)};
+    auto file = h5::file_t::open(path, H5F_ACC_RDONLY);
+    auto matrix_group = file.open_group(group_name);
 
-    const auto result = h5::read_matlab_compatible(matrix_group.get());
+    const auto result = h5::read_matlab_compatible(matrix_group.get_id());
 
     REQUIRE(std::equal(result.values.begin(), result.values.begin(), sample.values.begin()));
     REQUIRE(std::equal(result.col_indices.begin(), result.col_indices.begin(), sample.col_indices.begin()));
@@ -78,17 +79,17 @@ TEST_CASE("dim::io::csr5_hdf5_roundtrip") {
     const auto path = std::filesystem::temp_directory_path() / "test.csr5.hdf5";
 
     {
-        auto file = h5::file_t{::H5Fcreate(path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT)};
-        auto group = h5::group_t{::H5Gcreate(file.get(), group_name.c_str(), H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT)};
-        h5::store(group.get(), example);
+        auto file = h5::file_t::create(path, H5F_ACC_TRUNC);
+        auto group = file.create_group(group_name);
+        h5::store(group.get_id(), example);
     }
 
     // check the file was actually created.
     REQUIRE(std::filesystem::exists(path));
 
-    auto file = h5::file_t{::H5Fopen(path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT)};
-    auto matrix_group = h5::group_t{::H5Gopen(file.get(), group_name.c_str(), H5P_DEFAULT)};
-    const auto result = h5::load_csr5(matrix_group.get());
+    auto file = h5::file_t::open(path, H5F_ACC_RDONLY);
+    auto matrix_group = file.open_group(group_name);
+    const auto result = h5::load_csr5(matrix_group.get_id());
 
     REQUIRE(range_equal(example.vals, result.vals));
     REQUIRE(range_equal(example.col_idx, result.col_idx));

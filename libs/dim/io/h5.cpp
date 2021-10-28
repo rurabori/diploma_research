@@ -5,14 +5,14 @@
 namespace dim::io::h5 {
 
 dataset_props_t::operator plist_t() const {
-    plist_t prop_list{::H5Pcreate(H5P_DATASET_CREATE)};
+    auto result = plist_t::create(H5P_DATASET_CREATE);
     if (chunk_size)
-        ::H5Pset_chunk(prop_list.get(), 1, std::addressof(*chunk_size));
+        ::H5Pset_chunk(result.get_id(), 1, std::addressof(*chunk_size));
 
     if (compression_level)
-        ::H5Pset_deflate(prop_list.get(), *compression_level);
+        ::H5Pset_deflate(result.get_id(), *compression_level);
 
-    return prop_list;
+    return result;
 }
 
 struct csr5_storage_props_t
@@ -30,8 +30,8 @@ struct tile_types_t
 {
     static constexpr hsize_t array_size = 4;
 
-    datatype_t on_disk{::H5Tarray_create(H5T_NATIVE_UINT32, 1, &array_size)};
-    datatype_t in_memory{::H5Tarray_create(H5T_STD_U32LE, 1, &array_size)};
+    type_t on_disk{type_t::create_array(H5T_NATIVE_UINT32, array_size)};
+    type_t in_memory{type_t::create_array(H5T_STD_U32LE, array_size)};
 
     // TODO: make const
     static auto create() -> tile_types_t& {
@@ -40,10 +40,10 @@ struct tile_types_t
     }
 };
 
-auto store(hid_t group, const dim::mat::csr5<double>& csr5) -> void {
+auto store(group_view_t group, const dim::mat::csr5<double>& csr5) -> void {
     using detail::write_dataset;
     using detail::write_scalar_datatype;
-    write_scalar_datatype(group, "column_count", csr5.dimensions.cols, H5T_NATIVE_UINT32, H5T_STD_U32LE);
+    write_scalar_datatype(group_view_t{group}, "column_count", csr5.dimensions.cols, H5T_NATIVE_UINT32, H5T_STD_U32LE);
 
     const auto props = csr5_storage_props_t{};
     auto&& tile_types = tile_types_t::create();
@@ -52,15 +52,14 @@ auto store(hid_t group, const dim::mat::csr5<double>& csr5) -> void {
     write_dataset(group, "col_idx", csr5.col_idx, H5T_NATIVE_UINT32, H5T_STD_U32LE, props.col_idx);
     write_dataset(group, "row_ptr", csr5.row_ptr, H5T_NATIVE_UINT32, H5T_STD_U32LE, props.row_ptr);
     write_dataset(group, "tile_ptr", csr5.tile_ptr, H5T_NATIVE_UINT32, H5T_STD_U32LE, props.tile_ptr);
-    write_dataset(group, "tile_desc", csr5.tile_desc, tile_types.in_memory.get(), tile_types.on_disk.get(),
-                  props.tile_desc);
+    write_dataset(group, "tile_desc", csr5.tile_desc, tile_types.in_memory, tile_types.on_disk, props.tile_desc);
     write_dataset(group, "tile_desc_offset_ptr", csr5.tile_desc_offset_ptr, H5T_NATIVE_UINT32, H5T_STD_U32LE,
                   props.tile_desc_offset_ptr);
     write_dataset(group, "tile_desc_offset", csr5.tile_desc_offset, H5T_NATIVE_UINT32, H5T_STD_U32LE,
                   props.tile_desc_offset);
 }
 
-auto load_csr5(hid_t group) -> dim::mat::csr5<double> {
+auto load_csr5(group_view_t group) -> dim::mat::csr5<double> {
     using retval_t = mat::csr5<double>;
     using detail::read_dataset;
     using detail::read_scalar_datatype;
@@ -74,8 +73,8 @@ auto load_csr5(hid_t group) -> dim::mat::csr5<double> {
       .col_idx = read_dataset<decltype(retval_t::col_idx)>(group, "col_idx", H5T_NATIVE_UINT32, H5T_STD_U32LE),
       .row_ptr = read_dataset<decltype(retval_t::row_ptr)>(group, "row_ptr", H5T_NATIVE_UINT32, H5T_STD_U32LE),
       .tile_ptr = read_dataset<decltype(retval_t::tile_ptr)>(group, "tile_ptr", H5T_NATIVE_UINT32, H5T_STD_U32LE),
-      .tile_desc = read_dataset<decltype(retval_t::tile_desc)>(group, "tile_desc", tile_types.in_memory.get(),
-                                                               tile_types.on_disk.get()),
+      .tile_desc
+      = read_dataset<decltype(retval_t::tile_desc)>(group, "tile_desc", tile_types.in_memory, tile_types.on_disk),
       .tile_desc_offset_ptr = read_dataset<decltype(retval_t::tile_desc_offset_ptr)>(group, "tile_desc_offset_ptr",
                                                                                      H5T_NATIVE_UINT32, H5T_STD_U32LE),
       .tile_desc_offset = read_dataset<decltype(retval_t::tile_desc_offset)>(group, "tile_desc_offset",
@@ -87,7 +86,7 @@ auto load_csr5(hid_t group) -> dim::mat::csr5<double> {
     return retval;
 }
 
-auto read_vector(hid_t group, const std::string& dataset_name) -> std::vector<double> {
+auto read_vector(group_view_t group, const std::string& dataset_name) -> std::vector<double> {
     return detail::read_dataset<std::vector<double>>(group, dataset_name, H5T_IEEE_F64LE, H5T_NATIVE_DOUBLE);
 }
 

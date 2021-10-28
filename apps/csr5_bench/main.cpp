@@ -92,9 +92,9 @@ int main(int argc, const char* argv[]) {
     auto arguments = arguments::from_main(argc, argv);
     namespace h5 = dim::io::h5;
 
-    auto in = h5::file_t{::H5Fopen(arguments.matrix_file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT)};
-    auto group = h5::group_t{::H5Gopen(in.get(), "A", H5P_DEFAULT)};
-    auto matrix = dim::io::h5::read_matlab_compatible(group.get());
+    auto in = h5::file_t::open(arguments.matrix_file, H5F_ACC_RDONLY);
+    auto group = in.open_group("A");
+    auto matrix = dim::io::h5::read_matlab_compatible(group.get_id());
 
     auto consumed_memory
       = matrix.col_indices.size() * sizeof(typename decltype(matrix.col_indices)::value_type)

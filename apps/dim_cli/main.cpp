@@ -32,11 +32,11 @@ auto compare_results(const dim_cli::compare_results_t& args) -> int {
     using dim::io::h5::read_vector;
     constexpr auto nearly_equal = [](auto l, auto r) { return std::abs(l - r) <= (0.01 * std::abs(r)); };
     constexpr auto load_vec_and_info = [](auto&& path, auto&& group_name, auto&& dataset_name) {
-        auto in = h5::file_t{::H5Fopen(path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT)};
-        auto group = h5::group_t{::H5Gopen(in.get(), group_name.c_str(), H5P_DEFAULT)};
+        auto in = h5::file_t::open(path, H5F_ACC_RDONLY);
+        auto group = in.open_group(group_name);
 
         return std::pair{fmt::format("{}:{}{}", path.filename().native(), group_name, dataset_name),
-                         read_vector(group.get(), dataset_name)};
+                         read_vector(group.get_id(), dataset_name)};
     };
 
     const auto [lhs_id, lhs] = load_vec_and_info(args.input_file, *args.lhs_group, *args.lhs_dataset);
