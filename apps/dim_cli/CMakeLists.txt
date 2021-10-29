@@ -23,3 +23,4 @@ target_link_libraries(
           yaml-cpp::yaml-cpp)
 
 install(TARGETS dim_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES ${CMAKE_HOME_DIRECTORY}/resources/config.yaml TYPE SYSCONF)

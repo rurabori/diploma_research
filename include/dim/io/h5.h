@@ -1,9 +1,11 @@
 #ifndef INCLUDE_DIM_IO_H5
 #define INCLUDE_DIM_IO_H5
 
+#include "dim/io/file.h"
 #include <H5Apublic.h>
 #include <H5Cpublic.h>
 #include <H5Dpublic.h>
+#include <H5Fpublic.h>
 #include <H5Gpublic.h>
 #include <H5Spublic.h>
 #include <H5Tpublic.h>
@@ -107,7 +109,7 @@ struct matrix_storage_props_t
 };
 
 template<template<typename> typename Storage>
-void write_matlab_compatible(hid_t group, const mat::csr<double, Storage>& matrix,
+void write_matlab_compatible(group_view_t group, const mat::csr<double, Storage>& matrix,
                              const matrix_storage_props_t& storage_props = {}) {
     using detail::write_dataset;
     using detail::write_scalar_datatype;
@@ -121,7 +123,7 @@ void write_matlab_compatible(hid_t group, const mat::csr<double, Storage>& matri
 }
 
 template<template<typename> typename Storage = mat::cache_aligned_vector>
-auto read_matlab_compatible(hid_t group) -> mat::csr<double, Storage> {
+auto read_matlab_compatible(group_view_t group) -> mat::csr<double, Storage> {
     using retval_t = mat::csr<double, Storage>;
     using indices_t = typename retval_t::indices_t;
     using values_t = typename retval_t::values_t;
@@ -139,11 +141,31 @@ auto read_matlab_compatible(hid_t group) -> mat::csr<double, Storage> {
     return retval;
 }
 
+template<template<typename> typename Storage = mat::cache_aligned_vector>
+auto read_matlab_compatible(const std::filesystem::path& path, const std::string& group_name)
+  -> mat::csr<double, Storage> {
+    auto file = h5::file_t::open(path, H5F_ACC_RDONLY);
+    return read_matlab_compatible<Storage>(file.open_group(group_name));
+}
+
+struct csr5_storage_props_t
+{
+    dataset_props_t vals;
+    dataset_props_t col_idx;
+    dataset_props_t row_ptr;
+    dataset_props_t tile_ptr;
+    dataset_props_t tile_desc;
+    dataset_props_t tile_desc_offset;
+    dataset_props_t tile_desc_offset_ptr;
+};
+
 // TODO: better naming
-auto store(group_view_t group, const mat::csr5<double>& csr5) -> void;
+auto store(group_view_t group, const mat::csr5<double>& csr5, const csr5_storage_props_t& props = {}) -> void;
 auto load_csr5(group_view_t group) -> mat::csr5<double>;
 
 auto read_vector(group_view_t group, const std::string& dataset_name) -> std::vector<double>;
+
+auto is_hdf5(const std::filesystem::path& path) -> bool;
 
 } // namespace dim::io::h5
 

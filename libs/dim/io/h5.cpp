@@ -15,17 +15,6 @@ dataset_props_t::operator plist_t() const {
     return result;
 }
 
-struct csr5_storage_props_t
-{
-    dataset_props_t vals;
-    dataset_props_t col_idx;
-    dataset_props_t row_ptr;
-    dataset_props_t tile_ptr;
-    dataset_props_t tile_desc;
-    dataset_props_t tile_desc_offset_ptr;
-    dataset_props_t tile_desc_offset;
-};
-
 struct tile_types_t
 {
     static constexpr hsize_t array_size = 4;
@@ -40,12 +29,11 @@ struct tile_types_t
     }
 };
 
-auto store(group_view_t group, const dim::mat::csr5<double>& csr5) -> void {
+auto store(group_view_t group, const dim::mat::csr5<double>& csr5, const csr5_storage_props_t& props) -> void {
     using detail::write_dataset;
     using detail::write_scalar_datatype;
     write_scalar_datatype(group_view_t{group}, "column_count", csr5.dimensions.cols, H5T_NATIVE_UINT32, H5T_STD_U32LE);
 
-    const auto props = csr5_storage_props_t{};
     auto&& tile_types = tile_types_t::create();
 
     write_dataset(group, "vals", csr5.vals, H5T_NATIVE_DOUBLE, H5T_IEEE_F64LE, props.vals);
@@ -90,4 +78,15 @@ auto read_vector(group_view_t group, const std::string& dataset_name) -> std::ve
     return detail::read_dataset<std::vector<double>>(group, dataset_name, H5T_IEEE_F64LE, H5T_NATIVE_DOUBLE);
 }
 
+auto is_hdf5(const std::filesystem::path& path) -> bool {
+    constexpr std::byte magic[8] = {std::byte{0x89}, std::byte{'H'},  std::byte{'D'},  std::byte{'F'},
+                                    std::byte{'\r'}, std::byte{'\n'}, std::byte{0x1a}, std::byte{'\n'}};
+
+    auto file = io::open(path, "rb");
+
+    std::byte buffer[8];
+
+    return std::fread(std::data(buffer), sizeof(std::byte), std::size(buffer), file.get()) == std::size(buffer)
+           && std::equal(std::begin(buffer), std::end(buffer), std::begin(magic));
+}
 } // namespace dim::io::h5

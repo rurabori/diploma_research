@@ -292,7 +292,6 @@ private:
 
     auto generate_tile_offset() -> void {
         std::exclusive_scan(tile_desc_offset_ptr.begin(), tile_desc_offset_ptr.end(), tile_desc_offset_ptr.begin(), 0);
-
         tile_desc_offset.resize(tile_desc_offset_ptr.back());
         iterate_tiles([&](const auto tile_id, const auto row_start, const auto row_stop) {
             // no empty segments in this tile.
@@ -529,7 +528,7 @@ public:
         const auto chunk
           = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(thread_count)));
 
-        const auto num_thread_active = static_cast<int>(std::ceil(static_cast<double>(tile_count) / chunk));
+        const auto num_thread_active = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / chunk));
 
 #pragma omp parallel
         {
@@ -668,9 +667,9 @@ public:
         const auto thread_count = static_cast<size_t>(::omp_get_max_threads());
         const auto chunk
           = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(thread_count)));
-        const auto num_thread_active = static_cast<int>(std::ceil(static_cast<double>(tile_count) / chunk));
+        const auto num_thread_active = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / chunk));
 
-        int num_cali = num_thread_active < thread_count ? num_thread_active : thread_count;
+        auto num_cali = num_thread_active < thread_count ? num_thread_active : thread_count;
 
         for (size_t i = 0; i < num_cali; i++)
             spmv_data.y[detail::strip_dirty(tile_ptr[i * chunk])] += spmv_data.calibrator[i * stride];

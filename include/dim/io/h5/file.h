@@ -19,12 +19,12 @@ class file_t : public view_wrapper_t<file_view_t, H5Fclose>
     using super_t::super_t;
 
 public:
-    static file_t create(const std::filesystem::path& path, uint32_t flags,
-                         plist_view_t create_plist = plist_t::defaulted(),
-                         plist_view_t access_plist = plist_t::defaulted());
+    [[nodiscard]] static file_t create(const std::filesystem::path& path, uint32_t flags,
+                                       plist_view_t create_plist = plist_t::defaulted(),
+                                       plist_view_t access_plist = plist_t::defaulted());
 
-    static file_t open(const std::filesystem::path& path, uint32_t flags,
-                       plist_view_t access_plist = plist_t::defaulted());
+    [[nodiscard]] static file_t open(const std::filesystem::path& path, uint32_t flags,
+                                     plist_view_t access_plist = plist_t::defaulted());
 };
 
 } // namespace dim::io::h5

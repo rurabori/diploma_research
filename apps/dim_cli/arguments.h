@@ -24,12 +24,20 @@ struct dim_cli
 
     struct store_matrix_t : structopt::sub_command
     {
+        enum class out_format
+        {
+            csr,
+            csr5
+        };
+
         path input;
         path output;
+        std::optional<std::string> in_group_name{"A"};
         std::optional<std::string> group_name{"A"};
         std::optional<bool> append{false};
+        std::optional<out_format> format{out_format::csr};
 
-        std::optional<path> config;
+        std::optional<path> config{"config.yaml"};
     };
     store_matrix_t store_matrix;
 
@@ -64,7 +72,7 @@ struct dim_cli
 };
 
 STRUCTOPT(dim_cli::compare_results_t, input_file, input_file_2, lhs_group, rhs_group);
-STRUCTOPT(dim_cli::store_matrix_t, input, output, group_name, append, config);
+STRUCTOPT(dim_cli::store_matrix_t, input, output, in_group_name, group_name, append, format, config);
 STRUCTOPT(dim_cli::download_t, url, destination_dir, format);
 STRUCTOPT(dim_cli, store_matrix, compare_results, download, log_level);
 
