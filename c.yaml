@@ -1,0 +1,10 @@
+csr:
+  values:
+    chunk_size: null
+    compression_level: null
+  col_idx:
+    chunk_size: null
+    compression_level: null
+  row_idx:
+    chunk_size: null
+    compression_level: null

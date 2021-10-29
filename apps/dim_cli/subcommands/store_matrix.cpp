@@ -1,7 +1,6 @@
 #include "store_matrix.h"
 #include "dim/io/format.h"
 
-#include <H5Tpublic.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
 
@@ -9,22 +8,39 @@
 #include <dim/io/h5.h>
 #include <dim/io/matrix_market.h>
 
+#include <yaml-cpp/node/parse.h>
+#include <yaml-cpp/yaml.h>
+
 namespace {
 
-auto create_matrix_storage_props(const dim_cli::store_matrix_t& arguments) {
-    using dim::io::h5::matrix_storage_props_t;
-    constexpr auto as_hsize = [](const auto& val) -> std::optional<hsize_t> {
-        if (!val)
-            return std::nullopt;
-        return static_cast<hsize_t>(*val);
-    };
+using csr_props = dim::io::h5::matrix_storage_props_t;
+using csr_dataset_props = dim::io::h5::dataset_props_t;
 
-    return matrix_storage_props_t{.values = {.chunk_size = as_hsize(arguments.values_chunk_size),
-                                             .compression_level = arguments.values_compression},
-                                  .col_idx = {.chunk_size = as_hsize(arguments.col_idx_chunk_size),
-                                              .compression_level = arguments.col_idx_compression},
-                                  .row_start_offsets = {.chunk_size = as_hsize(arguments.row_start_offsets_chunk_size),
-                                                        .compression_level = arguments.row_start_offsets_compression}};
+template<typename Ty>
+auto maybe_load(const YAML::Node& node) -> std::optional<Ty> {
+    if (node.IsNull())
+        return std::nullopt;
+
+    return node.as<Ty>();
+}
+
+auto load_dataset_props(const YAML::Node& node) -> csr_dataset_props {
+    return csr_dataset_props{.chunk_size = maybe_load<hsize_t>(node["chunk_size"]),
+                             .compression_level = maybe_load<uint32_t>(node["compression_level"])};
+}
+
+auto load_csr_props(const YAML::Node& node) -> dim::io::h5::matrix_storage_props_t {
+    if (!node.IsMap())
+        throw std::runtime_error{"Dataset props node must be an object."};
+
+    return csr_props{.values = load_dataset_props(node["values"]),
+                     .col_idx = load_dataset_props(node["col_idx"]),
+                     .row_start_offsets = load_dataset_props(node["row_idx"])};
+}
+
+auto load_config(const std::filesystem::path& config_path) {
+    const auto node = YAML::LoadFile(config_path.string());
+    return load_csr_props(node["csr"]);
 }
 
 } // namespace
@@ -50,7 +66,7 @@ auto store_matrix(const dim_cli::store_matrix_t& arguments) -> int {
     spdlog::info("storing matrix as group '{}' to {}", *arguments.group_name, arguments.output.native());
 
     stopwatch.reset();
-    write_matlab_compatible(group.get_id(), csr, create_matrix_storage_props(arguments));
+    write_matlab_compatible(group.get_id(), csr, arguments.config ? load_config(*arguments.config) : csr_props{});
     spdlog::info("storing CSR to HDF5 took: {}s", stopwatch);
 
     return 0;

@@ -29,14 +29,7 @@ struct dim_cli
         std::optional<std::string> group_name{"A"};
         std::optional<bool> append{false};
 
-        std::optional<size_t> values_chunk_size;
-        std::optional<int> values_compression;
-
-        std::optional<size_t> col_idx_chunk_size;
-        std::optional<int> col_idx_compression;
-
-        std::optional<size_t> row_start_offsets_chunk_size;
-        std::optional<int> row_start_offsets_compression;
+        std::optional<path> config;
     };
     store_matrix_t store_matrix;
 
@@ -71,8 +64,7 @@ struct dim_cli
 };
 
 STRUCTOPT(dim_cli::compare_results_t, input_file, input_file_2, lhs_group, rhs_group);
-STRUCTOPT(dim_cli::store_matrix_t, input, output, group_name, append, values_chunk_size, values_compression,
-          col_idx_chunk_size, col_idx_compression, row_start_offsets_chunk_size, row_start_offsets_compression);
+STRUCTOPT(dim_cli::store_matrix_t, input, output, group_name, append, config);
 STRUCTOPT(dim_cli::download_t, url, destination_dir, format);
 STRUCTOPT(dim_cli, store_matrix, compare_results, download, log_level);
 
