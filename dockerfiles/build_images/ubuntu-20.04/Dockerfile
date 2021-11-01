@@ -18,7 +18,7 @@ RUN apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key && \
 # update to get packages from added repos.
 RUN apt update
 
-RUN apt install -y clang-13 clang-tidy-13 libomp-13-dev ninja-build curl python3 python3-pip mpi-default-dev pkgconf petsc-dev
+RUN apt install -y clang-13 clang-tidy-13 libunwind-13-dev libomp-13-dev ninja-build curl python3 python3-pip mpi-default-dev pkgconf petsc-dev
 
 RUN pip3 install conan
 
