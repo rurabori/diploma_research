@@ -32,3 +32,5 @@ RUN curl -L "https://github.com/Kitware/CMake/releases/download/v$cmake_version/
 
 # add cmake to path.
 ENV PATH="/usr/local/cmake-$cmake_version-linux-x86_64/bin:${PATH}"
+
+RUN conan remote add rurabori-conan https://rurabori.jfrog.io/artifactory/api/conan/rurabori-conan
