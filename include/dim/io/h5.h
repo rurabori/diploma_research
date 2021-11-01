@@ -2,13 +2,8 @@
 #define INCLUDE_DIM_IO_H5
 
 #include "dim/io/file.h"
-#include <H5Apublic.h>
-#include <H5Cpublic.h>
-#include <H5Dpublic.h>
-#include <H5Fpublic.h>
-#include <H5Gpublic.h>
-#include <H5Spublic.h>
-#include <H5Tpublic.h>
+
+#include <hdf5.h>
 
 #include <cstddef>
 #include <dim/mat/storage_formats.h>
@@ -45,7 +40,7 @@ struct dataset_props_t
 
 namespace detail {
     template<typename /*std::ranges::contiguous_range*/ Ty>
-    void write_dataset(group_view_t group, const std::string& name, const Ty& data, type_view_t input_type,
+    void write_dataset(location_view_t group, const std::string& name, const Ty& data, type_view_t input_type,
                        type_view_t storage_type, std::span<const hsize_t> dims, plist_view_t prop_list) {
         auto dataspace = dataspace_t::create(dims);
         auto dataset = group.create_dataset(name, storage_type, dataspace, plist_t::defaulted(), prop_list);
@@ -53,11 +48,11 @@ namespace detail {
     }
 
     template<typename /*std::ranges::contiguous_range*/ Ty>
-    void write_dataset(group_view_t group, const std::string& name, const Ty& data, type_view_t input_type,
+    void write_dataset(location_view_t group, const std::string& name, const Ty& data, type_view_t input_type,
                        type_view_t storage_type, const dataset_props_t& dataset_props) {
         hsize_t dims[1] = {std::size(data)};
 
-        write_dataset(group_view_t{group}, name, data, type_view_t{input_type}, type_view_t{storage_type}, dims,
+        write_dataset(group, name, data, type_view_t{input_type}, type_view_t{storage_type}, dims,
                       static_cast<plist_t>(dataset_props));
     }
 

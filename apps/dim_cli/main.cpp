@@ -22,6 +22,7 @@
 #include <dim/io/matrix_market.h>
 
 #include "arguments.h"
+#include "subcommands/csr5_info.h"
 #include "subcommands/download.h"
 #include "subcommands/store_matrix.h"
 
@@ -43,7 +44,13 @@ auto compare_results(const dim_cli::compare_results_t& args) -> int {
     const auto [rhs_id, rhs]
       = load_vec_and_info(args.input_file_2 ? *args.input_file_2 : args.input_file, *args.rhs_group, *args.rhs_dataset);
 
-    const auto correct = std::equal(lhs.begin(), lhs.end(), rhs.begin(), nearly_equal);
+    bool correct = true;
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        if (!nearly_equal(lhs[i], rhs[i])) {
+            spdlog::info("{}: expected {}, got {}", i, lhs[i], rhs[i]);
+            correct = false;
+        }
+    }
 
     if (!correct) {
         spdlog::error("vectors {} and {} are not equal", lhs_id, rhs_id);
@@ -67,6 +74,9 @@ int main(int argc, char* argv[]) try {
 
     if (arguments.download.has_value())
         return download(arguments.download);
+
+    if (arguments.csr5_info.has_value())
+        return csr5_info(arguments.csr5_info);
 
     fmt::print("{}", app.help());
 

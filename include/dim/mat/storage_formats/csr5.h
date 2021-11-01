@@ -64,6 +64,9 @@ struct tile_descriptor_t
         col_storage present{1 << Omega};
     };
 
+    static constexpr auto num_cols = Omega;
+    static constexpr auto num_rows = Sigma;
+
     tile_column_descriptor columns[Omega];
 
     [[nodiscard]] auto vectorized() const noexcept requires(Omega == 4 && sizeof(tile_column_descriptor) == 4) {
@@ -245,6 +248,7 @@ struct csr5
     StorageContainer<tile_descriptor_type> tile_desc;
     StorageContainer<UnsignedType> tile_desc_offset_ptr;
     StorageContainer<UnsignedType> tile_desc_offset;
+    bool skip_tail{false};
 
 private:
     [[nodiscard]] static auto tile_size() noexcept -> size_t { return sigma * omega; }
@@ -552,7 +556,6 @@ public:
 
                 // the tile only has elements from a single row.
                 if (row_start == row_stop) {
-                    // the row starts at this tile (blue).
                     thread_data.store_to_row_start(row_start, iteration_data.partition_fast_track(), fast_direct);
                     continue;
                 }
@@ -645,6 +648,9 @@ public:
                 // contains the potential sum of elements in red part of each lane.
                 first_sum256d = simd::merge_vec(sum256d, first_sum256d, any_row_active);
 
+                if (tile_id == 349563) {
+                    auto x = 0;
+                }
                 const auto last_sum
                   = detail::compute_last_sum(sum256d, first_sum256d, vec.scansum_offset, start256i, stop256i);
 
@@ -676,6 +682,9 @@ public:
     }
 
     auto spmv_tail_partition(spmv_data_t spmv_data) const noexcept {
+        if (skip_tail)
+            return;
+
         const auto first_tail_element = tile_count * tile_size();
         const auto tail_start = tail_partition_start();
 

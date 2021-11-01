@@ -5,12 +5,11 @@
 #include "cuda_algo_facade.h"
 #endif
 
-#include <dim/mat/storage_formats.h>
 #include "timed_section.h"
 #include <anonymouslib_avx2.h>
-#include <numeric>
+#include <dim/mat/storage_formats.h>
 #include <dim/span.h>
-
+#include <numeric>
 
 namespace cg::spmv_algos {
 
@@ -22,8 +21,14 @@ void cpu_sequential(const dim::mat::csr<ValueType, StorageTy>& matrix, dim::span
         for (auto i = matrix.row_start_offsets[row]; i < matrix.row_start_offsets[row + 1]; ++i) {
             const auto column = matrix.col_indices[i];
             const auto value = matrix.values[i];
+
+            if (row == 494812)
+                fmt::print("{}, ", value);
             sum += rhs[column] * value;
         }
+
+        if (row == 494812)
+            fmt::print(": {}\n", sum);
 
         output[row] = sum;
     }
@@ -50,8 +55,8 @@ void cpu_avx2(csr5::avx2::anonymouslibHandle<int, unsigned int, ValueType>& A, d
 }
 
 template<typename ValueType>
-void cpu_avx2(dim::mat::csr<ValueType, dim::mat::cache_aligned_vector>& matrix,
-              dim::span<ValueType> rhs, dim::span<ValueType> output) {
+void cpu_avx2(dim::mat::csr<ValueType, dim::mat::cache_aligned_vector>& matrix, dim::span<ValueType> rhs,
+              dim::span<ValueType> output) {
     csr5::avx2::anonymouslibHandle<int, unsigned int, ValueType> handle{static_cast<int>(matrix.dimensions.rows),
                                                                         static_cast<int>(matrix.dimensions.cols)};
 
@@ -64,8 +69,8 @@ void cpu_avx2(dim::mat::csr<ValueType, dim::mat::cache_aligned_vector>& matrix,
 }
 
 #ifdef CUDA_ENABLED
-void cuda_complete_bench(dim::mat::csr<double, dim::mat::cache_aligned_vector>& matrix,
-                         dim::span<double> rhs, dim::span<double> output) {
+void cuda_complete_bench(dim::mat::csr<double, dim::mat::cache_aligned_vector>& matrix, dim::span<double> rhs,
+                         dim::span<double> output) {
     bench_csr5_cuda(static_cast<int>(matrix.dimensions.rows), static_cast<int>(matrix.dimensions.cols),
                     static_cast<int>(matrix.values.size()), reinterpret_cast<int*>(matrix.row_start_offsets.data()),
                     reinterpret_cast<int*>(matrix.col_indices.data()), matrix.values.data(), rhs.data(), output.data());

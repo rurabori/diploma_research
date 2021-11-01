@@ -22,4 +22,7 @@ auto dataspace_view_t::get_dim() const -> hsize_t {
     get_dims({&result, 1});
     return result;
 }
+auto dataspace_view_t::select_hyperslab(hsize_t start, hsize_t count) -> void {
+    h5_try ::H5Sselect_hyperslab(get_id(), H5S_seloper_t::H5S_SELECT_SET, &start, nullptr, &count, nullptr);
+}
 } // namespace dim::io::h5
