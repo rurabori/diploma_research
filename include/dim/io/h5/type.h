@@ -32,6 +32,32 @@ public:
         return create_array(base, dim::span<const hsize_t>{&dim, 1});
     }
 };
+
+template<typename Ty>
+concept type_translator = requires() {
+    { Ty::in_memory() } -> std::convertible_to<type_view_t>;
+    { Ty::on_disk() } -> std::convertible_to<type_view_t>;
+};
+
+template<typename ToTranslate>
+struct type_translator_t
+{};
+
+// translation for native types.
+template<>
+struct type_translator_t<double>
+{
+    static auto in_memory() noexcept -> type_view_t { return H5T_NATIVE_DOUBLE; }
+    static auto on_disk() noexcept -> type_view_t { return H5T_IEEE_F64LE; }
+};
+
+template<>
+struct type_translator_t<uint32_t>
+{
+    static auto in_memory() noexcept -> type_view_t { return H5T_NATIVE_UINT32; }
+    static auto on_disk() noexcept -> type_view_t { return H5T_STD_U32LE; }
+};
+
 } // namespace dim::io::h5
 
 #endif /* INCLUDE_DIM_IO_H5_TYPE */

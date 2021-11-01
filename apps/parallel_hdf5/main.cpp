@@ -55,86 +55,7 @@ struct mpi_h5_reader_t
 
     explicit mpi_h5_reader_t(int size_, int rank_) : size{size_}, rank{rank_} {}
 
-    template<typename Container>
-    auto read_dataset(h5::dataset_view_t dataset, h5::dataspace_view_t file_space, hsize_t count,
-                      h5::type_view_t type) {
-        Container values;
-        values.resize(count);
-
-        auto memspace = h5::dataspace_t::create(count);
-
-        dataset.read(std::data(values), type, memspace, file_space);
-
-        return values;
-    }
-
-    template<typename Container>
-    auto load_known_range(h5::dataset_view_t dataset, hsize_t start, hsize_t count, h5::type_view_t type) {
-        auto space = dataset.get_dataspace();
-
-        space.select_hyperslab(start, count);
-
-        return read_dataset<Container>(dataset, space, count, type);
-    }
-
-    auto read_csr5(h5::group_view_t matrix_group) {
-        auto dataset = matrix_group.open_dataset("tile_desc");
-        auto space = dataset.get_dataspace();
-        auto dims = space.get_dim();
-
-        const auto block_size = static_cast<hsize_t>(std::ceil(static_cast<double>(dims) / size));
-        const hsize_t start = block_size * rank;
-        const hsize_t count = std::min(block_size, dims - start);
-
-        const auto& desc_type = tile_types_t::create();
-
-        auto&& tile_desc
-          = load_known_range<decltype(mat::csr5<double>::tile_desc)>(dataset, start, count, desc_type.in_memory);
-
-        auto tile_size = tile_desc.size();
-        auto&& tile_ptr = load_known_range<decltype(mat::csr5<double>::tile_ptr)>(matrix_group.open_dataset("tile_ptr"),
-                                                                                  start, count + 1, H5T_NATIVE_UINT32);
-
-        const auto row_start = tile_ptr.front();
-        const auto row_end = tile_ptr.back();
-
-        const auto row_ptr_dataset = matrix_group.open_dataset("row_ptr");
-        const auto dimensions
-          = mat::dimensions_t{.rows = static_cast<uint32_t>(row_ptr_dataset.get_dataspace().get_dim() - 1),
-                              .cols = h5::detail::read_scalar_datatype<uint32_t>(matrix_group, "column_count",
-                                                                                 H5T_STD_U32LE, H5T_NATIVE_UINT32)};
-
-        // +1 because indices are 0 based, +1 because we need to load data upto row at last + 1.
-        auto&& row_ptr = load_known_range<decltype(mat::csr5<double>::row_ptr)>(
-          row_ptr_dataset, row_start, row_end - row_start + 2, H5T_NATIVE_UINT32);
-
-        auto&& tile_desc_offset_ptr = load_known_range<decltype(mat::csr5<double>::tile_desc_offset_ptr)>(
-          matrix_group.open_dataset("tile_desc_offset_ptr"), start, count + 1, H5T_NATIVE_UINT32);
-
-        const auto tile_desc_offset_ptr_start = tile_desc_offset_ptr.front();
-        const auto tile_desc_offset_ptr_end = tile_desc_offset_ptr.back();
-
-        auto&& tile_desc_offset = load_known_range<decltype(mat::csr5<double>::tile_desc_offset)>(
-          matrix_group.open_dataset("tile_desc_offset"), tile_desc_offset_ptr_start,
-          tile_desc_offset_ptr_end - tile_desc_offset_ptr_start, H5T_NATIVE_UINT32);
-
-        auto val_start = row_ptr.front();
-        auto val_end = row_ptr.back();
-
-        return mat::csr5<double>{
-          .dimensions = dimensions,
-          .vals = load_known_range<decltype(mat::csr5<double>::vals)>(matrix_group.open_dataset("vals"), val_start,
-                                                                      val_end - val_start, H5T_NATIVE_DOUBLE),
-          .col_idx = load_known_range<decltype(mat::csr5<double>::col_idx)>(
-            matrix_group.open_dataset("col_idx"), val_start, val_end - val_start, H5T_NATIVE_UINT32),
-          .row_ptr = std::move(row_ptr),
-          .tile_count = tile_size,
-          .tile_ptr = std::move(tile_ptr),
-          .tile_desc = std::move(tile_desc),
-          .tile_desc_offset_ptr = std::move(tile_desc_offset_ptr),
-          .tile_desc_offset = std::move(tile_desc_offset),
-          .skip_tail = (rank != size - 1)};
-    }
+    auto read_csr5(h5::group_view_t matrix_group) { return h5::load_csr5_partial(matrix_group, rank, size); }
 };
 
 int main(int argc, char* argv[]) try {
@@ -156,15 +77,12 @@ int main(int argc, char* argv[]) try {
 
     std::vector<double> x(csr5.dimensions.cols, 1.);
     std::vector<double> y(csr5.dimensions.rows, 0.);
+    auto calibrator = csr5.allocate_calibrator();
 
-    // step 1. do all of the full tiles
-    csr5.spmv(x, y);
-    // step 2. do calibrators
-    // step 3.a tail partition for the last tile.
-    // step 3.b broadcast calibrators to the left neighbour
+    csr5.spmv({.x = x, .y = y, .calibrator = calibrator});
 
-    auto&& first_node_row = y[csr5.tile_ptr.front()];
-    auto&& last_node_row = y[csr5.tile_ptr.back()];
+    auto&& first_node_row = y[0];
+    auto&& last_node_row = y[(csr5.skip_tail ? csr5.tile_ptr.back() : csr5.dimensions.rows) - csr5.tile_ptr.front()];
 
     if (reader.rank == 0) {
         // we're the main node.
@@ -192,12 +110,14 @@ int main(int argc, char* argv[]) try {
     h5_try ::H5Pset_dxpl_mpio(xfer_pl.get_id(), H5FD_MPIO_COLLECTIVE);
 
     auto write_start = csr5.tile_ptr.front() + bool(reader.rank);
-    auto write_end = csr5.tile_ptr.back();
+    auto write_end = csr5.skip_tail ? csr5.tile_ptr.back() : (csr5.dimensions.rows - 1);
+
+    fmt::print("{}: [{}, {}]\n", reader.rank, write_start, write_end);
 
     auto filespace = dataset.get_dataspace();
-    filespace.select_hyperslab(write_start, write_end - write_start);
+    filespace.select_hyperslab(write_start, write_end - write_start + 1);
 
-    auto span = std::span{y}.subspan(write_start, write_end - write_start);
+    auto span = std::span{y}.subspan(bool(reader.rank), write_end - write_start + 1);
     dataset.write(span.data(), H5T_NATIVE_DOUBLE, h5::dataspace_t::create(hsize_t{span.size()}), filespace, xfer_pl);
 
     return 0;

@@ -77,25 +77,6 @@ auto csr5_info(const dim_cli::csr5_info_t& arguments) -> int {
     spdlog::info("searching for start in tiles {} - {}, spanning {} - {}", tile_start, tile_end, *tile_start_it,
                  *tile_end_it);
 
-    auto active_row = *tile_start_it;
-
-    const auto& current_tile = tiles[0];
-    constexpr auto table_style = fmt::emphasis::bold | fmt::fg(fmt::color::floral_white);
-
-    auto styles = generate_tile_styles(current_tile);
-
-    fmt::print(table_style, "{:8}| 0 1 2 3 |\n", tile_start);
-    for (size_t row = 0; row < tile_t::num_rows; ++row) {
-        fmt::print(table_style, "{:8}|", row);
-        for (size_t idx = 0; idx < tile_t::num_cols; ++idx) {
-            auto new_row_start = dim::has_rbit_set(current_tile.columns[idx].bit_flag, row);
-            active_row += new_row_start;
-
-            fmt::print(styles[idx][row], " {}", new_row_start ? 1 : 0);
-        }
-        fmt::print(table_style, " |\n");
-    }
-
     auto vals_dataset = matrix_group.open_dataset("vals");
     auto vals_space = vals_dataset.get_dataspace();
 
@@ -106,13 +87,33 @@ auto csr5_info(const dim_cli::csr5_info_t& arguments) -> int {
     std::vector<double> vals(vals_count, double{});
     vals_dataset.read(vals.data(), H5T_NATIVE_DOUBLE, h5::dataspace_t::create(hsize_t{vals_count}), vals_space);
 
-    fmt::print(table_style, "\n{:8}| values \n", tile_start);
-    for (size_t row = 0; row < tile_t::num_rows; ++row) {
-        fmt::print(table_style, "{:8}|", row);
-        for (size_t idx = 0; idx < tile_t::num_cols; ++idx) {
-            fmt::print(styles[idx][row], " {:15.12e}", vals[row * tile_t::num_cols + idx]);
+    for (auto cid = tile_start; const auto& current_tile : tiles) {
+        constexpr auto table_style = fmt::emphasis::bold | fmt::fg(fmt::color::floral_white);
+
+        auto styles = generate_tile_styles(current_tile);
+
+        fmt::print(table_style, "{:8}| 0 1 2 3 |\n", cid);
+        for (size_t row = 0; row < tile_t::num_rows; ++row) {
+            fmt::print(table_style, "{:8}|", row);
+            for (size_t idx = 0; idx < tile_t::num_cols; ++idx) {
+                auto new_row_start = dim::has_rbit_set(current_tile.columns[idx].bit_flag, row);
+                fmt::print(styles[idx][row], " {}", new_row_start ? 1 : 0);
+            }
+            fmt::print(table_style, " |\n");
         }
-        fmt::print(table_style, " |\n");
+
+        fmt::print(table_style, "\n{:8}| values \n", tile_start);
+        for (size_t row = 0; row < tile_t::num_rows; ++row) {
+            fmt::print(table_style, "{:8}|", row);
+            for (size_t idx = 0; idx < tile_t::num_cols; ++idx) {
+                fmt::print(
+                  styles[idx][row], " {:15.12e}",
+                  vals[(cid - tile_start) * tile_t::num_cols * tile_t::num_rows + row * tile_t::num_cols + idx]);
+            }
+            fmt::print(table_style, " |\n");
+        }
+
+        ++cid;
     }
 
     return 0;

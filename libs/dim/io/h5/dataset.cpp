@@ -13,7 +13,7 @@ auto dataset_view_t::get_type() const noexcept -> type_t { return type_t{::H5Dge
 
 auto dataset_view_t::get_dataspace() const -> dataspace_t { return dataspace_t{::H5Dget_space(get_id())}; }
 auto dataset_view_t::read(void* data, type_view_t type, dataspace_view_t mem_space, dataspace_view_t file_space,
-                          plist_view_t props) -> void {
+                          plist_view_t props) const -> void {
     h5_try ::H5Dread(get_id(), type.get_id(), mem_space.get_id(), file_space.get_id(), props.get_id(), data);
 }
 

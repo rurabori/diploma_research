@@ -1,6 +1,7 @@
 #ifndef INCLUDE_DIM_IO_H5_DATASET
 #define INCLUDE_DIM_IO_H5_DATASET
 
+#include <__ranges/concepts.h>
 #include <dim/io/h5/dataspace.h>
 #include <dim/io/h5/location.h>
 #include <dim/io/h5/plist.h>
@@ -17,7 +18,31 @@ struct dataset_view_t : public view_t
       -> void;
 
     auto read(void* data, type_view_t type, dataspace_view_t mem_space = dataspace_view_t::all(),
-              dataspace_view_t file_space = dataspace_view_t::all(), plist_view_t props = plist_t::defaulted()) -> void;
+              dataspace_view_t file_space = dataspace_view_t::all(), plist_view_t props = plist_t::defaulted()) const
+      -> void;
+
+    template<typename MemType>
+    auto read(std::span<MemType> out, type_view_t type, dataspace_view_t file_space = dataspace_view_t::all(),
+              plist_view_t props = plist_t::defaulted()) const -> void {
+        read(out.data(), type, dataspace_t::create(hsize_t{out.size()}), file_space, props);
+    }
+
+    template<typename ContainerType, typename MemType = std::ranges::range_value_t<ContainerType>>
+    auto read_slab(hsize_t start, type_view_t type, size_t count, plist_view_t props = plist_t::defaulted()) const
+      -> ContainerType {
+        auto result = ContainerType(count);
+        auto space = get_dataspace();
+        space.select_hyperslab(start, count);
+
+        read(std::span{result}, type, space, props);
+        return result;
+    }
+
+    template<typename ContainerType, typename MemType = std::ranges::range_value_t<ContainerType>,
+             h5::type_translator Translator = type_translator_t<MemType>>
+    auto read_slab(hsize_t start, size_t count, plist_view_t props = plist_t::defaulted()) const -> ContainerType {
+        return read_slab<ContainerType>(start, Translator::in_memory(), count, props);
+    }
 
     [[nodiscard]] auto get_dataspace() const -> dataspace_t;
 
