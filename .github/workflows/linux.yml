@@ -74,8 +74,7 @@ jobs:
       - name: Move artifacts
         run: mv ${{github.workspace}}/install install
 
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{matrix.artifact_name}}
-          path: install
-          retention-days: 1
+      - name: Upload to artifactory
+        run: >
+          tar cvfz  ${{matrix.artifact_name}}.tar.gz install &&
+          curl -u${{ secrets.ARTIFACTORY_USERNAME }}:${{ secrets.ARTIFACTORY_GENERIC_TOKEN }} -T ${{matrix.artifact_name}}.tar.gz "https://rurabori.jfrog.io/artifactory/default-generic-local/${{matrix.artifact_name}}.tar.gz"
