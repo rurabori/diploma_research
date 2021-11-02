@@ -1,7 +1,6 @@
 .vscode
-build
-# for devcontainer
-build_cont
+/build*
+
 # matrices are kind of big, don't push to git.
 resources/matrices
 tmp

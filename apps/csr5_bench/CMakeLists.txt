@@ -2,7 +2,6 @@ find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(fmt REQUIRED)
 find_package(tclap REQUIRED)
 find_package(magic_enum REQUIRED)
-find_package(MPI REQUIRED)
 find_package(scn REQUIRED)
 
 add_executable(csr5_bench main.cpp spmv_algos.hpp timed_section.h)
@@ -20,7 +19,7 @@ target_link_libraries(
           dim::memory
           dim::mat
           dim::io
-          MPI::MPI_CXX
+          dim::mpi
           scn::scn)
 
 if(${enable_cuda})

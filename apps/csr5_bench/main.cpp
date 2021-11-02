@@ -1,3 +1,4 @@
+#include <H5Tpublic.h>
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -25,6 +26,7 @@
 #include <stx/panic.h>
 
 #include "dim/io/h5.h"
+#include "dim/io/h5/file.h"
 #include "dim/mat/storage_formats/csr.h"
 #include "dim/mat/storage_formats/csr5.h"
 #include "spmv_algos.hpp"
@@ -90,9 +92,11 @@ struct arguments
 
 int main(int argc, const char* argv[]) {
     auto arguments = arguments::from_main(argc, argv);
+    namespace h5 = dim::io::h5;
 
-    H5::H5File file{arguments.matrix_file, H5F_ACC_RDONLY};
-    auto matrix = dim::io::h5::read_matlab_compatible(file.openGroup("A"));
+    auto in = h5::file_t::open(arguments.matrix_file, H5F_ACC_RDONLY);
+    auto group = in.open_group("A");
+    auto matrix = dim::io::h5::read_matlab_compatible(group.get_id());
 
     auto consumed_memory
       = matrix.col_indices.size() * sizeof(typename decltype(matrix.col_indices)::value_type)
@@ -103,7 +107,7 @@ int main(int argc, const char* argv[]) {
 
     auto dimensions = matrix.dimensions;
 
-    auto x = std::vector<double>(dimensions.cols, 100.);
+    auto x = std::vector<double>(dimensions.cols, 1.);
 
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
     switch (arguments.algorithm) {
@@ -125,9 +129,15 @@ int main(int argc, const char* argv[]) {
 #endif
     }
 
+    auto file = h5::file_t::create("o.h5", H5F_ACC_TRUNC);
+    auto dataset = file.create_dataset("Y", H5T_IEEE_F64LE, h5::dataspace_t::create(hsize_t{Y.size()}));
+    dataset.write(Y.data(), H5T_NATIVE_DOUBLE);
+
     if (arguments.debug) {
-        constexpr auto comparator
-          = [](auto l, auto r) { return std::abs(l - r) <= std::numeric_limits<double>::epsilon() * 1E5; };
+        constexpr auto comparator = [](auto l, auto r) {
+            return std::abs(l - r) <= std::max(std::abs(r) * std::numeric_limits<double>::epsilon() * 1E12,
+                                               std::numeric_limits<double>::epsilon() * 1E12);
+        };
 
         auto Y_ref = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
         cg::spmv_algos::cpu_sequential(matrix, dim::span{x}, dim::span{Y_ref});

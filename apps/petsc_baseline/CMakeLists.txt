@@ -1,12 +1,10 @@
-find_package(PkgConfig REQUIRED)
 find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(HDF5 REQUIRED CONFIG)
-
-pkg_check_modules(PETSC REQUIRED IMPORTED_TARGET PETSc)
+find_package(petsc REQUIRED CONFIG)
 
 brr_add_executable(petsc_baseline)
-target_link_libraries(petsc_baseline PRIVATE dim::mpi fmt::fmt PkgConfig::PETSC
+target_link_libraries(petsc_baseline PRIVATE dim::mpi fmt::fmt petsc::petsc
                                              spdlog::spdlog HDF5::HDF5)
 
                                              

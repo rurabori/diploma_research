@@ -1,0 +1,32 @@
+csr:
+  values:
+    chunk_size: null
+    compression_level: null
+  col_idx:
+    chunk_size: null
+    compression_level: null
+  row_idx:
+    chunk_size: null
+    compression_level: null
+csr5:
+  vals:
+    chunk_size: 4096
+    compression_level: null
+  col_idx:
+    chunk_size: null
+    compression_level: null
+  row_ptr:
+    chunk_size: null
+    compression_level: null
+  tile_desc:
+    chunk_size: null
+    compression_level: null
+  tile_ptr:
+    chunk_size: null
+    compression_level: null
+  tile_desc_offset:
+    chunk_size: null
+    compression_level: null
+  tile_desc_offset_ptr:
+    chunk_size: null
+    compression_level: null

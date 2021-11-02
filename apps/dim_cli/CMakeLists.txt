@@ -6,6 +6,7 @@ find_package(magic_enum REQUIRED)
 find_package(CURL REQUIRED)
 find_package(LibArchive REQUIRED CONFIG)
 find_package(scn REQUIRED CONFIG)
+find_package(yaml-cpp REQUIRED CONFIG)
 
 brr_add_executable(dim_cli)
 target_link_libraries(
@@ -18,6 +19,8 @@ target_link_libraries(
           magic_enum::magic_enum
           CURL::CURL
           LibArchive::LibArchive
-          scn::scn)
+          scn::scn
+          yaml-cpp::yaml-cpp)
 
 install(TARGETS dim_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES ${CMAKE_HOME_DIRECTORY}/resources/config.yaml TYPE SYSCONF)
