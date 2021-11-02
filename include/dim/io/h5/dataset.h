@@ -1,7 +1,6 @@
 #ifndef INCLUDE_DIM_IO_H5_DATASET
 #define INCLUDE_DIM_IO_H5_DATASET
 
-#include <__ranges/concepts.h>
 #include <dim/io/h5/dataspace.h>
 #include <dim/io/h5/location.h>
 #include <dim/io/h5/plist.h>

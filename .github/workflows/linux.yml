@@ -49,7 +49,9 @@ jobs:
         run: >
           conan config init &&
           conan config set general.revisions_enabled=1 &&
-          conan remote add rurabori-conan https://rurabori.jfrog.io/artifactory/api/conan/rurabori-conan
+          conan remote add rurabori-conan https://rurabori.jfrog.io/artifactory/api/conan/rurabori-conan &&
+          conan user -p ${{ secrets.ARTIFACTORY_CONAN_TOKEN }} -r rurabori-conan ${{ secrets.ARTIFACTORY_USERNAME }}
+
 
       # TODO: switch this to conan presets + cmakepresets eventually.
       - name: Cache Conan
@@ -62,19 +64,21 @@ jobs:
         working-directory: ${{github.workspace}}
         run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -Denable_cuda_backend="OFF" -DCMAKE_INSTALL_PREFIX="${{github.workspace}}/install"  ${{matrix.additional_cmake_options}}  -G "Ninja"
 
+      - name: Upload conan binaries to artifactory
+        run: conan upload '*' --all --parallel --confirm -r rurabori-conan
+
       - name: Build
         run: cmake --build ${{github.workspace}}/build
 
       - name: Test
         run: ctest -C ${{env.BUILD_TYPE}} --test-dir ${{github.workspace}}/build
 
-      - name: Install
-        run: cmake --build ${{github.workspace}}/build --target install
-
-      - name: Move artifacts
-        run: mv ${{github.workspace}}/install install
+      - name: Package
+        run: cd ${{github.workspace}}/build && cpack -G ZIP
 
       - name: Upload to artifactory
         run: >
-          tar cvfz  ${{matrix.artifact_name}}.tar.gz install &&
-          curl -u${{ secrets.ARTIFACTORY_USERNAME }}:${{ secrets.ARTIFACTORY_GENERIC_TOKEN }} -T ${{matrix.artifact_name}}.tar.gz "https://rurabori.jfrog.io/artifactory/default-generic-local/${{matrix.artifact_name}}.tar.gz"
+          remote="https://rurabori.jfrog.io/artifactory/default-generic-local/" &&
+          artifact="${{github.workspace}}/build/dim-*-Linux.zip" &&
+          path="dim/${{matrix.artifact_name}}/${{ github.run_id }}/$(basename $artifact)" &&
+          curl -u${{ secrets.ARTIFACTORY_USERNAME }}:${{ secrets.ARTIFACTORY_GENERIC_TOKEN }} -T $artifact "$remote/$path"
