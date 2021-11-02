@@ -45,6 +45,12 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Add conan remotes
+        run: >
+          conan config init &&
+          conan config set general.revisions_enabled=1 &&
+          conan remote add rurabori-conan https://rurabori.jfrog.io/artifactory/api/conan/rurabori-conan
+
       # TODO: switch this to conan presets + cmakepresets eventually.
       - name: Cache Conan
         uses: actions/cache@v2
