@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.15)
 include(cmake/options.cmake)
 
 project(
-  small_vector
+  dim
   VERSION 1.0.0
   LANGUAGES C CXX)
 

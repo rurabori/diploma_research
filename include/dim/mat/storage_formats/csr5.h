@@ -64,6 +64,10 @@ struct tile_descriptor_t
         col_storage present{1 << Omega};
     };
 
+    static constexpr auto num_cols = Omega;
+    static constexpr auto num_rows = Sigma;
+    static constexpr auto block_size = Sigma * Omega;
+
     tile_column_descriptor columns[Omega];
 
     [[nodiscard]] auto vectorized() const noexcept requires(Omega == 4 && sizeof(tile_column_descriptor) == 4) {
@@ -230,6 +234,7 @@ struct csr5
     // they may be hardcoded.
     static constexpr size_t sigma = 16;
     static constexpr size_t omega = 4;
+    [[nodiscard]] constexpr static auto tile_size() noexcept -> size_t { return sigma * omega; }
 
     using tile_descriptor_type = tile_descriptor_t<sigma, omega>;
     using tile_col_storage = typename tile_descriptor_type::tile_column_descriptor::storage_t;
@@ -246,9 +251,11 @@ struct csr5
     StorageContainer<UnsignedType> tile_desc_offset_ptr;
     StorageContainer<UnsignedType> tile_desc_offset;
 
-private:
-    [[nodiscard]] static auto tile_size() noexcept -> size_t { return sigma * omega; }
+    // TODO: these are irrelevant for the matrix itself, needed only for SPmV, make them arguments.
+    size_t val_offset{0};
+    bool skip_tail{false};
 
+private:
     auto iterate_tiles(std::invocable<size_t, size_t, size_t> auto&& callable) const {
         detail::iterate_tiles(tile_ptr, callable);
     }
@@ -292,7 +299,6 @@ private:
 
     auto generate_tile_offset() -> void {
         std::exclusive_scan(tile_desc_offset_ptr.begin(), tile_desc_offset_ptr.end(), tile_desc_offset_ptr.begin(), 0);
-
         tile_desc_offset.resize(tile_desc_offset_ptr.back());
         iterate_tiles([&](const auto tile_id, const auto row_start, const auto row_stop) {
             // no empty segments in this tile.
@@ -474,8 +480,7 @@ public:
 
             if (direct)
                 data.y[row_start] = val; // we're the first to access this in our chunk.
-            else // TODO: check this case is ok without any synchronization primitives if row spans tiles through
-                 // multiple chunks.
+            else
                 data.y[row_start] += val; // not the first to access this in our chunk.
         }
 
@@ -529,23 +534,26 @@ public:
         const auto chunk
           = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(thread_count)));
 
-        const auto num_thread_active = static_cast<int>(std::ceil(static_cast<double>(tile_count) / chunk));
+        const auto num_thread_active = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / chunk));
+
+        const auto row_offset = detail::strip_dirty(tile_ptr.front());
 
 #pragma omp parallel
         {
             const auto tid = omp_get_thread_num();
 
-            spmv_thread_data thread_data{.data = spmv_data,
-                                         .tid = tid,
-                                         .start_row_start
-                                         = tid < num_thread_active ? detail::strip_dirty(tile_ptr[tid * chunk]) : 0};
+            spmv_thread_data thread_data{
+              .data = spmv_data,
+              .tid = tid,
+              .start_row_start
+              = tid < num_thread_active ? (detail::strip_dirty(tile_ptr[tid * chunk]) - row_offset) : 0};
 
 #pragma omp for schedule(static, chunk)
             for (size_t tile_id = 0; tile_id < tile_count; ++tile_id) {
                 const auto iteration_data = thread_data.get_iter_data(*this, tile_id);
 
-                auto row_start = tile_ptr[tile_id];
-                const auto row_stop = detail::strip_dirty(tile_ptr[tile_id + 1]);
+                auto row_start = tile_ptr[tile_id] - row_offset;
+                const auto row_stop = detail::strip_dirty(tile_ptr[tile_id + 1]) - row_offset;
 
                 const auto current_descriptor = tile_desc[tile_id];
 
@@ -553,7 +561,6 @@ public:
 
                 // the tile only has elements from a single row.
                 if (row_start == row_stop) {
-                    // the row starts at this tile (blue).
                     thread_data.store_to_row_start(row_start, iteration_data.partition_fast_track(), fast_direct);
                     continue;
                 }
@@ -646,6 +653,9 @@ public:
                 // contains the potential sum of elements in red part of each lane.
                 first_sum256d = simd::merge_vec(sum256d, first_sum256d, any_row_active);
 
+                if (tile_id == 349563) {
+                    auto x = 0;
+                }
                 const auto last_sum
                   = detail::compute_last_sum(sum256d, first_sum256d, vec.scansum_offset, start256i, stop256i);
 
@@ -668,22 +678,30 @@ public:
         const auto thread_count = static_cast<size_t>(::omp_get_max_threads());
         const auto chunk
           = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(thread_count)));
-        const auto num_thread_active = static_cast<int>(std::ceil(static_cast<double>(tile_count) / chunk));
+        const auto num_thread_active = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / chunk));
 
-        int num_cali = num_thread_active < thread_count ? num_thread_active : thread_count;
+        auto num_cali = num_thread_active < thread_count ? num_thread_active : thread_count;
 
         for (size_t i = 0; i < num_cali; i++)
-            spmv_data.y[detail::strip_dirty(tile_ptr[i * chunk])] += spmv_data.calibrator[i * stride];
+            spmv_data.y[detail::strip_dirty(tile_ptr[i * chunk]) - tile_ptr.front()]
+              += spmv_data.calibrator[i * stride];
     }
 
     auto spmv_tail_partition(spmv_data_t spmv_data) const noexcept {
+        if (skip_tail)
+            return;
+
+        const auto offset = detail::strip_dirty(tile_ptr.front());
+
         const auto first_tail_element = tile_count * tile_size();
-        const auto tail_start = tail_partition_start();
+
+        const auto tail_start = tail_partition_start() - offset;
+        const auto tail_stop = dimensions.rows - offset;
 
 #pragma omp parallel for
-        for (size_t row = tail_start; row < dimensions.rows; ++row) {
-            auto idx_start = row == tail_start ? first_tail_element : row_ptr[row];
-            auto idx_stop = row_ptr[row + 1];
+        for (size_t row = tail_start; row < tail_stop; ++row) {
+            auto idx_start = row == tail_start ? first_tail_element : (row_ptr[row] - val_offset);
+            auto idx_stop = row_ptr[row + 1] - val_offset;
 
             ValueType sum = 0;
             for (auto idx = idx_start; idx < idx_stop; ++idx)
@@ -707,11 +725,14 @@ public:
         spmv(spmv_data_t{.x = x, .y = y, .calibrator = calibrator});
     }
 
-    auto spmv(dim::span<const ValueType> x, dim::span<ValueType> y) const {
-        StorageContainer<ValueType> calibrator(
-          ::omp_get_max_threads() * dim::memory::hardware_destructive_interference_size / sizeof(ValueType),
-          ValueType{});
+    auto allocate_calibrator() const noexcept -> StorageContainer<ValueType> {
+        return StorageContainer<ValueType>(static_cast<size_t>(::omp_get_max_threads())
+                                             * dim::memory::hardware_destructive_interference_size / sizeof(ValueType),
+                                           ValueType{});
+    }
 
+    auto spmv(dim::span<const ValueType> x, dim::span<ValueType> y) const {
+        auto calibrator = allocate_calibrator();
         return spmv(x, y, calibrator);
     }
 };

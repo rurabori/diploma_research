@@ -12,8 +12,7 @@ set(__conan_config_files_dir ${CMAKE_BINARY_DIR}/__conan_config_files)
 if(${invoke_conan} AND NOT EXISTS "${__conan_config_files_dir}")
   set(__conan_configurations_to_build ${CMAKE_BUILD_TYPE})
   if("${CMAKE_BUILD_TYPE}" STREQUAL "")
-    list(APPEND __conan_configurations_to_build "Release" "Debug"
-         "RelWithDebInfo")
+    list(APPEND __conan_configurations_to_build ${CMAKE_CONFIGURATION_TYPES})
   endif()
 
   foreach(__conan_build_type ${__conan_configurations_to_build})

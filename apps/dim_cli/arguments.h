@@ -24,21 +24,30 @@ struct dim_cli
 
     struct store_matrix_t : structopt::sub_command
     {
+        enum class out_format
+        {
+            csr,
+            csr5
+        };
+
         path input;
         path output;
+        std::optional<std::string> in_group_name{"A"};
         std::optional<std::string> group_name{"A"};
         std::optional<bool> append{false};
+        std::optional<out_format> format{out_format::csr};
 
-        std::optional<size_t> values_chunk_size;
-        std::optional<int> values_compression;
-
-        std::optional<size_t> col_idx_chunk_size;
-        std::optional<int> col_idx_compression;
-
-        std::optional<size_t> row_start_offsets_chunk_size;
-        std::optional<int> row_start_offsets_compression;
+        std::optional<path> config{"config.yaml"};
     };
     store_matrix_t store_matrix;
+
+    struct csr5_info_t : structopt::sub_command
+    {
+        path input;
+        size_t row;
+        std::optional<std::string> matrix_group{"A"};
+    };
+    csr5_info_t csr5_info;
 
     struct compare_results_t : structopt::sub_command
     {
@@ -71,9 +80,9 @@ struct dim_cli
 };
 
 STRUCTOPT(dim_cli::compare_results_t, input_file, input_file_2, lhs_group, rhs_group);
-STRUCTOPT(dim_cli::store_matrix_t, input, output, values_chunk_size, values_compression, col_idx_chunk_size,
-          col_idx_compression, row_start_offsets_chunk_size, row_start_offsets_compression);
+STRUCTOPT(dim_cli::store_matrix_t, input, output, in_group_name, group_name, append, format, config);
+STRUCTOPT(dim_cli::csr5_info_t, input, row, matrix_group);
 STRUCTOPT(dim_cli::download_t, url, destination_dir, format);
-STRUCTOPT(dim_cli, store_matrix, compare_results, download, log_level);
+STRUCTOPT(dim_cli, store_matrix, csr5_info, compare_results, download, log_level);
 
 #endif /* APPS_DIM_CLI_ARGUMENTS */
