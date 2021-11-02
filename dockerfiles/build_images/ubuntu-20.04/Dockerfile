@@ -34,4 +34,5 @@ ENV PATH="/usr/local/cmake-$cmake_version-linux-x86_64/bin:${PATH}"
 COPY dockerfiles/build_images/ubuntu-20.04/ranges.patch /patches/ranges.patch
 RUN patch -R /usr/include/c++/11/ranges /patches/ranges.patch
 
+RUN conan config set general.revisions_enabled=1
 RUN conan remote add rurabori-conan https://rurabori.jfrog.io/artifactory/api/conan/rurabori-conan
