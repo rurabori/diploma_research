@@ -3,12 +3,10 @@ description: "Upload to artifactory"
 inputs:
   username:
     description: Username of user to upload as
-    required: false
-    default: ${{ secrets.ARTIFACTORY_USERNAME }}
+    required: true
   password:
     description: Password for the specified user
-    required: false
-    default: ${{ secrets.ARTIFACTORY_GENERIC_TOKEN }}
+    required: true
   artifactory_url:
     description: URL of the artifactory
     required: false

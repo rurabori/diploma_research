@@ -78,3 +78,5 @@ jobs:
         with:
           input_file_path: ${{ github.workspace }}/build/dim-*-Linux.zip
           storage_path: dim/${{ matrix.artifact_name }}/${{ github.run_id }}/dim.zip
+          username:  ${{ secrets.ARTIFACTORY_USERNAME }}
+          password: ${{ secrets.ARTIFACTORY_GENERIC_TOKEN }}
