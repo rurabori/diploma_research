@@ -74,8 +74,7 @@ jobs:
         run: cd ${{github.workspace}}/build && cpack -G ZIP
 
       - name: Upload to artifactory
-        run: >
-          remote="https://rurabori.jfrog.io/artifactory/default-generic-local/" &&
-          artifact="${{github.workspace}}/build/dim-*-Linux.zip" &&
-          path="dim/${{matrix.artifact_name}}/${{ github.run_id }}/$(basename $artifact)" &&
-          curl -u${{ secrets.ARTIFACTORY_USERNAME }}:${{ secrets.ARTIFACTORY_GENERIC_TOKEN }} -T $artifact "$remote/$path"
+        uses: ./.github/actions/artifactory_upload
+        with:
+          input_file_path: ${{ github.workspace }}/build/dim-*-Linux.zip
+          storage_path: dim/${{ matrix.artifact_name }}/${{ github.run_id }}/dim.zip

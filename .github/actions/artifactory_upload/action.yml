@@ -1,0 +1,28 @@
+name: artifactory_upload
+description: "Upload to artifactory"
+inputs:
+  username:
+    description: Username of user to upload as
+    required: false
+    default: ${{ secrets.ARTIFACTORY_USERNAME }}
+  password:
+    description: Password for the specified user
+    required: false
+    default: ${{ secrets.ARTIFACTORY_GENERIC_TOKEN }}
+  artifactory_url:
+    description: URL of the artifactory
+    required: false
+    default: "https://rurabori.jfrog.io/artifactory/default-generic-local/"
+  input_file_path:
+    description: file to upload
+    required: true
+  storage_path:
+    description: path in artifactory storage to upload to
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Upload to artifactory
+      shell: bash
+      run: curl -u${{ inputs.username }}:${{ inputs.password }} -T ${{ inputs.file_path }} "${{ inputs.artifactory_url }}/${{ inputs.storage_path }}"
