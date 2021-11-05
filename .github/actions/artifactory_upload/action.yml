@@ -23,4 +23,4 @@ runs:
   steps:
     - name: Upload to artifactory
       shell: bash
-      run: curl -u${{ inputs.username }}:${{ inputs.password }} -T ${{ inputs.file_path }} "${{ inputs.artifactory_url }}/${{ inputs.storage_path }}"
+      run: curl -u${{ inputs.username }}:${{ inputs.password }} -T ${{ inputs.input_file_path }} "${{ inputs.artifactory_url }}/${{ inputs.storage_path }}"
