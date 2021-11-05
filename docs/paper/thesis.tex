@@ -163,24 +163,49 @@ This involves nonnegligible savings in storage.
 
 \section{Compressed Sparse Row 5 (CSR5)}
 
+\newcommand{\csre}[1]{\lstinline!#1!}
+
 To achieve near-optimal load balance for matrices with any sparsity structures,
 all nonzero entries are partitioned to multiple 2D tiles of the same size.
 The CSR5 format has two tuning parameters: $\omega$ and $\sigma$, where $\omega$
 is a tile’s width and $\sigma$ is its height. \cite{liu2015csr5}
 
 Further, extra information is needed to efficiently compute
-SpMV. For each tile, a tile pointer \lstinline!tile_ptr! and a tile descriptor \lstinline!tile_desc! are introduced.
-Meanwhile, the three arrays, i.e., row pointer \lstinline!row_ptr!, column index \lstinline!col_idx! and value val,
-of the classic CSR format are directly integrated. The only difference is that the \lstinline!col_idx! data and the \lstinline!vals!
+SpMV. For each tile, a tile pointer \csre{tile_ptr} and a tile descriptor \csre{tile_desc} are introduced.
+Meanwhile, the three arrays, i.e., row pointer \csre{row_ptr}, column index \csre{col_idx} and value val,
+of the classic CSR format are directly integrated. The only difference is that the \csre{col_idx} data and the \csre{vals}
 data in each complete tile are in-place transposed (i.e., from row-major order to column-major order) for coalesced memory access from contiguous SIMD lanes.
 
-\lstinline!tile_ptr! stores the for index of the first entry of the tile.
+\csre{tile_ptr} stores the row index of the first entry in each tile.
 
-\lstinline!y_offset! - relative offset into the Y for a column of tile (equal to number of rows that started in previous columns).
+Each column of a tile has three characteristics:
+\begin{itemize}
+	\item \csre{y_offset} - relative offset into the Y for a column of tile (equal to number of rows that started in previous columns).
+	\item \csre{scansum_offset} - number of consecutive empty columns to the right of current column.
+	\item \csre{bit_flag} - of size $\sigma$ where $i-th$ bit is set if $i-th$ value of this column is the first non-0 entry of its row
+	      or it is the $0th$ bit of $0th$ column.
+	      %TODO: this could be explained a bit better. 
+\end{itemize}
+
+The tile further may have an \csre{empty_offset} array of size $\mathcal{O}(\omega * \sigma)$, if it contains empty rows, 
+because \csre{y_offset} will be incorrect for such tile. Thus we store correct offsets into Y for each segment of such 
+a tile in \csre{empty_offset}. The actual size of this array is number of segments in a tile (the number of bits set to 1 in \csre{bit_flag}).
+
+
 
 % TODO
 \chapter{HDF5}
+
+
+
 \chapter{OpenMP}
+
+OpenMP API is defined by a collection of compiler directives, library routines, and environment variables.
+It provides a model for parallel programming that is portable across architectures
+from different vendors. Compilers from numerous vendors support the OpenMP API. \cite{openmp18}
+
+\chapter{SIMD}
+
 \chapter{MPI}
 \chapter{C++20 - TBD}
 

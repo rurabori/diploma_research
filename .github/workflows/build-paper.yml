@@ -19,8 +19,10 @@ jobs:
           root_file: thesis.tex
           working_directory: docs/paper
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+      - name: Upload to artifactory
+        uses: ./.github/actions/artifactory_upload
         with:
-          name: thesis
-          path: build/latex/*.pdf
+          input_file_path: build/latex/*.pdf
+          storage_path: dim/thesis/${{ github.run_id }}/thesis.pdf
+          username:  ${{ secrets.ARTIFACTORY_USERNAME }}
+          password: ${{ secrets.ARTIFACTORY_GENERIC_TOKEN }}
