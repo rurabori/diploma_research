@@ -576,7 +576,7 @@ public:
 
                 const auto offset_pointer = empty_rows ? tile_desc_offset_ptr[tile_id] : 0;
                 const auto compute_y_idx = [this, empty_rows, offset_pointer](auto&& offset) {
-                    return empty_rows ? _mm_i32gather_epi32(&tile_desc_offset[offset_pointer], offset, 4) : offset;
+                    return empty_rows ? _mm_i32gather_epi32(reinterpret_cast<const int*>(&tile_desc_offset[offset_pointer]), offset, 4) : offset;
                 };
 
                 auto vec = current_descriptor.vectorized();

@@ -11,7 +11,7 @@ TEST_CASE("simd::any_bit_set") {
 }
 
 auto vec_equal(__m256d vec, __m256d vec2) noexcept -> bool {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(vec, vec2)) == dim::all_bits_set<int>;
+    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(_mm256_castpd_si256(vec), _mm256_castpd_si256(vec2))) == dim::all_bits_set<int>;
 }
 
 TEST_CASE("simd::shuffle") {
