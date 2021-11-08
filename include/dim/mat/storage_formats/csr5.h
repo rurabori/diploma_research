@@ -26,24 +26,15 @@
 
 namespace dim::mat {
 
-template<size_t Sigma, size_t Omega>
+template<typename DefType>
 struct tile_column_descriptor_t
 {
-    static constexpr auto tile_size = Sigma * Omega;
+    using def_t = DefType;
+    using storage_t = typename def_t::storage_t;
 
-    static constexpr auto y_offset_needed = std::bit_width<size_t>(Sigma * Omega);
-    static constexpr auto scansum_offset_needed = std::bit_width<size_t>(Omega);
-    static constexpr auto bit_flag_needed = Sigma;
-
-    static constexpr auto needed_size = y_offset_needed + scansum_offset_needed + bit_flag_needed;
-
-    static_assert(needed_size <= 64, "we only allow at most 64 bit tile column descriptors");
-
-    using storage_t = std::conditional_t<needed_size <= dim::bit_size<uint32_t>, uint32_t, uint64_t>;
-
-    storage_t y_offset : y_offset_needed = 0;
-    storage_t scansum_offset : scansum_offset_needed = 0;
-    storage_t bit_flag : bit_flag_needed = 0;
+    storage_t y_offset : def_t::y_offset = 0;
+    storage_t scansum_offset : def_t::scansum_offset = 0;
+    storage_t bit_flag : def_t::bit_flag = 0;
 
     [[nodiscard]] constexpr auto num_bits_set(bool is_first) const noexcept -> size_t {
         return static_cast<size_t>(std::popcount(bit_flag | static_cast<storage_t>(is_first)));
@@ -55,7 +46,19 @@ struct tile_column_descriptor_t
 template<size_t Sigma, size_t Omega>
 struct tile_descriptor_t
 {
-    using tile_column_descriptor = tile_column_descriptor_t<Sigma, Omega>;
+    struct storage_def_t
+    {
+        static constexpr auto y_offset = std::bit_width<size_t>(Sigma * Omega);
+        static constexpr auto scansum_offset = std::bit_width<size_t>(Omega);
+        static constexpr auto bit_flag = Sigma;
+        static constexpr auto needed_size = y_offset + scansum_offset + bit_flag;
+
+        static_assert(needed_size <= 64, "we only allow at most 64 bit tile column descriptors");
+
+        using storage_t = std::conditional_t<needed_size <= dim::bit_size<uint32_t>, uint32_t, uint64_t>;
+    };
+
+    using tile_column_descriptor = tile_column_descriptor_t<storage_def_t>;
     using col_storage = typename tile_column_descriptor::storage_t;
 
     struct scansum_and_present_t
@@ -71,11 +74,10 @@ struct tile_descriptor_t
     tile_column_descriptor columns[Omega];
 
     [[nodiscard]] auto vectorized() const noexcept requires(Omega == 4 && sizeof(tile_column_descriptor) == 4) {
-        constexpr auto y_shift_ammount = 32 - tile_column_descriptor::y_offset_needed;
-        constexpr auto scansum_lshift_ammount = y_shift_ammount - tile_column_descriptor::scansum_offset_needed;
-        constexpr auto scansum_rshift_amount = 32 - tile_column_descriptor::scansum_offset_needed;
-        constexpr auto bit_flag_shift_amount
-          = tile_column_descriptor::y_offset_needed + tile_column_descriptor::scansum_offset_needed;
+        constexpr auto y_shift_amount = 32 - storage_def_t::y_offset;
+        constexpr auto scansum_lshift_amount = y_shift_amount - storage_def_t::scansum_offset;
+        constexpr auto scansum_rshift_amount = 32 - storage_def_t::scansum_offset;
+        constexpr auto bit_flag_shift_amount = storage_def_t::y_offset + storage_def_t::scansum_offset;
 
         struct vectorized_impl
         {
@@ -93,8 +95,8 @@ struct tile_descriptor_t
         const auto current_desc = _mm_set_epi32(tmp[3], tmp[2], tmp[1], tmp[0]);
 
         return vectorized_impl{
-          .y_offset = _mm_srli_epi32(_mm_slli_epi32(current_desc, y_shift_ammount), y_shift_ammount),
-          .scansum_offset = _mm_srli_epi32(_mm_slli_epi32(current_desc, scansum_lshift_ammount), scansum_rshift_amount),
+          .y_offset = _mm_srli_epi32(_mm_slli_epi32(current_desc, y_shift_amount), y_shift_amount),
+          .scansum_offset = _mm_srli_epi32(_mm_slli_epi32(current_desc, scansum_lshift_amount), scansum_rshift_amount),
           .bit_flag = _mm_srli_epi32(current_desc, bit_flag_shift_amount)};
     }
 
@@ -225,15 +227,16 @@ namespace detail {
 
 } // namespace detail
 
-template<std::floating_point ValueType = double, std::signed_integral SignedType = int32_t,
-         std::unsigned_integral UnsignedType = uint32_t,
+template<std::floating_point ValueType = double, size_t Sigma = 16, size_t Omega = 4,
+         std::signed_integral SignedType = int32_t, std::unsigned_integral UnsignedType = uint32_t,
          template<typename> typename StorageContainer = cache_aligned_vector>
 struct csr5
 {
     // these could be template parameters, but since we're focusing on CPU only,
     // they may be hardcoded.
-    static constexpr size_t sigma = 16;
-    static constexpr size_t omega = 4;
+    static constexpr size_t sigma = Sigma;
+    static constexpr size_t omega = Omega;
+
     [[nodiscard]] constexpr static auto tile_size() noexcept -> size_t { return sigma * omega; }
 
     using tile_descriptor_type = tile_descriptor_t<sigma, omega>;
@@ -394,7 +397,8 @@ private:
             if (start == stop)
                 return;
 
-            if (detail::is_dirty(row_idx.subspan(start, stop - start)))
+            // +1 because it needs to be inclusive.
+            if (detail::is_dirty(row_idx.subspan(start, stop - start + 1)))
                 tile_ptr[partition_id] = detail::mark_dirty(start);
         });
     }
@@ -653,9 +657,6 @@ public:
                 // contains the potential sum of elements in red part of each lane.
                 first_sum256d = simd::merge_vec(sum256d, first_sum256d, any_row_active);
 
-                if (tile_id == 349563) {
-                    auto x = 0;
-                }
                 const auto last_sum
                   = detail::compute_last_sum(sum256d, first_sum256d, vec.scansum_offset, start256i, stop256i);
 
