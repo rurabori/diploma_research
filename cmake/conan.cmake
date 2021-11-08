@@ -2,18 +2,23 @@
 
 include(${CMAKE_CURRENT_LIST_DIR}/conan_integration.cmake)
 
-option(
-  invoke_conan
-  "Invoke conan from cmake instead of requiring it to be ran before configuring cmake."
-  ON)
-
 set(__conan_config_files_dir ${CMAKE_BINARY_DIR}/__conan_config_files)
+
+macro(ternary boolean value1 value2)
+    if (${${boolean}})
+      set(__conan_${boolean} ${value1})
+    else()
+      set(__conan_${boolean} ${value2})
+    endif()
+endmacro()
 
 if(${invoke_conan} AND NOT EXISTS "${__conan_config_files_dir}")
   set(__conan_configurations_to_build ${CMAKE_BUILD_TYPE})
   if("${CMAKE_BUILD_TYPE}" STREQUAL "")
     list(APPEND __conan_configurations_to_build ${CMAKE_CONFIGURATION_TYPES})
   endif()
+
+  ternary(system_scientific_libs "True" "False")
 
   foreach(__conan_build_type ${__conan_configurations_to_build})
     # cmake-format: off
@@ -25,6 +30,7 @@ if(${invoke_conan} AND NOT EXISTS "${__conan_config_files_dir}")
       ENV CC=${CMAKE_C_COMPILER}
       ENV CXX=${CMAKE_CXX_COMPILER}
       BUILD missing
+      OPTIONS system_scientific_libs=${__conan_system_scientific_libs}
       UPDATE)
     # cmake-format: on
   endforeach()
