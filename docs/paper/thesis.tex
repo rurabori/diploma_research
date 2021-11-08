@@ -25,6 +25,10 @@
 
 \usepackage{amsmath}
 \usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{minted}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
 % TODO: reenable minted if possible.
 % \usepackage{minted}
 
@@ -88,13 +92,13 @@ as $n_{nz}$ number of columns as $n$ and number of rows as $m$.
 
 To better illustrate the storage formats, let us define sparse matrix $A$.
 \begin{equation*}
-	A =
-	\begin{pmatrix}
-		1 & 0 & 2 & 0 \\
-		0 & 3 & 0 & 0 \\
-		4 & 0 & 5 & 0 \\
-		6 & 0 & 0 & 7
-	\end{pmatrix}
+    A =
+    \begin{pmatrix}
+        1 & 0 & 2 & 0 \\
+        0 & 3 & 0 & 0 \\
+        4 & 0 & 5 & 0 \\
+        6 & 0 & 0 & 7
+    \end{pmatrix}
 \end{equation*}
 
 \section{Coordinate (COO)}
@@ -104,26 +108,26 @@ The data structure consists of three arrays of length $n_{nz}$\cite{saad03:IMS}:
 
 % TODO: this may be nicer if formated with minted or something similar.
 \begin{enumerate}
-	\itemsep=0em
-	\item[vals] a real array containing all the real (or complex) values of the nonzero elements of A in any order.
-	\item[row\_idx] an integer array containing their row indices.
-	\item[col\_idx] a second integer array containing their column indices.
+    \itemsep=0em
+    \item[vals] a real array containing all the real (or complex) values of the nonzero elements of A in any order.
+    \item[row\_idx] an integer array containing their row indices.
+    \item[col\_idx] a second integer array containing their column indices.
 \end{enumerate}
 
 Thus $A$ would be stored as:
 
 \begin{table}[h!]
-	\centering
-	\begin{tabular}{ |l||c|c|c|c|c|c|c| }
-		\hline
-		vals     & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
-		\hline
-		row\_idx & 0 & 0 & 1 & 2 & 2 & 3 & 3 \\
-		\hline
-		col\_idx & 0 & 2 & 1 & 0 & 2 & 0 & 3 \\
-		\hline
-	\end{tabular}
-	\caption{$A$ stored in COO format}
+    \centering
+    \begin{tabular}{ |l||c|c|c|c|c|c|c| }
+        \hline
+        vals     & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+        \hline
+        row\_idx & 0 & 0 & 1 & 2 & 2 & 3 & 3 \\
+        \hline
+        col\_idx & 0 & 2 & 1 & 0 & 2 & 0 & 3 \\
+        \hline
+    \end{tabular}
+    \caption{$A$ stored in COO format}
 \end{table}
 
 
@@ -134,36 +138,36 @@ Compressed Sparse Row is probably the most popular format for storing general sp
 
 % TODO: better lstinline.
 \begin{enumerate}
-	\itemsep=0em
-	\item[vals] a real array of size $n_{nz}$ containing all the real (or complex) values of the nonzero elements of $A$
-		stored in row major order.
-	\item[col\_idx] a second integer array of size $n_{nz}$ containing their column indices.
-	\item[row\_ptr] an integer array of size $m + 1$ containing offsets into \lstinline{vals} and
-		\lstinline!col_idx!, at which each row of the matrix begins.
+    \itemsep=0em
+    \item[vals] a real array of size $n_{nz}$ containing all the real (or complex) values of the nonzero elements of $A$
+        stored in row major order.
+    \item[col\_idx] a second integer array of size $n_{nz}$ containing their column indices.
+    \item[row\_ptr] an integer array of size $m + 1$ containing offsets into \lstinline{vals} and
+        \lstinline!col_idx!, at which each row of the matrix begins.
 \end{enumerate}
 
 This involves nonnegligible savings in storage.
 
 \begin{table}[h!]
-	\centering
-	\begin{tabular}{ |l||c|c|c|c|c|c|c| }
-		\hline
-		vals     & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
-		\hline
-		col\_idx & 0 & 2 & 1 & 0 & 2 & 0 & 3 \\
-		\hline
-	\end{tabular} \\
-	\begin{tabular}{ |l||c|c|c|c|c| }
-		\hline
-		row\_ptr & 0 & 2 & 3 & 5 & 6 \\
-		\hline
-	\end{tabular}
-	\caption{$A$ stored in CSR format}
+    \centering
+    \begin{tabular}{ |l||c|c|c|c|c|c|c| }
+        \hline
+        vals     & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+        \hline
+        col\_idx & 0 & 2 & 1 & 0 & 2 & 0 & 3 \\
+        \hline
+    \end{tabular} \\
+    \begin{tabular}{ |l||c|c|c|c|c| }
+        \hline
+        row\_ptr & 0 & 2 & 3 & 5 & 6 \\
+        \hline
+    \end{tabular}
+    \caption{$A$ stored in CSR format}
 \end{table}
 
 \section{Compressed Sparse Row 5 (CSR5)}
 
-\newcommand{\csre}[1]{\lstinline!#1!}
+\newcommand{\csre}[1]{\mintinline{C++}!#1!}
 
 To achieve near-optimal load balance for matrices with any sparsity structures,
 all nonzero entries are partitioned to multiple 2D tiles of the same size.
@@ -176,44 +180,184 @@ Meanwhile, the three arrays, i.e., row pointer \csre{row_ptr}, column index \csr
 of the classic CSR format are directly integrated. The only difference is that the \csre{col_idx} data and the \csre{vals}
 data in each complete tile are in-place transposed (i.e., from row-major order to column-major order) for coalesced memory access from contiguous SIMD lanes.
 
-\csre{tile_ptr} stores the row index of the first entry in each tile.
-
-Each column of a tile has three characteristics:
+\textbf{Each column of a tile has three characteristics}:
 \begin{itemize}
-	\item \csre{y_offset} - relative offset into the Y for a column of tile (equal to number of rows that started in previous columns).
-	\item \csre{scansum_offset} - number of consecutive empty columns to the right of current column.
-	\item \csre{bit_flag} - of size $\sigma$ where $i-th$ bit is set if $i-th$ value of this column is the first non-0 entry of its row
-	      or it is the $0th$ bit of $0th$ column.
-	      %TODO: this could be explained a bit better. 
+    \item \csre{y_offset} - relative offset into the Y for a column of tile (equal to number of rows that started in previous columns).
+    \item \csre{scansum_offset} - number of consecutive empty columns to the right of current column.
+    \item \csre{bit_flag} - of size $\sigma$ where $i-th$ bit is set if $i-th$ value of this column is the first non-0 entry of its row
+          or it is the $0th$ bit of $0th$ column.
+          %TODO: this could be explained a bit better. 
 \end{itemize}
 
-The tile further may have an \csre{empty_offset} array of size $\mathcal{O}(\omega * \sigma)$, if it contains empty rows, 
-because \csre{y_offset} will be incorrect for such tile. Thus we store correct offsets into Y for each segment of such 
+The tile further may have an \csre{empty_offset} array of size $\mathcal{O}(\omega * \sigma)$, if it contains empty rows,
+because \csre{y_offset} will be incorrect for such tile. Thus we store correct offsets into Y for each segment of such
 a tile in \csre{empty_offset}. The actual size of this array is number of segments in a tile (the number of bits set to 1 in \csre{bit_flag}).
 
+% TODO: remake this, don't use picture.
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.35]{static/csr5_do_not_use_remake.png}
+    \caption{Matrix A stored in CSR5 format}
+\end{figure}
 
+\chapter{Theory}
 
 % TODO
-\chapter{HDF5}
 
-\cite{hdf5}
-
-\chapter{OpenMP}
+\section{OpenMP}
 
 OpenMP API is defined by a collection of compiler directives, library routines, and environment variables.
 It provides a model for parallel programming that is portable across architectures
 from different vendors. Compilers from numerous vendors support the OpenMP API. \cite{openmp18}
 
-\chapter{SIMD}
 
-\chapter{MPI}
-\chapter{C++20 - TBD}
+\section{MPI}
 
-\chapter{State-of-the-art}
-test
-\chapter{Analysis and design}
-test
-\chapter{Realisation}
+MPI (Message-Passing Interface) is a message-passing library interface specification.
+All parts of this definition are significant. MPI addresses primarily the message-passing parallel
+programming model, in which data is moved from the address space of one process to
+that of another process through cooperative operations on each process. Extensions to the
+“classical” message-passing model are provided in collective operations, remote-memory
+access operations, dynamic process creation, and parallel I/O. MPI is a specification, not
+an implementation; there are multiple implementations of MPI. This specification is for a
+library interface; MPI is not a language, and all MPI operations are expressed as functions,
+subroutines, or methods, according to the appropriate language bindings which, for C and
+Fortran, are part of the MPI standard.
+\cite{mpi40}
+
+\section{HDF5}
+
+HDF5 is a data model, library, and file format for storing and managing data.
+It supports an unlimited variety of datatypes, and is designed for flexible and
+efficient I/O and for high volume and complex data. HDF5 is portable and is extensible,
+allowing applications to evolve in their use of HDF5. The HDF5 Technology suite includes
+tools and applications for managing, manipulating, viewing, and analyzing data in the HDF5 format.
+\cite{hdf5}
+
+
+\section{SIMD}
+
+As defined in Flynn's taxonomy, Single Instruction Multiple Data (or SIMD) is a type of parallel
+processing, where a single instruction is applied to multiple data streams.
+
+Modern CPUs provide Streaming SIMD Extensions (or SSE) Instruction Set Extensions, as well as
+Advanced Vector Extensions (or AVX). These can be leveraged in C++ by using OpenMP pragma
+directives or compiler provided set of intrinsics.
+
+\section{C++20 - TBD}
+
+
+\chapter{Implementation}
+
+\section{Storage format}
+
+A common issue of distributed SpMV is load balancing. Storing matrices in CSR5 format avoids this by
+grouping data into tiles of fixed size. Furthermore the tiles are independent, allowing for high
+degree of paralelism.
+
+\subsection{In memory layout}
+
+The three arrays present in CSR \csre{row_ptr}, \csre{col_idx} and \csre{vals} as well as \csre{tile_ptr}
+stored in a sequential container (\csre{std::vector} with a custom cache alligned allocator),
+while being in-place transformed.
+
+\begin{figure}[!h]
+    \begin{minted}{C++}
+    struct csr5_t {
+        // same as CSR
+        uint32_t             num_cols;
+        vector<FloatingType> vals;
+        vector<uint32_t>     col_idx;
+        vector<uint32_t>     row_ptr;
+        // CSR5
+        vector<uint32_t>     tile_ptr;
+        vector<descriptor_t> tile_desc; // shown later.
+        vector<uint32_t>     empty_offset_ptr;
+        vector<uint32_t>     empty_offset;
+    };
+    \end{minted}
+    \caption{Pseudocode for structure holding CSR5 matrix}
+\end{figure}
+
+
+\subsubsection{Tile descriptor}
+
+Previous research about CSR5 \cite{liu2015csr5} concluded, that for modern CPUs with AVX2 extensions, the optimal CSR5 tuning parameters
+are $\sigma = 16$ and $\omega = 4$. Leveraging bit fields, data for each column of tile descriptor may be
+stored as:
+
+\begin{minted}{C++}
+    struct descriptor_column_t {
+        uint32_t y_offset: 7;
+        uint32_t scansum_offset: 3;
+        uint32_t bit_flag: 16;
+    };
+
+    struct descriptor_t {
+        descriptor_column_t columns[4];
+    };
+\end{minted}
+
+Using Non Type Template Parameters, the bit field widths as well as needed underlying type for column
+descriptor may be computed at compilation time, allowing for fine-tuning while giving compiler enough
+information to optimize properly. This means only 4B additional data per column or 32B per tile.
+
+\subsubsection{Empty offset}
+
+With \csre{empty_offset} being dependent on number of sections in a tile (and being completely absent
+in tiles which don't contain empty rows), it would be inefficient to
+store it in the descriptor itself. To avoid too many allocations, two supporting arrays are added. 
+An \csre{empty_offset_ptr} of size $num\_tiles + 1$, which contains offsets for each tile into the 
+second array, \csre{empty_offset} at which their \csre{empty_offset} array begins. 
+Thus for each tile, it's empty offset is defined as \csre{empty_offset[empty_offset_ptr[i]:empty_offset_ptr[i+1]]}.
+
+% TODO: maybe show the code.
+
+\subsection{On disk layout}
+
+Each of the sequential data members \csre{row_ptr}, \csre{col_idx}, \csre{vals}, \csre{tile_ptr},
+\csre{empty_offset}, \csre{empty_offset_ptr}, are stored as one dimensional datasets of same name
+and same datatype. \csre{num_cols} is stored as an attribute.
+
+\csre{tile_desc} is stored as an one dimensional dataset, with datatype being 
+an array of 4 little endian unsigned 32-bit integers. In essence storing the data to HDF5 file as 
+they appear in memory. This does put a soft requirement on the CLI used to transform a CSR matrix to 
+CSR5 matrix and the code executing the SpMV being compiled by the same version of a compiler, as 
+bit field in-memory layout is implementation defined, but allows faster loading. Furthermore both 
+Clang and GCC implement this in the same way so the requirement is only a soft one, as compatibility can 
+be easily tested.
+
+
+\section{Loading the matrices}
+
+
+HDF5 supports loading only a part of dataset as a hyperslab, making it possible to load only the data
+required by a tile to be loaded. 
+
+
+\begin{algorithm}
+\caption{Loading part of CSR5 matrix}
+\begin{algorithmic}
+    \Function{slab}{$name$, $start$, $count$}
+
+        \Return $datasets[name][start:start + count]$
+    \EndFunction
+
+\Function{load\_partial}{$first\_tile\_id$, $tile\_count$}
+    \State $block\_size \gets \sigma*\omega$
+    \State $absolute\_start \gets first\_tile\_id * block\_size$
+    \State $element\_count \gets tile\_count * block\_size$
+    
+    \State $vals \gets slab("vals", absolute\_start, element\_count)$
+    \State $col\_idx \gets slab("col\_idx", absolute\_start, element\_count)$
+    \State $tile\_desc \gets slab("tile\_desc", first\_tile\_id, tile\_count)$
+    \State $tile\_ptr \gets slab("tile\_ptr", first\_tile\_id, tile\_count + 1)$
+    \State $empty\_offset\_ptr \gets slab("empty\_offset\_ptr", first\_tile\_id, tile\_count + 1)$
+    \State $empty\_offset \gets slab("empty\_offset", empty\_offset\_ptr[0], empty\_offset\_ptr[-1])$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
 
 \setsecnumdepth{part}
 \chapter{Conclusion}
@@ -228,10 +372,10 @@ test
 \chapter{Acronyms}
 % \printglossaries
 \begin{description}
-	\item[CSR5] Compressed Sparse Row 5
-	\item[GUI] Graphical user interface
-	\item[$n_{nz}$] Number of non-zero elements in a sparse matrix.
-	\item[XML] Extensible markup language
+    \item[CSR5] Compressed Sparse Row 5
+    \item[GUI] Graphical user interface
+    \item[$n_{nz}$] Number of non-zero elements in a sparse matrix.
+    \item[XML] Extensible markup language
 \end{description}
 
 
@@ -239,14 +383,14 @@ test
 
 %change appropriately
 \dirtree{%
-	.1 readme.txt\DTcomment{the file with CD contents description}.
-	.1 exe\DTcomment{the directory with executables}.
-	.1 src\DTcomment{the directory of source codes}.
-	.2 wbdcm\DTcomment{implementation sources}.
-	.2 thesis\DTcomment{the directory of \LaTeX{} source codes of the thesis}.
-	.1 text\DTcomment{the thesis text directory}.
-	.2 thesis.pdf\DTcomment{the thesis text in PDF format}.
-	.2 thesis.ps\DTcomment{the thesis text in PS format}.
+    .1 readme.txt\DTcomment{the file with CD contents description}.
+    .1 exe\DTcomment{the directory with executables}.
+    .1 src\DTcomment{the directory of source codes}.
+    .2 wbdcm\DTcomment{implementation sources}.
+    .2 thesis\DTcomment{the directory of \LaTeX{} source codes of the thesis}.
+    .1 text\DTcomment{the thesis text directory}.
+    .2 thesis.pdf\DTcomment{the thesis text in PDF format}.
+    .2 thesis.ps\DTcomment{the thesis text in PS format}.
 }
 
 \end{document}
