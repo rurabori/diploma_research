@@ -139,7 +139,9 @@ struct tile_descriptor_t
         return desc.segn_scan[Omega];
     }
 
-    [[nodiscard]] auto operator<=>(const tile_descriptor_t& other) const noexcept = default;
+    [[nodiscard]] auto operator==(const tile_descriptor_t& other) const noexcept {
+        return std::equal(std::begin(columns), std::end(columns), std::begin(other.columns));
+    }
 };
 
 namespace detail {

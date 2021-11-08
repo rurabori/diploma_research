@@ -94,3 +94,10 @@ add_custom_target(
   graphviz
   "${CMAKE_COMMAND}" "--graphviz=dim" .
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+
+macro(conditional_add_subdirectory directory condition)
+  if (${condition})
+    add_subdirectory(${directory})
+  endif()
+endmacro()

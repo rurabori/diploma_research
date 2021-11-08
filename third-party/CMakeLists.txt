@@ -1,5 +1,5 @@
 add_subdirectory(csr5)
+add_subdirectory(hdf5)
+add_subdirectory(petsc)
 
-if(${enable_cuda_backend})
-  add_subdirectory(csr5_cuda)
-endif()
+conditional_add_subdirectory(csr5_cuda ${enable_cuda_backend})
