@@ -225,7 +225,7 @@ namespace detail {
         const auto b = _mm256_andnot_pd(_mm256_castsi256_pd(not_red_column), next_prefix_sum);
         // only add parts which had any rows starting here (bitflag set).
         return _mm256_add_pd(sum, b);
-    };
+    }
 
 } // namespace detail
 
@@ -540,7 +540,8 @@ public:
         const auto chunk
           = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(thread_count)));
 
-        const auto num_thread_active = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / chunk));
+        const auto num_thread_active
+          = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(chunk)));
 
         const auto row_offset = detail::strip_dirty(tile_ptr.front());
 
@@ -578,7 +579,9 @@ public:
 
                 const auto offset_pointer = empty_rows ? tile_desc_offset_ptr[tile_id] : 0;
                 const auto compute_y_idx = [this, empty_rows, offset_pointer](auto&& offset) {
-                    return empty_rows ? _mm_i32gather_epi32(reinterpret_cast<const int*>(&tile_desc_offset[offset_pointer]), offset, 4) : offset;
+                    return empty_rows ? _mm_i32gather_epi32(
+                             reinterpret_cast<const int*>(&tile_desc_offset[offset_pointer]), offset, 4)
+                                      : offset;
                 };
 
                 auto vec = current_descriptor.vectorized();

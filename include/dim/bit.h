@@ -20,7 +20,7 @@ constexpr size_t bit_size = sizeof(Ty) * CHAR_BIT;
  */
 template<typename Integral>
 constexpr Integral set_bit(size_t which) {
-    return Integral{1} << bit_size<Integral> - 1 - which;
+    return Integral{1} << (bit_size<Integral> - 1 - which);
 }
 
 /**

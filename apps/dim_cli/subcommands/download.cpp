@@ -227,7 +227,7 @@ auto download_archive(const dim_cli::download_t& args) {
     spdlog::stopwatch sw;
     if (archive_read_open(archive.get(), &ctx, nullptr, cust_archive_read_callback, nullptr) != ARCHIVE_OK) {
         // EILSEQ is returned when archive format is not recognized, fallback to gzip for now.
-        if (auto err = archive_errno(archive.get()) != EILSEQ)
+        if (archive_errno(archive.get()) != EILSEQ)
             throw std::runtime_error{fmt::format("couldn't read archive: {}", archive_error_string(archive.get()))};
     }
 
@@ -351,7 +351,7 @@ auto zlib_output_callback(void* userdata, uint8_t* data, unsigned data_size) -> 
 
     ctx.written += data_size;
     return std::fwrite(data, 1, data_size, ctx.file.get()) == data_size ? 0 : 1;
-};
+}
 
 void download_gzip(const dim_cli::download_t& args) {
     constexpr auto window_bits = 15;
@@ -365,10 +365,20 @@ void download_gzip(const dim_cli::download_t& args) {
     const auto header = gzip_header::parse(*maybe_data);
     const auto filename = *args.destination_dir / (header.orig_filename ? *header.orig_filename : "unknown.mtx");
 
-    z_stream stream{
-      .next_in = reinterpret_cast<Bytef*>(header.data.data()),
-      .avail_in = static_cast<uInt>(header.data.size()),
-    };
+    z_stream stream{.next_in = reinterpret_cast<Bytef*>(header.data.data()),
+                    .avail_in = static_cast<uInt>(header.data.size()),
+                    .total_in = 0,
+                    .next_out = 0,
+                    .avail_out = 0,
+                    .total_out = 0,
+                    .msg = 0,
+                    .state = 0,
+                    .zalloc = 0,
+                    .zfree = 0,
+                    .opaque = 0,
+                    .data_type = 0,
+                    .adler = 0,
+                    .reserved = 0};
 
     std::byte window[2 << window_bits];
     if (auto err = ::inflateBackInit(&stream, window_bits, reinterpret_cast<uint8_t*>(std::data(window))); err != Z_OK)

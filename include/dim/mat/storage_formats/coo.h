@@ -21,12 +21,12 @@ struct coo
     StorageContainer<uint32_t> col_indices;
     bool symmetric{false};
 
-    coo(dimensions_t dimensions, size_t non_zero_count, bool symmetric = false)
-      : dimensions{dimensions},
-        values(non_zero_count),
-        row_indices(non_zero_count),
-        col_indices(non_zero_count),
-        symmetric{symmetric} {}
+    coo(dimensions_t dimensions_, size_t non_zero_count_, bool symmetric_ = false)
+      : dimensions{dimensions_},
+        values(non_zero_count_),
+        row_indices(non_zero_count_),
+        col_indices(non_zero_count_),
+        symmetric{symmetric_} {}
 
     template<typename /*std::invocable<ValueType, uint32_t, uint32_t>*/ Callable>
     void iterate(Callable&& callable) const noexcept {

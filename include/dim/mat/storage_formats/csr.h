@@ -23,17 +23,17 @@ struct csr
     indices_t row_start_offsets;
     indices_t col_indices;
 
-    csr(dimensions_t dimensions, size_t non_zero_count)
-      : dimensions{dimensions},
-        values(non_zero_count),
-        row_start_offsets(dimensions.rows + 1),
-        col_indices(non_zero_count) {}
+    csr(dimensions_t dimensions_, size_t non_zero_count_)
+      : dimensions{dimensions_},
+        values(non_zero_count_),
+        row_start_offsets(dimensions_.rows + 1),
+        col_indices(non_zero_count_) {}
 
-    csr(dimensions_t dimensions, values_t values, indices_t row_start_offsets, indices_t col_indices)
-      : dimensions{dimensions},
-        values{std::move(values)},
-        row_start_offsets{std::move(row_start_offsets)},
-        col_indices{std::move(col_indices)} {}
+    csr(dimensions_t dimensions_, values_t values_, indices_t row_start_offsets_, indices_t col_indices_)
+      : dimensions{dimensions_},
+        values{std::move(values_)},
+        row_start_offsets{std::move(row_start_offsets_)},
+        col_indices{std::move(col_indices_)} {}
 
     template<template<typename> typename StorageTy>
     static csr from_coo(const coo<ValueType, StorageTy>& coo) {
