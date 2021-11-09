@@ -1,34 +1,36 @@
 cmake_minimum_required(VERSION 3.15)
 
-# setup options from commandline.
-include(cmake/options.cmake)
-
 project(
   dim
   VERSION 1.0.0
   LANGUAGES C CXX)
 
-if(${enable_cuda_backend})
-  enable_language(CUDA)
-endif()
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+
+# setup options from commandline.
+include(options)
 
 # default project settings.
-include(cmake/default_settings.cmake)
+include(default_settings)
 
 # versioning functions.
-include(cmake/versioning.cmake)
+include(versioning)
 
 # helper functions.
-include(cmake/functions.cmake)
+include(functions)
 
 # conan integration.
-include(cmake/conan.cmake)
+include(conan)
 
 # code coverage
-include(cmake/coverage.cmake)
+include(coverage)
 
 # default installation directories for OSes.
 include(GNUInstallDirs)
+
+if(${enable_cuda_backend})
+  enable_language(CUDA)
+endif()
 
 add_subdirectory(libs)
 add_subdirectory(apps)
@@ -37,7 +39,8 @@ add_subdirectory(apps)
 add_subdirectory(third-party)
 
 include(CTest)
-add_subdirectory(tests)
-# add_subdirectory(benchmarks)
+conditional_add_subdirectory(tests ${BUILD_TESTING})
+
+add_subdirectory(benchmarks)
 
 include(CPack)

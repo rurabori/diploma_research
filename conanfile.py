@@ -17,11 +17,13 @@ class CSPConan(ConanFile):
     }
 
     options = {
-        "system_scientific_libs": [True, False]
+        "system_scientific_libs": [True, False],
+        "enable_petsc_benchmark": [True, False]
     }
 
     default_options = {
-        "system_scientific_libs": True
+        "system_scientific_libs": False,
+        "enable_petsc_benchmark": False
     }
 
     requires = ['doctest/2.4.6', 'fmt/8.0.1', 'tclap/1.2.4',
@@ -30,9 +32,13 @@ class CSPConan(ConanFile):
                 'libarchive/3.5.1', 'yaml-cpp/0.7.0']
 
     def requirements(self):
-        if not bool(self.options.system_scientific_libs):
-            self.requires('hdf5/1.12.0@rurabori/stable')
+        if bool(self.options.system_scientific_libs):
+            return
+
+        if self.options.enable_petsc_benchmark:
             self.requires('petsc/3.16.0@rurabori/stable')
+
+        self.requires('hdf5/1.12.0@rurabori/stable')
 
     def _configure_cmake(self):
         cmake = CMake(self)

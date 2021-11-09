@@ -19,6 +19,7 @@ if(${invoke_conan} AND NOT EXISTS "${__conan_config_files_dir}")
   endif()
 
   ternary(system_scientific_libs "True" "False")
+  ternary(enable_petsc_benchmark "True" "False")
 
   foreach(__conan_build_type ${__conan_configurations_to_build})
     # cmake-format: off
@@ -31,6 +32,7 @@ if(${invoke_conan} AND NOT EXISTS "${__conan_config_files_dir}")
       ENV CXX=${CMAKE_CXX_COMPILER}
       BUILD missing
       OPTIONS system_scientific_libs=${__conan_system_scientific_libs}
+              enable_petsc_benchmark=${__conan_enable_petsc_benchmark}
       UPDATE)
     # cmake-format: on
   endforeach()
