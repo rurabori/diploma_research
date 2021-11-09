@@ -81,6 +81,7 @@ struct download_ctx
     explicit download_ctx(const std::string& url) {
         ::curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
 
+        // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) - signature required by curl.
         constexpr auto data_callback = [](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
             auto data = std::as_writable_bytes(std::span{ptr, size * nmemb});
             auto& self = *reinterpret_cast<download_ctx*>(userdata);
@@ -97,6 +98,7 @@ struct download_ctx
 
         ::curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
 
+        // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) - signature required by curl.
         constexpr auto header_callback = [](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
             auto& self = *reinterpret_cast<download_ctx*>(userdata);
 
@@ -368,14 +370,14 @@ void download_gzip(const dim_cli::download_t& args) {
     z_stream stream{.next_in = reinterpret_cast<Bytef*>(header.data.data()),
                     .avail_in = static_cast<uInt>(header.data.size()),
                     .total_in = 0,
-                    .next_out = 0,
+                    .next_out = nullptr,
                     .avail_out = 0,
                     .total_out = 0,
-                    .msg = 0,
-                    .state = 0,
-                    .zalloc = 0,
-                    .zfree = 0,
-                    .opaque = 0,
+                    .msg = nullptr,
+                    .state = nullptr,
+                    .zalloc = nullptr,
+                    .zfree = nullptr,
+                    .opaque = nullptr,
                     .data_type = 0,
                     .adler = 0,
                     .reserved = 0};

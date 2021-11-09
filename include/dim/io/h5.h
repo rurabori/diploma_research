@@ -162,7 +162,12 @@ auto read_vector(group_view_t group, const std::string& dataset_name) -> std::ve
 
 auto is_hdf5(const std::filesystem::path& path) -> bool;
 
-auto load_csr5_partial(group_view_t group, size_t part, size_t num_parts) -> mat::csr5<double>;
+struct csr5_partial_identifier_t {
+    size_t idx;
+    size_t total_count;
+};
+
+auto load_csr5_partial(group_view_t group, csr5_partial_identifier_t part) -> mat::csr5<double>;
 
 } // namespace dim::io::h5
 

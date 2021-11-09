@@ -401,7 +401,7 @@ private:
 
             // +1 because it needs to be inclusive.
             if (detail::is_dirty(row_idx.subspan(start, stop - start + 1)))
-                tile_ptr[partition_id] = detail::mark_dirty(start);
+                tile_ptr[partition_id] = static_cast<UnsignedType>(detail::mark_dirty(start));
         });
     }
 

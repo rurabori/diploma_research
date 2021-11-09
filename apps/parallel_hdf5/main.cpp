@@ -56,7 +56,9 @@ struct mpi_h5_reader_t
     explicit mpi_h5_reader_t(int size_, int rank_) : size{size_}, rank{rank_} {}
 
     auto read_csr5(h5::group_view_t matrix_group) {
-        return h5::load_csr5_partial(matrix_group, static_cast<size_t>(rank), static_cast<size_t>(size));
+        using dim::io::h5::csr5_partial_identifier_t;
+        return h5::load_csr5_partial(matrix_group, csr5_partial_identifier_t{.idx = static_cast<size_t>(rank),
+                                                                             .total_count = static_cast<size_t>(size)});
     }
 };
 

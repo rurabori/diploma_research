@@ -108,25 +108,25 @@ struct type_translator_t<csr5_t::tile_descriptor_type>
     static auto on_disk() noexcept -> type_t { return h5::type_t::create_array(underlying_translator_t::on_disk(), 4); }
 };
 
-auto calculate_tile_chunk(dataspace_view_t dataspace, size_t part, size_t num_parts) {
+auto calculate_tile_chunk(dataspace_view_t dataspace, csr5_partial_identifier_t part) {
     const auto total_tile_count = dataspace.get_dim();
 
     const auto part_size
-      = static_cast<hsize_t>(std::ceil(static_cast<double>(total_tile_count) / static_cast<double>(num_parts)));
+      = static_cast<hsize_t>(std::ceil(static_cast<double>(total_tile_count) / static_cast<double>(part.total_count)));
 
-    const auto first_tile = part_size * part;
+    const auto first_tile = part_size * part.idx;
     const auto tile_count = std::min(part_size, total_tile_count - first_tile);
 
     return std::pair{first_tile, tile_count};
 }
 
-auto load_csr5_partial(group_view_t group, size_t part, size_t num_parts) -> mat::csr5<double> {
+auto load_csr5_partial(group_view_t group, csr5_partial_identifier_t part) -> mat::csr5<double> {
     constexpr auto tile_size = csr5_t::tile_size();
 
-    const auto is_last_part = part == num_parts - 1;
+    const auto is_last_part = part.idx == part.total_count - 1;
 
     const auto tiles_dataset = group.open_dataset("tile_desc");
-    const auto [first_tile, tile_count] = calculate_tile_chunk(tiles_dataset.get_dataspace(), part, num_parts);
+    const auto [first_tile, tile_count] = calculate_tile_chunk(tiles_dataset.get_dataspace(), part);
 
     auto&& tile_desc = tiles_dataset.read_slab<decltype(csr5_t::tile_desc)>(first_tile, tile_count);
 
