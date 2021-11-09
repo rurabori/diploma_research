@@ -1,3 +1,4 @@
+#include "dim/bit.h"
 #include "dim/mat/storage_formats/csr5.h"
 #include <doctest/doctest.h>
 
@@ -63,7 +64,7 @@ auto vec_equal(__m128i vec, __m128i vec2) noexcept -> bool {
 }
 
 auto vec_equal(__m256i vec, __m256i vec2) noexcept -> bool {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi32(vec, vec2)) == (int)0xffffffff;
+    return _mm256_movemask_epi8(_mm256_cmpeq_epi32(vec, vec2)) == dim::all_bits_set<int>;
 }
 
 TEST_CASE("Test tile descriptor vectorization") {

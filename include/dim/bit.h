@@ -4,6 +4,7 @@
 #include <climits>
 #include <concepts>
 #include <cstdint>
+#include <cstddef>
 #include <type_traits>
 
 namespace dim {
