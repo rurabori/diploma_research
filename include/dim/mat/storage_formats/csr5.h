@@ -449,7 +449,7 @@ public:
 
         // these need to be aligned to 32 as the intrinsics require it.
         const spmv_data_t& data;
-        int tid;
+        size_t tid;
         UnsignedType start_row_start;
 
         // these need to be aligned to 32 as the intrinsics require it.
@@ -468,7 +468,7 @@ public:
             if (!cond[idx])
                 return 0;
 
-            y[y_idx[idx]] = sum[idx];
+            y[static_cast<size_t>(y_idx[idx])] = sum[idx];
             return 1;
         }
 
@@ -547,7 +547,7 @@ public:
 
 #pragma omp parallel
         {
-            const auto tid = omp_get_thread_num();
+            const auto tid = static_cast<size_t>(::omp_get_thread_num());
 
             spmv_thread_data thread_data{
               .data = spmv_data,
@@ -684,7 +684,8 @@ public:
         const auto thread_count = static_cast<size_t>(::omp_get_max_threads());
         const auto chunk
           = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(thread_count)));
-        const auto num_thread_active = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / chunk));
+        const auto num_thread_active
+          = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(chunk)));
 
         auto num_cali = num_thread_active < thread_count ? num_thread_active : thread_count;
 

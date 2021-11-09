@@ -21,7 +21,6 @@
 #include <stdexcept>
 
 namespace h5 = dim::io::h5;
-namespace mat = dim::mat;
 
 template<const auto& Fun, typename Ty>
 auto mpi_query_com(MPI_Comm comm) {
@@ -53,9 +52,10 @@ struct mpi_h5_reader_t
     explicit mpi_h5_reader_t(MPI_Comm comm = MPI_COMM_WORLD)
       : size{mpi_query_com<::MPI_Comm_size, int>(comm)}, rank{mpi_query_com<::MPI_Comm_rank, int>(comm)} {}
 
+    // NOLINTNEXTLINE
     explicit mpi_h5_reader_t(int size_, int rank_) : size{size_}, rank{rank_} {}
 
-    auto read_csr5(h5::group_view_t matrix_group) {
+    [[nodiscard]] auto read_csr5(h5::group_view_t matrix_group) const {
         using dim::io::h5::csr5_partial_identifier_t;
         return h5::load_csr5_partial(matrix_group, csr5_partial_identifier_t{.idx = static_cast<size_t>(rank),
                                                                              .total_count = static_cast<size_t>(size)});

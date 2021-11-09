@@ -74,8 +74,10 @@ TEST_CASE("Test tile descriptor vectorization") {
                   tile_col_desc_t{.y_offset = 13, .scansum_offset = 0, .bit_flag = 0b1010'1010'1010'1010}}};
 
     const auto desc_equal = [&descriptor](const auto& vec, auto&& accessor) {
-        return vec_equal(vec, _mm_set_epi32(accessor(descriptor.columns[3]), accessor(descriptor.columns[2]),
-                                            accessor(descriptor.columns[1]), accessor(descriptor.columns[0])));
+        return vec_equal(vec, _mm_set_epi32(static_cast<int>(accessor(descriptor.columns[3])),
+                                            static_cast<int>(accessor(descriptor.columns[2])),
+                                            static_cast<int>(accessor(descriptor.columns[1])),
+                                            static_cast<int>(accessor(descriptor.columns[0]))));
     };
 
     const auto vec = descriptor.vectorized();
