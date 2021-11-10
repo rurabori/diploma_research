@@ -62,7 +62,7 @@ auto compare_results(const dim_cli::compare_results_t& args) -> int {
 }
 
 int main(int argc, char* argv[]) try {
-    auto app = structopt::app(dim_cli_FULL_NAME, dim_cli_VER);
+    auto app = structopt::app(brr::app_info.full_name, brr::app_info.version);
     auto arguments = app.parse<dim_cli>(argc, argv);
     spdlog::set_level(*arguments.log_level);
 

@@ -1,10 +1,6 @@
 #ifndef APPS_CSR5_BENCH_SPMV_ALGOS
 #define APPS_CSR5_BENCH_SPMV_ALGOS
 
-#ifdef CUDA_ENABLED
-#include "cuda_algo_facade.h"
-#endif
-
 #include "timed_section.h"
 #include <anonymouslib_avx2.h>
 #include <dim/mat/storage_formats.h>

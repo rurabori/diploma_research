@@ -1,10 +1,26 @@
 #ifndef VERSION_H
 #define VERSION_H
+
 // clang-format off
-#define @prefix@_VER "@PROJECT_VERSION@"
-#define @prefix@_VER_MAJOR "@PROJECT_VERSION_MAJOR@"
-#define @prefix@_VER_MINOR "@PROJECT_VERSION_MINOR@"
-#define @prefix@_VER_PATCH "@PROJECT_VERSION_PATCH@"
-constexpr char  @prefix@_FULL_NAME[] = "@prefix@ v@PROJECT_VERSION@";
+
+namespace brr {
+
+struct app_info_t {
+    int major;
+    int minor;
+    int patch;
+    const char* name;
+    const char* version;
+    const char* full_name;
+};
+
+constexpr auto app_info = app_info_t{.major = @PROJECT_VERSION_MAJOR@,
+                                     .minor = @PROJECT_VERSION_MINOR@, 
+                                     .patch =@PROJECT_VERSION_PATCH@,
+                                     .name = "@prefix@",
+                                     .version = "@PROJECT_VERSION@",
+                                     .full_name = "@prefix@ v@PROJECT_VERSION@"
+                                     };
+} // namespace brr 
 // clang-format on
 #endif // VERSION_H

@@ -1,4 +1,3 @@
-#include <H5Tpublic.h>
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -15,26 +14,22 @@
 
 #include <anonymouslib_avx2.h>
 
-#include <tclap/Arg.h>
-#include <tclap/CmdLine.h>
-#include <tclap/SwitchArg.h>
-#include <tclap/ValueArg.h>
-
 #include <magic_enum.hpp>
 
 #include <scn/scn.h>
 #include <stx/panic.h>
 
-#include "dim/io/h5.h"
-#include "dim/io/h5/file.h"
-#include "dim/mat/storage_formats/csr.h"
-#include "dim/mat/storage_formats/csr5.h"
+#include "arguments.h"
+
+#include <dim/io/h5.h>
+#include <dim/io/matrix_market.h>
+#include <dim/mat/storage_formats/csr.h>
+#include <dim/mat/storage_formats/csr5.h>
+
 #include "spmv_algos.hpp"
 #include "timed_section.h"
 
 #include "version.h"
-
-#include <dim/io/matrix_market.h>
 
 using dim::mat::cache_aligned_vector;
 
@@ -48,53 +43,13 @@ auto generate_random_vector(size_t required_size) {
     return x;
 }
 
-struct arguments
-{
-    enum class algorithm_t
-    {
-        cpu_sequential,
-        cpu_avx2,
-#ifdef CUDA_ENABLED
-        cuda,
-#endif
-    };
+int main(int argc, char* argv[]) {
+    auto app = structopt::app(brr::app_info.full_name, brr::app_info.version);
+    auto arguments = app.parse<arguments_t>(argc, argv);
 
-    std::filesystem::path matrix_file{};
-    bool debug{};
-    algorithm_t algorithm;
-
-    static algorithm_t get_algoritm(std::string_view string_representation) {
-        if (auto algo = magic_enum::enum_cast<algorithm_t>(string_representation); algo)
-            return *algo;
-
-        return algorithm_t::cpu_sequential;
-    }
-
-    static arguments from_main(int argc, const char* argv[]) {
-        TCLAP::CmdLine commandline{"Conjugate Gradient.", ' ', csr5_bench_VER};
-
-        TCLAP::ValueArg<std::string> matrix_name_arg{"m", "matrix-path", "Path to matrix", true, "", "string"};
-        commandline.add(matrix_name_arg);
-
-        TCLAP::SwitchArg debug_arg{"d", "debug", "Enable debug output", false};
-        commandline.add(debug_arg);
-
-        TCLAP::ValueArg<std::string> algorithm_arg{"a",   "algorithm",      "Algorithm to use for SpMV",
-                                                   false, "cpu_sequential", "one of [cpu_sequential, cpu_avx2, cuda]"};
-        commandline.add(algorithm_arg);
-
-        commandline.parse(argc, argv);
-        return arguments{.matrix_file = matrix_name_arg.getValue(),
-                         .debug = debug_arg.getValue(),
-                         .algorithm = get_algoritm(algorithm_arg.getValue())};
-    }
-};
-
-int main(int argc, const char* argv[]) {
-    auto arguments = arguments::from_main(argc, argv);
     namespace h5 = dim::io::h5;
 
-    auto in = h5::file_t::open(arguments.matrix_file, H5F_ACC_RDONLY);
+    auto in = h5::file_t::open(arguments.input_file, H5F_ACC_RDONLY);
     auto group = in.open_group("A");
     auto matrix = dim::io::h5::read_matlab_compatible(group.get_id());
 
@@ -110,30 +65,24 @@ int main(int argc, const char* argv[]) {
     auto x = std::vector<double>(dimensions.cols, 1.);
 
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
-    switch (arguments.algorithm) {
-        case arguments::algorithm_t::cpu_sequential: {
+    switch (*arguments.algorithm) {
+        case arguments_t::algorithm_t::cpu_sequential: {
             report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_sequential(matrix, dim::span{x}, dim::span{Y}); });
             break;
         }
-        case arguments::algorithm_t::cpu_avx2: {
+        case arguments_t::algorithm_t::cpu_avx2: {
             const auto csr5 = dim::mat::csr5<double>::from_csr(matrix);
 
             report_timed_section("SpMV", [&] { csr5.spmv(dim::span{x}, dim::span{Y}); });
             break;
         }
-#ifdef CUDA_ENABLED
-        case arguments::algorithm_t::cuda: {
-            cg::spmv_algos::cuda_complete_bench(matrix, dim::span{x}, dim::span{Y});
-            break;
-        }
-#endif
     }
 
     auto file = h5::file_t::create("o.h5", H5F_ACC_TRUNC);
     auto dataset = file.create_dataset("Y", H5T_IEEE_F64LE, h5::dataspace_t::create(hsize_t{Y.size()}));
     dataset.write(Y.data(), H5T_NATIVE_DOUBLE);
 
-    if (arguments.debug) {
+    if (*arguments.debug) {
         constexpr auto comparator = [](auto l, auto r) {
             return std::abs(l - r) <= std::max(std::abs(r) * std::numeric_limits<double>::epsilon() * 1E12,
                                                std::numeric_limits<double>::epsilon() * 1E12);
