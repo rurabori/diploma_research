@@ -1,109 +1,65 @@
-#include <algorithm>
-#include <chrono>
-#include <cstddef>
-#include <cstdio>
-#include <exception>
-#include <filesystem>
-#include <iterator>
-#include <random>
+#include <H5Fpublic.h>
+#include <H5Tpublic.h>
+#include <dim/io/format.h>
+#include <dim/io/h5.h>
+
+#include <spdlog/spdlog.h>
+#include <spdlog/stopwatch.h>
 #include <stdexcept>
-#include <vector>
-
-#include <fmt/chrono.h>
-#include <fmt/format.h>
-
-#include <anonymouslib_avx2.h>
-
-#include <magic_enum.hpp>
-
-#include <scn/scn.h>
-#include <stx/panic.h>
 
 #include "arguments.h"
-
-#include <dim/io/h5.h>
-#include <dim/io/matrix_market.h>
-#include <dim/mat/storage_formats/csr.h>
-#include <dim/mat/storage_formats/csr5.h>
-
-#include "spmv_algos.hpp"
-#include "timed_section.h"
-
+#include "dim/io/h5/file.h"
 #include "version.h"
 
+namespace h5 = dim::io::h5;
 using dim::mat::cache_aligned_vector;
+using h5::load_csr5;
 
-auto generate_random_vector(size_t required_size) {
-    cache_aligned_vector<double> x(required_size, 0.);
+namespace {
+auto ensure_dataset_ready(h5::file_view_t file, const std::string& name, bool overwrite) {
+    if (!file.contains(name))
+        return;
 
-    std::mt19937_64 prng{std::random_device{}()};
-    std::uniform_real_distribution<double> dist{0., 1.};
-    std::generate(x.begin(), x.end(), [&] { return dist(prng); });
+    if (overwrite)
+        file.remove(name);
 
-    return x;
+    throw std::runtime_error{fmt::format(
+      "outfile already contains group {}, add overwrite flag to commandline if you really want to overwrite it", name)};
 }
 
-int main(int argc, char* argv[]) {
+auto output_result(const arguments_t arguments, std::span<double> result) {
+    auto outfile = h5::file_t::open(*arguments.output_file, H5F_ACC_CREAT | H5F_ACC_RDWR);
+
+    ensure_dataset_ready(outfile, *arguments.vector_dataset, *arguments.overwrite);
+    auto dataset
+      = outfile.create_dataset(*arguments.vector_dataset, H5T_IEEE_F64LE, h5::dataspace_t::create(result.size()));
+
+    dataset.write(result);
+}
+
+} // namespace
+
+int main(int argc, char* argv[]) try {
     auto app = structopt::app(brr::app_info.full_name, brr::app_info.version);
     auto arguments = app.parse<arguments_t>(argc, argv);
 
-    namespace h5 = dim::io::h5;
-
-    auto in = h5::file_t::open(arguments.input_file, H5F_ACC_RDONLY);
-    auto group = in.open_group("A");
-    auto matrix = dim::io::h5::read_matlab_compatible(group.get_id());
-
-    auto consumed_memory
-      = matrix.col_indices.size() * sizeof(typename decltype(matrix.col_indices)::value_type)
-        + matrix.row_start_offsets.size() * sizeof(typename decltype(matrix.row_start_offsets)::value_type)
-        + matrix.values.size() * sizeof(typename decltype(matrix.values)::value_type);
-
-    fmt::print("consumed_memory={}\n", consumed_memory);
+    auto matrix = load_csr5(arguments.input_file, *arguments.matrix_group);
 
     auto dimensions = matrix.dimensions;
 
-    auto x = std::vector<double>(dimensions.cols, 1.);
-
+    auto x = cache_aligned_vector<double>(dimensions.cols, 1.);
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
-    switch (*arguments.algorithm) {
-        case arguments_t::algorithm_t::cpu_sequential: {
-            report_timed_section("SpMV", [&] { cg::spmv_algos::cpu_sequential(matrix, dim::span{x}, dim::span{Y}); });
-            break;
-        }
-        case arguments_t::algorithm_t::cpu_avx2: {
-            const auto csr5 = dim::mat::csr5<double>::from_csr(matrix);
 
-            report_timed_section("SpMV", [&] { csr5.spmv(dim::span{x}, dim::span{Y}); });
-            break;
-        }
-    }
+    spdlog::stopwatch sw;
+    matrix.spmv(dim::span{x}, dim::span{Y});
+    spdlog::info("CSR5 SpMV took {}s", sw);
 
-    auto file = h5::file_t::create("o.h5", H5F_ACC_TRUNC);
-    auto dataset = file.create_dataset("Y", H5T_IEEE_F64LE, h5::dataspace_t::create(hsize_t{Y.size()}));
-    dataset.write(Y.data(), H5T_NATIVE_DOUBLE);
+    if (arguments.output_file)
+        output_result(arguments, Y);
 
-    if (*arguments.debug) {
-        constexpr auto comparator = [](auto l, auto r) {
-            return std::abs(l - r) <= std::max(std::abs(r) * std::numeric_limits<double>::epsilon() * 1E12,
-                                               std::numeric_limits<double>::epsilon() * 1E12);
-        };
-
-        auto Y_ref = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
-        cg::spmv_algos::cpu_sequential(matrix, dim::span{x}, dim::span{Y_ref});
-
-        // const auto correct = std::equal(Y.begin(), Y.end(), Y_ref.begin(),
-        //                                 [](auto l, auto r) { return std::abs(l - r) <= (0.01 * std::abs(r));
-        //                                 });
-        // fmt::print(stderr, "SpMV correct: {}\n", correct);
-
-        for (size_t i = 0; i < Y_ref.size(); ++i) {
-            const auto l = Y_ref[i];
-            const auto r = Y[i];
-
-            if (!comparator(l, r))
-                fmt::print("idx: {} got: {}, expected {}\n", i, r, l);
-        }
-    }
 
     return 0;
+} catch (const std::exception& e) {
+    spdlog::critical("{}", e.what());
+    return 1;
 }

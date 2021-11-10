@@ -8,6 +8,8 @@
 
 #include <H5Dpublic.h>
 
+#include <concepts>
+
 namespace dim::io::h5 {
 
 struct dataset_view_t : public view_t
@@ -15,6 +17,12 @@ struct dataset_view_t : public view_t
     auto write(const void* data, type_view_t type, dataspace_view_t mem_space = dataspace_view_t::all(),
                dataspace_view_t file_space = dataspace_view_t::all(), plist_view_t props = plist_t::defaulted())
       -> void;
+
+    auto write(std::ranges::contiguous_range auto&& data, dataspace_view_t file_space = dataspace_view_t::all(),
+               plist_view_t props = plist_t::defaulted()) -> void {
+        using translator_t = type_translator_t<std::ranges::range_value_t<decltype(data)>>;
+        write(std::data(data), translator_t::in_memory(), dataspace_t::create(std::size(data)), file_space, props);
+    }
 
     auto read(void* data, type_view_t type, dataspace_view_t mem_space = dataspace_view_t::all(),
               dataspace_view_t file_space = dataspace_view_t::all(), plist_view_t props = plist_t::defaulted()) const

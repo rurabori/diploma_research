@@ -156,13 +156,17 @@ struct csr5_storage_props_t
 
 // TODO: better naming
 auto store(group_view_t group, const mat::csr5<double>& csr5, const csr5_storage_props_t& props = {}) -> void;
+
 auto load_csr5(group_view_t group) -> mat::csr5<double>;
+
+auto load_csr5(const std::filesystem::path& path, const std::string& group_name) -> mat::csr5<double>;
 
 auto read_vector(group_view_t group, const std::string& dataset_name) -> std::vector<double>;
 
 auto is_hdf5(const std::filesystem::path& path) -> bool;
 
-struct csr5_partial_identifier_t {
+struct csr5_partial_identifier_t
+{
     size_t idx;
     size_t total_count;
 };

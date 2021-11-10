@@ -29,4 +29,10 @@ auto location_view_t::open_dataset(const std::string& name, plist_view_t data_ac
     return dataset_t{handle_create<::H5Dopen>(get_id(), name.c_str(), data_access.get_id())};
 }
 
+auto location_view_t::contains(const std::string& name, plist_view_t access) const -> bool {
+    return ::H5Lexists(get_id(), name.c_str(), access.get_id());
+}
+auto location_view_t::remove(const std::string& name, plist_view_t access) -> void {
+    h5_try ::H5Ldelete(get_id(), name.c_str(), access.get_id());
+}
 } // namespace dim::io::h5

@@ -1,6 +1,7 @@
 #ifndef INCLUDE_DIM_IO_H5_LOCATION
 #define INCLUDE_DIM_IO_H5_LOCATION
 
+#include <H5Lpublic.h>
 #include <dim/io/h5/dataspace.h>
 #include <dim/io/h5/fwd.h>
 #include <dim/io/h5/plist.h>
@@ -29,6 +30,10 @@ struct location_view_t : public view_t
 
     [[nodiscard]] auto open_dataset(const std::string& name, plist_view_t data_access = plist_t::defaulted()) const
       -> dataset_t;
+
+    [[nodiscard]] auto contains(const std::string& name, plist_view_t access = plist_t::defaulted()) const -> bool;
+
+    auto remove(const std::string& name, plist_view_t access = plist_t::defaulted()) -> void;
 };
 
 } // namespace dim::io::h5

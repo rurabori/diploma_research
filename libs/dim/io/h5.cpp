@@ -171,4 +171,8 @@ auto load_csr5_partial(group_view_t group, csr5_partial_identifier_t part) -> ma
                   .val_offset = val_start,
                   .skip_tail = !is_last_part};
 }
+auto load_csr5(const std::filesystem::path& path, const std::string& group_name) -> mat::csr5<double> {
+    const auto in = h5::file_t::open(path, H5F_ACC_RDONLY);
+    return dim::io::h5::load_csr5(in.open_group(group_name));
+}
 } // namespace dim::io::h5

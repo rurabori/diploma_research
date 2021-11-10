@@ -6,7 +6,6 @@
 
 #include <filesystem>
 
-
 struct arguments_t
 {
     enum class algorithm_t
@@ -18,10 +17,13 @@ struct arguments_t
     using path = std::filesystem::path;
 
     path input_file;
-    std::optional<bool> debug{false};
-    std::optional<algorithm_t> algorithm{algorithm_t::cpu_avx2};
+
+    std::optional<std::string> matrix_group{"A"};
+    std::optional<path> output_file{"o.h5"};
+    std::optional<std::string> vector_dataset{"Y"};
+    std::optional<bool> overwrite{false};
 };
 
-STRUCTOPT(arguments_t, input_file, debug, algorithm);
+STRUCTOPT(arguments_t, input_file, output_file, vector_dataset, overwrite);
 
 #endif /* BENCHMARKS_CSR5_SINGLE_NODE_ARGUMENTS */
