@@ -74,7 +74,8 @@ namespace detail {
 
         auto space = dataset.get_dataspace();
 
-        StorageTy retval(space.get_dim());
+        StorageTy retval;
+        retval.resize(space.get_dim());
         dataset.read(std::data(retval), memory_type);
 
         return retval;

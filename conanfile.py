@@ -29,7 +29,7 @@ class CSPConan(ConanFile):
     requires = ['doctest/2.4.6', 'fmt/8.0.1', 'tclap/1.2.4',
                 'magic_enum/0.7.3', 'stx/1.0.1', 'scnlib/0.4',
                 'spdlog/1.9.2', 'structopt/0.1.2', 'libcurl/7.78.0',
-                'libarchive/3.5.1', 'yaml-cpp/0.7.0']
+                'libarchive/3.5.1', 'yaml-cpp/0.7.0', 'benchmark/1.6.0']
 
     def requirements(self):
         if bool(self.options.system_scientific_libs):
