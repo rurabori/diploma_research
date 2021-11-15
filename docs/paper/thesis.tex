@@ -306,9 +306,9 @@ information to optimize properly. This means only 4B additional data per column 
 
 With \csre{empty_offset} being dependent on number of sections in a tile (and being completely absent
 in tiles which don't contain empty rows), it would be inefficient to
-store it in the descriptor itself. To avoid too many allocations, two supporting arrays are added. 
-An \csre{empty_offset_ptr} of size $num\_tiles + 1$, which contains offsets for each tile into the 
-second array, \csre{empty_offset} at which their \csre{empty_offset} array begins. 
+store it in the descriptor itself. To avoid too many allocations, two supporting arrays are added.
+An \csre{empty_offset_ptr} of size $num\_tiles + 1$, which contains offsets for each tile into the
+second array, \csre{empty_offset} at which their \csre{empty_offset} array begins.
 Thus for each tile, it's empty offset is defined as \csre{empty_offset[empty_offset_ptr[i]:empty_offset_ptr[i+1]]}.
 
 % TODO: maybe show the code.
@@ -319,43 +319,150 @@ Each of the sequential data members \csre{row_ptr}, \csre{col_idx}, \csre{vals},
 \csre{empty_offset}, \csre{empty_offset_ptr}, are stored as one dimensional datasets of same name
 and same datatype. \csre{num_cols} is stored as an attribute.
 
-\csre{tile_desc} is stored as an one dimensional dataset, with datatype being 
-an array of 4 little endian unsigned 32-bit integers. In essence storing the data to HDF5 file as 
-they appear in memory. This does put a soft requirement on the CLI used to transform a CSR matrix to 
-CSR5 matrix and the code executing the SpMV being compiled by the same version of a compiler, as 
-bit field in-memory layout is implementation defined, but allows faster loading. Furthermore both 
-Clang and GCC implement this in the same way so the requirement is only a soft one, as compatibility can 
+\csre{tile_desc} is stored as an one dimensional dataset, with datatype being
+an array of 4 little endian unsigned 32-bit integers. In essence storing the data to HDF5 file as
+they appear in memory. This does put a soft requirement on the CLI used to transform a CSR matrix to
+CSR5 matrix and the code executing the SpMV being compiled by the same version of a compiler, as
+bit field in-memory layout is implementation defined, but allows faster loading. Furthermore both
+Clang and GCC implement this in the same way so the requirement is only a soft one, as compatibility can
 be easily tested.
 
+
+\section{Selecting on disk storage format}
+
+% TODO: format better.
+
+Matrix used for benchmarking: e40r500.mtx: 17281x17281 with 553956 non-zero elements 17.6MB on disk size (MM format). \\
+
+Compiler: Clang 13.0.1 Ryzen 7 3700X\@3.7GHz, nvme SSD. \\
+
+\subsection{Matrix Market Exchange Format}
+
+Native exchange format of Matrix Market. Has two flavours, Array Format for dense matrices,
+Coordinate format for sparse matrices.
+
+% TODO: citations
+
+\subsubsection{General Format Specification}
+
+All Matrix Market echange format files contain three sections, which must appear in order:
+
+\begin{enumerate}
+    \item \textbf{Header} First line of a file, must follow the template:
+          \begin{lstlisting}
+    %%MatrixMarket object format [qualifier...]
+\end{lstlisting}
+          Where object type indicates the mathematical object (e.g. vector, matrix) which is
+          stored in the file. Type indicates the format (array or coordinate) used to store
+          the object. Qualifiers are used to further indicate special properties of the stored
+          object (e.g. symmetry, field) thus their number as well as allowed values depend on
+          the stored object.
+    \item \textbf{Comments} Zero or more line of comments\footnote{Comments are lines starting with \%.}.
+    \item \textbf{Data} Remainder of the file contains data representing the object.
+          The format of data is dependent on the stored object but for simplicity,
+          each data entry should occupy a single line.
+\end{enumerate}
+
+\subsubsection{Coordinate Format for Sparse Matrices}
+
+Header format for sparse matrices:
+\begin{lstlisting}
+%%MatrixMarket matirx coordinate <field> <symmetry>
+\end{lstlisting}
+
+% TODO: citation
+Where\footnote{For further explanation see the specification.}:
+\begin{itemize}
+    \item \textbf{field} determines the type and number of values listed for each entry
+          and is one of: Real, Complex, Integer or Pattern.
+    \item \textbf{symmetry} determines how to interpret matrix entries
+          and is one of: General, Symmetric, Skew-Symmetric or Hermitian.
+\end{itemize}
+
+While data specification is:
+\begin{lstlisting}
+    M N L
+    I J A(I, J)
+    I J A(I, J)
+    ...
+\end{lstlisting}
+
+First line of data contains exactly three integers:
+\begin{itemize}
+    \item \csre{M} - number of rows.
+    \item \csre{N} - number of columns.
+    \item \csre{L} - number of non-zero entries that follows.
+\end{itemize}
+
+The following \csre{L} lines each contain \csre{I} - the row index, \csre{J} - the column index
+and the corresponding value. Indices are 1 based. Entries not explicitly provided are considered
+to be zero, except for those known by symmetry.
+
+\subsubsection{Performance}
+
+
+Matrix used for benchmarking: e40r500.mtx: 17281x17281 with 553956 non-zero elements 17.6MB on disk size (MM format). \\
+Compiler: Clang 13.0.1 Ryzen 7 3700X\@3.7GHz, nvme SSD. \
+
+Matrix market exchange format is designed to be easy to parse. It provides a library to parse 
+the header and matrix dimensions. % TODO: cite mmio
+The entries themselves however, need to be parsed manually. Most implementations use \mintinline{C++}{scanf}.
+Initial loading IO implementation in dim used scanf as well. This however proved to be a bottleneck.
+Loading the benchmarked matrix took 215.818ms. After profiling, it beacame obvious that parsing 
+the string representation was the issue as 97.89\% of time spent was in scanf itself.
+
+To improve the loading times (1.1GB matrix took around a minute to load), in an effort to 
+simplify (and speed up) the process of benchmarking, an implementation using 
+\mintinline{C++}{scnlib} \footnote{\mintinline{C++}{scnlib} is a modern C++ alternative to scanf.}
+was deployed. While it provided around 1.2x speed up (matrix loading taking 176.424ms), it was still
+far too slow. 
+
+\section{hdf5}
+
+
+
+
+
+
+
+scnlib + mapped: 176.424ms, 97.17\% of time spent in scn::scan (basically scanf).
+pagefaults are basically the same, IO doesn't have big impact, parsing does.
+Scales horribly to actually big matrices, hard to paralelize.
+
+HDF5: 2.854ms, ~100x speedup. 48\% of time spent in the dataset reading function. 16\% of time spent in \mintinline{C++}{vector::resize}.
+Would benefit from non-initializing resize, current implementation has to 0 initialize the vectors, but those are dead writes because
+the data is immediately loaded into memory.
+
+
+HDF5 supports loading only a part of dataset as a hyperslab, making it possible to load only the data
+required by a tile to be loaded.
 
 \section{Loading the matrices}
 
 
-HDF5 supports loading only a part of dataset as a hyperslab, making it possible to load only the data
-required by a tile to be loaded. 
 
 
 \begin{algorithm}
-\caption{Loading part of CSR5 matrix}
-\begin{algorithmic}
-    \Function{slab}{$name$, $start$, $count$}
+    \caption{Loading part of CSR5 matrix}
+    \begin{algorithmic}
+        \Function{slab}{$name$, $start$, $count$}
 
         \Return $datasets[name][start:start + count]$
-    \EndFunction
+        \EndFunction
 
-\Function{load\_partial}{$first\_tile\_id$, $tile\_count$}
-    \State $block\_size \gets \sigma*\omega$
-    \State $absolute\_start \gets first\_tile\_id * block\_size$
-    \State $element\_count \gets tile\_count * block\_size$
-    
-    \State $vals \gets slab("vals", absolute\_start, element\_count)$
-    \State $col\_idx \gets slab("col\_idx", absolute\_start, element\_count)$
-    \State $tile\_desc \gets slab("tile\_desc", first\_tile\_id, tile\_count)$
-    \State $tile\_ptr \gets slab("tile\_ptr", first\_tile\_id, tile\_count + 1)$
-    \State $empty\_offset\_ptr \gets slab("empty\_offset\_ptr", first\_tile\_id, tile\_count + 1)$
-    \State $empty\_offset \gets slab("empty\_offset", empty\_offset\_ptr[0], empty\_offset\_ptr[-1])$
-\EndFunction
-\end{algorithmic}
+        \Function{load\_partial}{$first\_tile\_id$, $tile\_count$}
+        \State $block\_size \gets \sigma*\omega$
+        \State $absolute\_start \gets first\_tile\_id * block\_size$
+        \State $element\_count \gets tile\_count * block\_size$
+
+        \State $vals \gets slab("vals", absolute\_start, element\_count)$
+        \State $col\_idx \gets slab("col\_idx", absolute\_start, element\_count)$
+        \State $tile\_desc \gets slab("tile\_desc", first\_tile\_id, tile\_count)$
+        \State $tile\_ptr \gets slab("tile\_ptr", first\_tile\_id, tile\_count + 1)$
+        \State $empty\_offset\_ptr \gets slab("empty\_offset\_ptr", first\_tile\_id, tile\_count + 1)$
+        \State $empty\_offset \gets slab("empty\_offset", empty\_offset\_ptr[0], empty\_offset\_ptr[-1])$
+        \EndFunction
+    \end{algorithmic}
 \end{algorithm}
 
 
