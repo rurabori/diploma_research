@@ -22,7 +22,7 @@ jobs:
       - name: Upload to artifactory
         uses: ./.github/actions/artifactory_upload
         with:
-          input_file_path: build/latex/*.pdf
+          input_file_path: docs/paper/*.pdf
           storage_path: dim/thesis/latest.pdf
           username:  ${{ secrets.ARTIFACTORY_USERNAME }}
           password: ${{ secrets.ARTIFACTORY_GENERIC_TOKEN }}
