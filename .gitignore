@@ -7,7 +7,8 @@ tmp
 .venv
 
 # minted doesn't work with a different output directory.
-docs/paper
-!docs/paper/thesis.tex
-!docs/paper/ref.bib
-!docs/paper/.latexmkrc
+/docs/paper/*
+!/docs/paper/static
+!/docs/paper/thesis.tex
+!/docs/paper/ref.bib
+!/docs/paper/.latexmkrc
