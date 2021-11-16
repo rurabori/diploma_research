@@ -6,6 +6,7 @@ find_package(CURL REQUIRED)
 find_package(LibArchive REQUIRED CONFIG)
 find_package(scn REQUIRED CONFIG)
 find_package(yaml-cpp REQUIRED CONFIG)
+find_package(Threads REQUIRED)
 
 brr_add_executable(dim_cli)
 
@@ -19,6 +20,7 @@ target_link_libraries(
           CURL::CURL
           LibArchive::LibArchive
           scn::scn
+          Threads::Threads
           yaml-cpp::yaml-cpp)
 
 install(TARGETS dim_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
