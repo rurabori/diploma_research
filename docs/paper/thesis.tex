@@ -30,7 +30,11 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 % TODO: reenable minted if possible.
-% \usepackage{minted}
+\usepackage{minted}
+\usepackage{amsthm,amssymb,amsfonts}
+\usepackage{tikz,lipsum,lmodern}
+\usepackage[most]{tcolorbox}
+\usepackage{multicol}
 
 % % list of acronyms
 % \usepackage[acronym,nonumberlist,toc,numberedsection=autolabel]{glossaries}
@@ -57,6 +61,17 @@
 \declarationOfAuthenticityOption{1} %select as appropriate, according to the desired license (integer 1-6)
 % \website{http://site.example/thesis} %optional thesis URL
 
+
+
+\newtcolorbox{boxyyy}[2][]{sidebyside,
+    lower separated=false,
+    righthand ratio=0.56, % to define right-hand fraction
+    colback=white,
+    colframe=white!20!gray,fonttitle=\bfseries,
+    colbacktitle=white!10!gray,enhanced,
+    attach boxed title to top left={xshift=1cm,
+            yshift=-2mm},
+    title=#2,#1}
 
 
 \begin{document}
@@ -224,15 +239,6 @@ library interface; MPI is not a language, and all MPI operations are expressed a
 subroutines, or methods, according to the appropriate language bindings which, for C and
 Fortran, are part of the MPI standard.
 \cite{mpi40}
-
-\section{HDF5}
-
-HDF5 is a data model, library, and file format for storing and managing data.
-It supports an unlimited variety of datatypes, and is designed for flexible and
-efficient I/O and for high volume and complex data. HDF5 is portable and is extensible,
-allowing applications to evolve in their use of HDF5. The HDF5 Technology suite includes
-tools and applications for managing, manipulating, viewing, and analyzing data in the HDF5 format.
-\cite{hdf5}
 
 
 \section{SIMD}
@@ -404,31 +410,148 @@ to be zero, except for those known by symmetry.
 Matrix used for benchmarking: e40r500.mtx: 17281x17281 with 553956 non-zero elements 17.6MB on disk size (MM format). \\
 Compiler: Clang 13.0.1 Ryzen 7 3700X\@3.7GHz, nvme SSD. \
 
-Matrix market exchange format is designed to be easy to parse. It provides a library to parse 
+Matrix market exchange format is designed to be easy to parse. It provides a library to parse
 the header and matrix dimensions. % TODO: cite mmio
 The entries themselves however, need to be parsed manually. Most implementations use \mintinline{C++}{scanf}.
 Initial loading IO implementation in dim used scanf as well. This however proved to be a bottleneck.
-Loading the benchmarked matrix took 215.818ms. After profiling, it beacame obvious that parsing 
+Loading the benchmarked matrix took 215.818ms. After profiling, it beacame obvious that parsing
 the string representation was the issue as 97.89\% of time spent was in scanf itself.
 
-To improve the loading times (1.1GB matrix took around a minute to load), in an effort to 
-simplify (and speed up) the process of benchmarking, an implementation using 
+To improve the loading times (1.1GB matrix took around a minute to load), in an effort to
+simplify (and speed up) the process of benchmarking, an implementation using
 \mintinline{C++}{scnlib} \footnote{\mintinline{C++}{scnlib} is a modern C++ alternative to scanf.}
 was deployed. While it provided around 1.2x speed up (matrix loading taking 176.424ms), it was still
-far too slow. 
+far too slow.
 
-\section{hdf5}
+\pagebreak
+
+\section{HDF5}
+
+HDF5 is a data model, library, and file format for storing and managing data.
+It supports an unlimited variety of datatypes, and is designed for flexible and
+efficient I/O and for high volume and complex data. HDF5 is portable and is extensible,
+allowing applications to evolve in their use of HDF5. The HDF5 Technology suite includes
+tools and applications for managing, manipulating, viewing, and analyzing data in the HDF5 format.
+\cite{hdf5} HDF5 is defined by HDF5 File Format Specification, which specifies bit-level organization of an HDF5.
+
+\subsection{HDF5 Abstract Data Model}
+
+The HDF5 data model defines building blocks for data organization and specification in HDF5.
+It's two primary objects are \textbf{groups} and \textbf{datasets}.
+
+\subsubsection{Group}
+
+HDF5 groups organize data. Every file contains at least a root group.
+Each group can contain other groups or be linked to objects in other files.
+
+\begin{figure}[!h]
+    \centering
+    \includegraphics[scale=0.3]{static/group.png}
+    % TODO: attribute the picture to HDF5 manual.
+\end{figure}
+
+Working with groups and their members is similar to working with files and directories in UNIX.
+Objects are often described by giving their path names (e.g. \texttt{/Viz}).
+
+\subsubsection{Dataset}
+
+Datasets organize and contain the "raw" data. They consist of raw data and metadata needed to describe it.
+The metadata needed to describe a dataset consists of datatypes, dataspaces, properties and optionally,
+attributes.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[scale=0.3]{static/dataset.png}
+    % TODO: attribute the picture to HDF5 manual.
+\end{figure}
+
+\subsubsection{Datatype}
+
+Datatypes describe individual elements in dataset. There are two groups of datatypes:
+\begin{itemize}
+    \item \textbf{pre-defined} - created by HDF5, contain standard datatypes that are stable across platforms
+          (e.g IEEE-754 encoded floating point), as well as native datatypes (e.g. \texttt{double} on platform
+          on which the application is running).
+    \item \textbf{derived} - created or derived from pre-defined datatypes (e.g. a string).
+\end{itemize}
+
+\subsubsection{Dataspace}
+
+Dataspaces describe the layout of datasets elements. It may be empty (NULL), contain a single element (scalar)
+or an array\footnote{Number of dimmensions of the array is reffered to as rank of the dataspace.}. They provide 
+logical layout of a dataset stored in a file (including rank and dimensions). As well as application's data buffers
+and data elements participating in I/O. Thus an application can select subsets of a dataset.
+% TODO: reference the chapter which will discuss hyperslabs more in depth.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[scale=0.3]{static/dataspace.png}
+    % TODO: attribute the picture to HDF5 manual.
+\end{figure}
 
 
 
-scnlib + mapped: 176.424ms, 97.17\% of time spent in scn::scan (basically scanf).
-pagefaults are basically the same, IO doesn't have big impact, parsing does.
-Scales horribly to actually big matrices, hard to paralelize.
+\subsubsection{Attribute}
 
-HDF5: 2.854ms, ~100x speedup. 48\% of time spent in the dataset reading function. 16\% of time spent in \mintinline{C++}{vector::resize}.
+Attributes may optionally be associated with objects. An attribute consists of a name-value pair.
+They are similar to datasets in that they too, have a datatype and dataspace. However they do not
+support partial I/O, can't be compressed nor extended.
+
+
+
+% TODO: maybe cite matlab and PETSc.
+\subsection{Matlab compatible sparse matrix storage}
+
+HDF5 is supported by MATLAB, as well as PETSc. Sparse matrices are stored in CSR format.
+Each matrix is represented as a single group containing 3 datasets:
+\begin{itemize}
+    \item \textcolor{red!60!yellow}{data} - values of elements.
+    \item \textcolor{red!60!yellow}{aj} - column index.
+    \item \textcolor{red!60!yellow}{ir} - row pointer.
+\end{itemize}
+And a single attribute \textcolor{green!60!gray}{MATLAB\_sparse} containing number of columns
+of the stored matrix.
+
+\newtcolorbox{infobox}[1][]{%
+    enhanced,
+    left=2pt,
+    nobeforeafter,
+    width=0.2\textwidth,
+    colback={white!30!yellow},
+    box align=center,
+    baseline=3.5mm,
+    colframe=black,
+    #1
+}
+
+\begin{figure}[!h]
+    \begin{tcolorbox}[title=/A, colback=gray!30!white]
+        \begin{infobox}[colback=red!60!yellow]
+            data
+        \end{infobox}
+        \begin{infobox}[colback=red!60!yellow]
+            aj
+        \end{infobox}
+        \begin{infobox}[colback=red!60!yellow]
+            ir
+        \end{infobox}
+        \begin{infobox}[colback=green!60!gray, width=0.35\textwidth]
+            MATLAB\_Sparse
+        \end{infobox}
+    \end{tcolorbox}
+    \caption{Layout of a sparse matrix stored as a HDF5 group}
+\end{figure}
+
+\subsection{Performance}
+
+Loading the same matrix used for benchmarking loading times for matrix market exchange format,
+HDF5 took 2.854ms which is ~100x speedup.
+48\% of time spent in the dataset reading function. 16\% of time spent in \mintinline{C++}{vector::resize}.
 Would benefit from non-initializing resize, current implementation has to 0 initialize the vectors, but those are dead writes because
 the data is immediately loaded into memory.
 
+
+\chapter{On disk storage for CSR5 matrices}
 
 HDF5 supports loading only a part of dataset as a hyperslab, making it possible to load only the data
 required by a tile to be loaded.
