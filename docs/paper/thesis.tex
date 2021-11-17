@@ -73,6 +73,14 @@
             yshift=-2mm},
     title=#2,#1}
 
+\newcommand*{\captionsource}[2]{%
+    \caption[{#1}]{%
+        #1%
+        \\\hspace{\linewidth}%
+        \textbf{Source:} #2%
+    }%
+}
+
 
 \begin{document}
 
@@ -250,6 +258,146 @@ Modern CPUs provide Streaming SIMD Extensions (or SSE) Instruction Set Extension
 Advanced Vector Extensions (or AVX). These can be leveraged in C++ by using OpenMP pragma
 directives or compiler provided set of intrinsics.
 
+
+\subsection{Matrix Market Exchange Format}
+
+Native exchange format of Matrix Market. Has two flavours, Array Format for dense matrices,
+Coordinate format for sparse matrices. \cite{mmef}
+
+% TODO: citations
+
+\subsubsection{General Format Specification}
+
+All Matrix Market echange format files contain three sections, which must appear in order:
+
+\begin{enumerate}
+    \item \textbf{Header} First line of a file, must follow the template:
+          \begin{lstlisting}
+    %%MatrixMarket object format [qualifier...]
+\end{lstlisting}
+          Where object type indicates the mathematical object (e.g. vector, matrix) which is
+          stored in the file. Type indicates the format (array or coordinate) used to store
+          the object. Qualifiers are used to further indicate special properties of the stored
+          object (e.g. symmetry, field) thus their number as well as allowed values depend on
+          the stored object.
+    \item \textbf{Comments} Zero or more line of comments\footnote{Comments are lines starting with \%.}.
+    \item \textbf{Data} Remainder of the file contains data representing the object.
+          The format of data is dependent on the stored object but for simplicity,
+          each data entry should occupy a single line.
+\end{enumerate}
+
+\subsubsection{Coordinate Format for Sparse Matrices}
+
+Header format for sparse matrices:
+\begin{lstlisting}
+%%MatrixMarket matirx coordinate <field> <symmetry>
+\end{lstlisting}
+
+% TODO: citation
+Where\footnote{For further explanation see the specification.}:
+\begin{itemize}
+    \item \textbf{field} determines the type and number of values listed for each entry
+          and is one of: Real, Complex, Integer or Pattern.
+    \item \textbf{symmetry} determines how to interpret matrix entries
+          and is one of: General, Symmetric, Skew-Symmetric or Hermitian.
+\end{itemize}
+
+While data specification is:
+\begin{lstlisting}
+    M N L
+    I J A(I, J)
+    I J A(I, J)
+    ...
+\end{lstlisting}
+
+First line of data contains exactly three integers:
+\begin{itemize}
+    \item \csre{M} - number of rows.
+    \item \csre{N} - number of columns.
+    \item \csre{L} - number of non-zero entries that follows.
+\end{itemize}
+
+The following \csre{L} lines each contain \csre{I} - the row index, \csre{J} - the column index
+and the corresponding value. Indices are 1 based. Entries not explicitly provided are considered
+to be zero, except for those known by symmetry.
+
+
+\section{HDF5}
+
+HDF5 is a data model, library, and file format for storing and managing data.
+It supports an unlimited variety of datatypes, and is designed for flexible and
+efficient I/O and for high volume and complex data. HDF5 is portable and is extensible,
+allowing applications to evolve in their use of HDF5. The HDF5 Technology suite includes
+tools and applications for managing, manipulating, viewing, and analyzing data in the HDF5 format.
+\cite{hdf5} HDF5 is defined by HDF5 File Format Specification, which specifies bit-level organization of an HDF5.
+
+\subsection{HDF5 Abstract Data Model}
+
+The HDF5 data model defines building blocks for data organization and specification in HDF5.
+It's two primary objects are \textbf{groups} and \textbf{datasets}.
+
+\subsubsection{Group}
+
+HDF5 groups organize data. Every file contains at least a root group.
+Each group can contain other groups or be linked to objects in other files.
+
+\begin{figure}[!h]
+    \centering
+    \includegraphics[scale=0.3]{static/group.png}
+    % TODO: attribute the picture to HDF5 manual.
+\end{figure}
+
+Working with groups and their members is similar to working with files and directories in UNIX.
+Objects are often described by giving their path names (e.g. \texttt{/Viz}).
+
+\subsubsection{Dataset}
+
+Datasets organize and contain the "raw" data. They consist of raw data and metadata needed to describe it.
+The metadata needed to describe a dataset consists of datatypes, dataspaces, properties and optionally,
+attributes.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[scale=0.3]{static/dataset.png}
+    % TODO: attribute the picture to HDF5 manual.
+\end{figure}
+
+\subsubsection{Datatype}
+
+Datatypes describe individual elements in dataset. There are two groups of datatypes:
+\begin{itemize}
+    \item \textbf{pre-defined} - created by HDF5, contain standard datatypes that are stable across platforms
+          (e.g IEEE-754 encoded floating point), as well as native datatypes (e.g. \texttt{double} on platform
+          on which the application is running).
+    \item \textbf{derived} - created or derived from pre-defined datatypes (e.g. a string).
+\end{itemize}
+
+\subsubsection{Dataspace}
+
+Dataspaces describe the layout of datasets elements. It may be empty (NULL), contain a single element (scalar)
+or an array\footnote{Number of dimmensions of the array is reffered to as rank of the dataspace.}. They provide
+logical layout of a dataset stored in a file (including rank and dimensions). As well as application's data buffers
+and data elements participating in I/O. Thus an application can select subsets of a dataset.
+% TODO: reference the chapter which will discuss hyperslabs more in depth.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[scale=0.3]{static/dataspace.png}
+    % TODO: add source
+\end{figure}
+
+
+
+\subsubsection{Attribute}
+
+Attributes may optionally be associated with objects. An attribute consists of a name-value pair.
+They are similar to datasets in that they too, have a datatype and dataspace. However they do not
+support partial I/O, can't be compressed nor extended.
+
+
+
+
+
 \section{C++20 - TBD}
 
 
@@ -336,168 +484,27 @@ be easily tested.
 
 \section{Selecting on disk storage format}
 
-% TODO: format better.
 
-Matrix used for benchmarking: e40r500.mtx: 17281x17281 with 553956 non-zero elements 17.6MB on disk size (MM format). \\
-
-Compiler: Clang 13.0.1 Ryzen 7 3700X\@3.7GHz, nvme SSD. \\
-
-\subsection{Matrix Market Exchange Format}
-
-Native exchange format of Matrix Market. Has two flavours, Array Format for dense matrices,
-Coordinate format for sparse matrices.
-
-% TODO: citations
-
-\subsubsection{General Format Specification}
-
-All Matrix Market echange format files contain three sections, which must appear in order:
-
-\begin{enumerate}
-    \item \textbf{Header} First line of a file, must follow the template:
-          \begin{lstlisting}
-    %%MatrixMarket object format [qualifier...]
-\end{lstlisting}
-          Where object type indicates the mathematical object (e.g. vector, matrix) which is
-          stored in the file. Type indicates the format (array or coordinate) used to store
-          the object. Qualifiers are used to further indicate special properties of the stored
-          object (e.g. symmetry, field) thus their number as well as allowed values depend on
-          the stored object.
-    \item \textbf{Comments} Zero or more line of comments\footnote{Comments are lines starting with \%.}.
-    \item \textbf{Data} Remainder of the file contains data representing the object.
-          The format of data is dependent on the stored object but for simplicity,
-          each data entry should occupy a single line.
-\end{enumerate}
-
-\subsubsection{Coordinate Format for Sparse Matrices}
-
-Header format for sparse matrices:
-\begin{lstlisting}
-%%MatrixMarket matirx coordinate <field> <symmetry>
-\end{lstlisting}
-
-% TODO: citation
-Where\footnote{For further explanation see the specification.}:
-\begin{itemize}
-    \item \textbf{field} determines the type and number of values listed for each entry
-          and is one of: Real, Complex, Integer or Pattern.
-    \item \textbf{symmetry} determines how to interpret matrix entries
-          and is one of: General, Symmetric, Skew-Symmetric or Hermitian.
-\end{itemize}
-
-While data specification is:
-\begin{lstlisting}
-    M N L
-    I J A(I, J)
-    I J A(I, J)
-    ...
-\end{lstlisting}
-
-First line of data contains exactly three integers:
-\begin{itemize}
-    \item \csre{M} - number of rows.
-    \item \csre{N} - number of columns.
-    \item \csre{L} - number of non-zero entries that follows.
-\end{itemize}
-
-The following \csre{L} lines each contain \csre{I} - the row index, \csre{J} - the column index
-and the corresponding value. Indices are 1 based. Entries not explicitly provided are considered
-to be zero, except for those known by symmetry.
-
-\subsubsection{Performance}
-
-
-Matrix used for benchmarking: e40r500.mtx: 17281x17281 with 553956 non-zero elements 17.6MB on disk size (MM format). \\
-Compiler: Clang 13.0.1 Ryzen 7 3700X\@3.7GHz, nvme SSD. \
+\subsection{Matrix market storage format}
 
 Matrix market exchange format is designed to be easy to parse. It provides a library to parse
-the header and matrix dimensions. % TODO: cite mmio
-The entries themselves however, need to be parsed manually. Most implementations use \mintinline{C++}{scanf}.
-Initial loading IO implementation in dim used scanf as well. This however proved to be a bottleneck.
-Loading the benchmarked matrix took 215.818ms. After profiling, it beacame obvious that parsing
-the string representation was the issue as 97.89\% of time spent was in scanf itself.
+the header and matrix dimensions. \cite{mmC}
 
-To improve the loading times (1.1GB matrix took around a minute to load), in an effort to
+The numerical entries, need to be parsed manually.
+Most implementations use variations of \texttt{scanf}.
+Initial implementation in dim used \texttt{scanf} as well. This however proved to be a bottleneck as 
+the average throughput was only 65MB/s.  After profiling, it beacame obvious that parsing the string representation 
+was the issue as 97.89\% of time spent was in \texttt{scanf} itself.
+To improve the loading times, in an effort to
 simplify (and speed up) the process of benchmarking, an implementation using
 \mintinline{C++}{scnlib} \footnote{\mintinline{C++}{scnlib} is a modern C++ alternative to scanf.}
-was deployed. While it provided around 1.2x speed up (matrix loading taking 176.424ms), it was still
-far too slow.
-
-\pagebreak
-
-\section{HDF5}
-
-HDF5 is a data model, library, and file format for storing and managing data.
-It supports an unlimited variety of datatypes, and is designed for flexible and
-efficient I/O and for high volume and complex data. HDF5 is portable and is extensible,
-allowing applications to evolve in their use of HDF5. The HDF5 Technology suite includes
-tools and applications for managing, manipulating, viewing, and analyzing data in the HDF5 format.
-\cite{hdf5} HDF5 is defined by HDF5 File Format Specification, which specifies bit-level organization of an HDF5.
-
-\subsection{HDF5 Abstract Data Model}
-
-The HDF5 data model defines building blocks for data organization and specification in HDF5.
-It's two primary objects are \textbf{groups} and \textbf{datasets}.
-
-\subsubsection{Group}
-
-HDF5 groups organize data. Every file contains at least a root group.
-Each group can contain other groups or be linked to objects in other files.
+was deployed. With an average throughput of 88.67MB/s it provided about 1.36x speedup but it was still inadequate.
 
 \begin{figure}[!h]
     \centering
-    \includegraphics[scale=0.3]{static/group.png}
-    % TODO: attribute the picture to HDF5 manual.
+    \includegraphics[scale=0.5]{static/MMEF_bench.png}
+    \caption{Loading times of MMEF}
 \end{figure}
-
-Working with groups and their members is similar to working with files and directories in UNIX.
-Objects are often described by giving their path names (e.g. \texttt{/Viz}).
-
-\subsubsection{Dataset}
-
-Datasets organize and contain the "raw" data. They consist of raw data and metadata needed to describe it.
-The metadata needed to describe a dataset consists of datatypes, dataspaces, properties and optionally,
-attributes.
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[scale=0.3]{static/dataset.png}
-    % TODO: attribute the picture to HDF5 manual.
-\end{figure}
-
-\subsubsection{Datatype}
-
-Datatypes describe individual elements in dataset. There are two groups of datatypes:
-\begin{itemize}
-    \item \textbf{pre-defined} - created by HDF5, contain standard datatypes that are stable across platforms
-          (e.g IEEE-754 encoded floating point), as well as native datatypes (e.g. \texttt{double} on platform
-          on which the application is running).
-    \item \textbf{derived} - created or derived from pre-defined datatypes (e.g. a string).
-\end{itemize}
-
-\subsubsection{Dataspace}
-
-Dataspaces describe the layout of datasets elements. It may be empty (NULL), contain a single element (scalar)
-or an array\footnote{Number of dimmensions of the array is reffered to as rank of the dataspace.}. They provide 
-logical layout of a dataset stored in a file (including rank and dimensions). As well as application's data buffers
-and data elements participating in I/O. Thus an application can select subsets of a dataset.
-% TODO: reference the chapter which will discuss hyperslabs more in depth.
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[scale=0.3]{static/dataspace.png}
-    % TODO: attribute the picture to HDF5 manual.
-\end{figure}
-
-
-
-\subsubsection{Attribute}
-
-Attributes may optionally be associated with objects. An attribute consists of a name-value pair.
-They are similar to datasets in that they too, have a datatype and dataspace. However they do not
-support partial I/O, can't be compressed nor extended.
-
-
 
 % TODO: maybe cite matlab and PETSc.
 \subsection{Matlab compatible sparse matrix storage}
