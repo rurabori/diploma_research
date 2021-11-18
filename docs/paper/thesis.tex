@@ -492,13 +492,13 @@ the header and matrix dimensions. \cite{mmC}
 
 The numerical entries, need to be parsed manually.
 Most implementations use variations of \texttt{scanf}.
-Initial implementation in dim used \texttt{scanf} as well. This however proved to be a bottleneck as 
-the average throughput was only 65MB/s.  After profiling, it beacame obvious that parsing the string representation 
+Initial implementation in dim used \texttt{scanf} as well. This however proved to be a bottleneck as
+the average throughput was only 4515017 elements/s.  After profiling, it beacame obvious that parsing the string representation
 was the issue as 97.89\% of time spent was in \texttt{scanf} itself.
 To improve the loading times, in an effort to
 simplify (and speed up) the process of benchmarking, an implementation using
 \mintinline{C++}{scnlib} \footnote{\mintinline{C++}{scnlib} is a modern C++ alternative to scanf.}
-was deployed. With an average throughput of 88.67MB/s it provided about 1.36x speedup but it was still inadequate.
+was deployed. With an average throughput of 6068194 elements/s it provided about 1.34x speedup but it was still inadequate.
 
 \begin{figure}[!h]
     \centering
@@ -507,7 +507,7 @@ was deployed. With an average throughput of 88.67MB/s it provided about 1.36x sp
 \end{figure}
 
 % TODO: maybe cite matlab and PETSc.
-\subsection{Matlab compatible sparse matrix storage}
+\subsection{Matlab compatible HDF5 sparse matrix storage}
 
 HDF5 is supported by MATLAB, as well as PETSc. Sparse matrices are stored in CSR format.
 Each matrix is represented as a single group containing 3 datasets:
@@ -549,14 +549,15 @@ of the stored matrix.
     \caption{Layout of a sparse matrix stored as a HDF5 group}
 \end{figure}
 
-\subsection{Performance}
+Storing in this format yielded a throughput of 110005843 elements/s which is 24.36x speedup over \texttt{scanf}
+based implementation of reading matrices stored in Matrix Market Echange Format and 18.12x speedup over \texttt{scnlib}
+implementation. 
 
-Loading the same matrix used for benchmarking loading times for matrix market exchange format,
-HDF5 took 2.854ms which is ~100x speedup.
-48\% of time spent in the dataset reading function. 16\% of time spent in \mintinline{C++}{vector::resize}.
-Would benefit from non-initializing resize, current implementation has to 0 initialize the vectors, but those are dead writes because
-the data is immediately loaded into memory.
-
+\begin{figure}[!h]
+    \centering
+    \includegraphics[scale=0.5]{static/matrix_loading.png}
+    \caption{Loading times of matrices}
+\end{figure}
 
 \chapter{On disk storage for CSR5 matrices}
 

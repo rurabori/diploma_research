@@ -1,3 +1,4 @@
 add_subdirectory(csr5_single_node)
 add_subdirectory(microbenchmarks)
 add_subdirectory(mmef)
+add_subdirectory(matlab_compatible_hdf5)
