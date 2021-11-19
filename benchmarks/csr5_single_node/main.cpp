@@ -44,14 +44,16 @@ auto output_result(const arguments_t arguments, std::span<double> result) {
 } // namespace
 
 int main_impl(const arguments_t& arguments) {
+    spdlog::stopwatch sw;
     auto matrix = load_csr5(arguments.input_file, *arguments.matrix_group);
+    spdlog::info("CSR5 loading took {}s", sw);
 
     auto dimensions = matrix.dimensions;
 
     auto x = cache_aligned_vector<double>(dimensions.cols, 1.);
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
 
-    spdlog::stopwatch sw;
+    sw.reset();
     matrix.spmv(dim::span{x}, dim::span{Y});
     spdlog::info("CSR5 SpMV took {}s", sw);
 
