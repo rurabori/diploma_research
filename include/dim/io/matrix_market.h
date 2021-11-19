@@ -23,17 +23,21 @@ struct matrix_size_t
 };
 
 template<typename ValueType>
-auto read_coo(FILE* file, dim::mat::dimensions_t dimensions, size_t non_zero, bool symmetric) {
+auto read_coo(FILE* file, dim::mat::dimensions_t dimensions, size_t non_zero, bool symmetric, bool pattern) {
     auto retval = dim::mat::coo<ValueType>{dimensions, non_zero, symmetric};
 
     auto map = mmapped::from_file(file);
     // skip the already read part.
     auto span = map.as<char>().subspan(static_cast<size_t>(::ftell(file)));
 
+    if (pattern)
+        std::fill(retval.values.begin(), retval.values.end(), 1.);
+
     size_t idx = 0;
     for (auto remaining = std::string_view{span.data(), span.size()}; idx < non_zero && !remaining.empty(); ++idx) {
-        const auto result
-          = scn::scan(remaining, "{} {} {} ", retval.row_indices[idx], retval.col_indices[idx], retval.values[idx]);
+        const auto result = pattern ? scn::scan(remaining, "{} {} ", retval.row_indices[idx], retval.col_indices[idx])
+                                    : scn::scan(remaining, "{} {} {} ", retval.row_indices[idx],
+                                                retval.col_indices[idx], retval.values[idx]);
         if (!result)
             throw std::runtime_error{"scan failed"};
 
@@ -57,8 +61,8 @@ auto load_as_csr(FILE* file) -> mat::csr<ValueType, StorageType> {
 
     const auto [dimensions, num_non_zero] = matrix_size_t::from_file(file);
 
-    const auto coo
-      = read_coo<ValueType>(file, dimensions, num_non_zero, mm_is_symmetric(banner) || mm_is_hermitian(banner));
+    const auto coo = read_coo<ValueType>(file, dimensions, num_non_zero,
+                                         mm_is_symmetric(banner) || mm_is_hermitian(banner), mm_is_pattern(banner));
 
     return dim::mat::csr<ValueType, StorageType>::from_coo(coo);
 }
