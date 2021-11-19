@@ -4,6 +4,8 @@
 
 #include <dim/io/h5.h>
 
+#include <dim/simple_main.h>
+
 #include <filesystem>
 
 #include "version.h"
@@ -16,14 +18,10 @@ struct arguments_t
 };
 STRUCTOPT(arguments_t, matrix_path);
 
-int main(int argc, char* argv[]) try {
-    const auto args = structopt::app(brr::app_info.name, brr::app_info.version).parse<arguments_t>(argc, argv);
-
+int main_impl(const arguments_t& args) {
     spdlog::stopwatch sw;
     const auto matrix = read_matlab_compatible(args.matrix_path, "A");
     spdlog::info("Loading took: {}s", sw);
     return 0;
-} catch (const std::exception& e) {
-    spdlog::critical("Exception thrown: {}", e.what());
-    return 1;
 }
+DIM_MAIN(arguments_t);

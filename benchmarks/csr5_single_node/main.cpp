@@ -9,6 +9,8 @@
 
 #include "arguments.h"
 #include "dim/io/h5/file.h"
+#include <dim/simple_main.h>
+
 #include "version.h"
 
 namespace h5 = dim::io::h5;
@@ -20,8 +22,10 @@ auto ensure_dataset_ready(h5::file_view_t file, const std::string& name, bool ov
     if (!file.contains(name))
         return;
 
-    if (overwrite)
+    if (overwrite) {
         file.remove(name);
+        return;
+    }
 
     throw std::runtime_error{fmt::format(
       "outfile already contains group {}, add overwrite flag to commandline if you really want to overwrite it", name)};
@@ -39,10 +43,7 @@ auto output_result(const arguments_t arguments, std::span<double> result) {
 
 } // namespace
 
-int main(int argc, char* argv[]) try {
-    auto app = structopt::app(brr::app_info.full_name, brr::app_info.version);
-    auto arguments = app.parse<arguments_t>(argc, argv);
-
+int main_impl(const arguments_t& arguments) {
     auto matrix = load_csr5(arguments.input_file, *arguments.matrix_group);
 
     auto dimensions = matrix.dimensions;
@@ -57,9 +58,6 @@ int main(int argc, char* argv[]) try {
     if (arguments.output_file)
         output_result(arguments, Y);
 
-
     return 0;
-} catch (const std::exception& e) {
-    spdlog::critical("{}", e.what());
-    return 1;
 }
+DIM_MAIN(arguments_t);

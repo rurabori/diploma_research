@@ -4,9 +4,8 @@
 
 #include <dim/io/matrix_market.h>
 
+#include <dim/simple_main.h>
 #include <filesystem>
-
-#include "version.h"
 
 using dim::io::matrix_market::load_as_csr;
 
@@ -16,14 +15,11 @@ struct arguments_t
 };
 STRUCTOPT(arguments_t, matrix_path);
 
-int main(int argc, char* argv[]) try {
-    const auto args = structopt::app(brr::app_info.name, brr::app_info.version).parse<arguments_t>(argc, argv);
-
+int main_impl(const arguments_t& args) {
     spdlog::stopwatch sw;
     const auto matrix = load_as_csr<double>(args.matrix_path);
     spdlog::info("Loading took: {}s", sw);
+
     return 0;
-} catch (const std::exception& e) {
-    spdlog::critical("Exception thrown: {}", e.what());
-    return 1;
 }
+DIM_MAIN(arguments_t);
