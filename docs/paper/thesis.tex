@@ -259,6 +259,10 @@ Advanced Vector Extensions (or AVX). These can be leveraged in C++ by using Open
 directives or compiler provided set of intrinsics.
 
 
+
+\section{Sparse matrix exchange formats}
+
+
 \subsection{Matrix Market Exchange Format}
 
 Native exchange format of Matrix Market. Has two flavours, Array Format for dense matrices,
@@ -551,7 +555,7 @@ of the stored matrix.
 
 Storing in this format yielded a throughput of 110005843 elements/s which is 24.36x speedup over \texttt{scanf}
 based implementation of reading matrices stored in Matrix Market Echange Format and 18.12x speedup over \texttt{scnlib}
-implementation. 
+implementation.
 
 \begin{figure}[!h]
     \centering
