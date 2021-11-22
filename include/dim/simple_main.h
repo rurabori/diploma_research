@@ -8,7 +8,11 @@
 #include "version.h"
 
 #include <fmt/format.h>
+
+#include <structopt/app.hpp>
 #include <structopt/exception.hpp>
+
+#include <spdlog/spdlog.h>
 
 // NOLINTNEXTLINE - these war crimes are the simplest way to make a simple application.
 #define DIM_MAIN(ArgumentsType)                                                    \
