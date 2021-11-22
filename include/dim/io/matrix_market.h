@@ -52,7 +52,7 @@ auto read_coo(FILE* file, dim::mat::dimensions_t dimensions, size_t non_zero, bo
 }
 
 template<typename ValueType, template<typename> typename StorageType = mat::cache_aligned_vector>
-auto load_as_csr(FILE* file) -> mat::csr<ValueType, StorageType> {
+auto load_as_coo(FILE* file) -> mat::coo<ValueType, StorageType> {
     MM_typecode banner{};
     mm_read_banner(file, &banner);
 
@@ -61,10 +61,20 @@ auto load_as_csr(FILE* file) -> mat::csr<ValueType, StorageType> {
 
     const auto [dimensions, num_non_zero] = matrix_size_t::from_file(file);
 
-    const auto coo = read_coo<ValueType>(file, dimensions, num_non_zero,
-                                         mm_is_symmetric(banner) || mm_is_hermitian(banner), mm_is_pattern(banner));
+    return read_coo<ValueType>(file, dimensions, num_non_zero, mm_is_symmetric(banner) || mm_is_hermitian(banner),
+                               mm_is_pattern(banner));
+}
+
+template<typename ValueType, template<typename> typename StorageType = mat::cache_aligned_vector>
+auto load_as_csr(FILE* file) -> mat::csr<ValueType, StorageType> {
+    const auto coo = load_as_coo<ValueType, StorageType>(file);
 
     return dim::mat::csr<ValueType, StorageType>::from_coo(coo);
+}
+
+template<typename ValueType, template<typename> typename StorageType = mat::cache_aligned_vector>
+decltype(auto) load_as_coo(const std::filesystem::path& path) {
+    return load_as_coo<ValueType, StorageType>(io::open(path, "r").get());
 }
 
 template<typename ValueType, template<typename> typename StorageType = mat::cache_aligned_vector>

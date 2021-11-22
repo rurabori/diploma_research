@@ -7,6 +7,8 @@
 #include <numeric>
 #include <vector>
 
+#include <concepts>
+
 #include <dim/mat/storage_formats/base.h>
 #include <dim/memory/aligned_allocator.h>
 
@@ -28,7 +30,7 @@ struct coo
         col_indices(non_zero_count_),
         symmetric{symmetric_} {}
 
-    template<typename /*std::invocable<ValueType, uint32_t, uint32_t>*/ Callable>
+    template<std::invocable<ValueType, uint32_t, uint32_t> Callable>
     void iterate(Callable&& callable) const noexcept {
         for (size_t i = 0; i < values.size(); ++i) {
             const auto row = row_indices[i];
