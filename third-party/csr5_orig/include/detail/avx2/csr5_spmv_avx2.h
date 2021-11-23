@@ -77,10 +77,10 @@ void spmv_csr5_compute_kernel(const iT           *d_column_index,
         int tid = omp_get_thread_num();
         iT start_row_start = tid < num_thread_active ? d_partition_pointer[tid * chunk] & 0x7FFFFFFF : 0;
 
-        vT  s_sum[8]; // allocate a cache line
-        vT  s_first_sum[8]; // allocate a cache line
-        uint64_t s_cond[8]; // allocate a cache line
-        int s_y_idx[16]; // allocate a cache line
+        alignas(32) vT  s_sum[8]; // allocate a cache line
+        alignas(32) vT  s_first_sum[8]; // allocate a cache line
+        alignas(32) uint64_t s_cond[8]; // allocate a cache line
+        alignas(32) int s_y_idx[16]; // allocate a cache line
 
         int inc0, inc1, inc2, inc3;
         vT x256d0, x256d1, x256d2, x256d3;
