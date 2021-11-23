@@ -559,18 +559,37 @@ implementation.
 
 \begin{figure}[!h]
     \centering
-    \includegraphics[scale=0.5]{static/matrix_loading.png}
-    \caption{Loading times of matrices}
+    \begin{minipage}{.5\textwidth}
+        \centering
+        \includegraphics[scale=0.45]{static/matrix_loading.png}
+    \end{minipage}%
+    \begin{minipage}{.5\textwidth}
+        \centering
+        \includegraphics[scale=0.45]{static/storage_sizes.png}
+    \end{minipage}
 \end{figure}
+
+
+Since, MMEF uses coordinate format to store sparse matrices, it may ommit elements from symmetrical matrices which can be inferred
+from their symmetrical counterparts. This can be used as size optimization. Matrices 2, 3 and 4 in the above graph are symmetrical,
+thus their on-disk size can be smaller with MMEF than it is with HDF5.
+
+HDF5 format supports dataset compression by LZMA. Setting chunk size to 4096 and compression level to 5 for each of the 3 datasets,
+it is possible to achieve considerable storage savings (the biggest matrix is around 7.8x smaller stored as compressed HDF5 compared to MMEF)
+while maintaning better loading performance, with average throughput being 27074837 elements/s, about 4x slower than HDF5 with no compression,
+but still 4 and 6 times faster than scnlib and scanf implementations respectively.
+
+
+
 
 \chapter{On disk storage for CSR5 matrices}
 
 HDF5 supports loading only a part of dataset as a hyperslab, making it possible to load only the data
 required by a tile to be loaded.
 
+
+
 \section{Loading the matrices}
-
-
 
 
 \begin{algorithm}
