@@ -12,3 +12,5 @@ tmp
 !/docs/paper/thesis.tex
 !/docs/paper/ref.bib
 !/docs/paper/.latexmkrc
+
+/scripts/data_analysis/*.png
