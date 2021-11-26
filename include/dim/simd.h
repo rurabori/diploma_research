@@ -16,7 +16,7 @@ namespace dim::simd {
  * @param seq sequence of numbers to create a permutation from.
  * @return int a value suitable to send to avx permute calls.
  */
-constexpr auto make_permute_seq(std::integral auto... seq) -> int {
+consteval auto make_permute_seq(std::integral auto... seq) -> int {
     int value{};
     size_t off = 0;
     for (auto pos : std::array{seq...})

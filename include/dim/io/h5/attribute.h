@@ -17,10 +17,20 @@ struct attribute_view_t : public location_view_t
     auto read(void* data, type_view_t type) const -> void;
 
     template<typename Ty, type_translator Translator = type_translator_t<Ty>>
+    auto write(const Ty& input) -> void {
+        write(static_cast<const void*>(&input), Translator::on_disk());
+    }
+
+    template<typename Ty, type_translator Translator = type_translator_t<Ty>>
     auto read() const -> Ty {
         Ty result;
         read(&result, Translator::in_memory());
         return result;
+    }
+
+    template<std::integral Ty>
+    operator Ty() { // NOLINT - implicit on purpose.
+        return read<Ty>();
     }
 
     [[nodiscard]] auto get_type() const noexcept -> type_t;

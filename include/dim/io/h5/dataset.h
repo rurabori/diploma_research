@@ -34,6 +34,15 @@ struct dataset_view_t : public view_t
         read(out.data(), type, dataspace_t::create(hsize_t{out.size()}), file_space, props);
     }
 
+    template<typename ContainerType, typename MemType = std::ranges::range_value_t<ContainerType>,
+             h5::type_translator Translator = type_translator_t<MemType>>
+    auto read(plist_view_t props = plist_t::defaulted()) const -> ContainerType {
+        auto result = ContainerType(get_dataspace().get_dim());
+
+        read(std::span{result}, Translator::in_memory(), dataspace_view_t::all(), props);
+        return result;
+    }
+
     template<typename ContainerType, typename MemType = std::ranges::range_value_t<ContainerType>>
     auto read_slab(hsize_t start, type_view_t type, size_t count, plist_view_t props = plist_t::defaulted()) const
       -> ContainerType {
@@ -54,6 +63,11 @@ struct dataset_view_t : public view_t
     [[nodiscard]] auto get_dataspace() const -> dataspace_t;
 
     [[nodiscard]] auto get_type() const noexcept -> type_t;
+
+    template<std::ranges::contiguous_range RangeType>
+    operator RangeType() { // NOLINT - implicit on purpose, we want assignment to work seamlessly.
+        return read<RangeType>();
+    }
 };
 
 class dataset_t : public view_wrapper_t<dataset_view_t, H5Dclose>
