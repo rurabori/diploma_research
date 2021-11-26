@@ -10,7 +10,7 @@ csr:
     compression_level: null
 csr5:
   vals:
-    chunk_size: 4096
+    chunk_size: null
     compression_level: null
   col_idx:
     chunk_size: null
