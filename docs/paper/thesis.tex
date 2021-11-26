@@ -469,22 +469,6 @@ An \csre{empty_offset_ptr} of size $num\_tiles + 1$, which contains offsets for 
 second array, \csre{empty_offset} at which their \csre{empty_offset} array begins.
 Thus for each tile, it's empty offset is defined as \csre{empty_offset[empty_offset_ptr[i]:empty_offset_ptr[i+1]]}.
 
-% TODO: maybe show the code.
-
-\subsection{On disk layout}
-
-Each of the sequential data members \csre{row_ptr}, \csre{col_idx}, \csre{vals}, \csre{tile_ptr},
-\csre{empty_offset}, \csre{empty_offset_ptr}, are stored as one dimensional datasets of same name
-and same datatype. \csre{num_cols} is stored as an attribute.
-
-\csre{tile_desc} is stored as an one dimensional dataset, with datatype being
-an array of 4 little endian unsigned 32-bit integers. In essence storing the data to HDF5 file as
-they appear in memory. This does put a soft requirement on the CLI used to transform a CSR matrix to
-CSR5 matrix and the code executing the SpMV being compiled by the same version of a compiler, as
-bit field in-memory layout is implementation defined, but allows faster loading. Furthermore both
-Clang and GCC implement this in the same way so the requirement is only a soft one, as compatibility can
-be easily tested.
-
 
 \section{Selecting on disk storage format}
 
@@ -513,14 +497,19 @@ was deployed. With an average throughput of 6068194 elements/s it provided about
 % TODO: maybe cite matlab and PETSc.
 \subsection{Matlab compatible HDF5 sparse matrix storage}
 
+\colorlet{hdtsc}{red!60!yellow}
+\colorlet{hdatc}{green!60!gray}
+\newcommand{\hdts}[1]{\textcolor{hdtsc}{#1}}
+\newcommand{\hdat}[1]{\textcolor{hdatc}{#1}}
+
 HDF5 is supported by MATLAB, as well as PETSc. Sparse matrices are stored in CSR format.
 Each matrix is represented as a single group containing 3 datasets:
 \begin{itemize}
-    \item \textcolor{red!60!yellow}{data} - values of elements.
-    \item \textcolor{red!60!yellow}{aj} - column index.
-    \item \textcolor{red!60!yellow}{ir} - row pointer.
+    \item \hdts{data} - values of elements.
+    \item \hdts{aj} - column index.
+    \item \hdts{ir} - row pointer.
 \end{itemize}
-And a single attribute \textcolor{green!60!gray}{MATLAB\_sparse} containing number of columns
+And a single attribute \hdat{MATLAB\_sparse} containing number of columns
 of the stored matrix.
 
 \newtcolorbox{infobox}[1][]{%
@@ -537,16 +526,16 @@ of the stored matrix.
 
 \begin{figure}[!h]
     \begin{tcolorbox}[title=/A, colback=gray!30!white]
-        \begin{infobox}[colback=red!60!yellow]
+        \begin{infobox}[colback=hdtsc]
             data
         \end{infobox}
-        \begin{infobox}[colback=red!60!yellow]
+        \begin{infobox}[colback=hdtsc]
             aj
         \end{infobox}
-        \begin{infobox}[colback=red!60!yellow]
+        \begin{infobox}[colback=hdtsc]
             ir
         \end{infobox}
-        \begin{infobox}[colback=green!60!gray, width=0.35\textwidth]
+        \begin{infobox}[colback=hdatc, width=0.35\textwidth]
             MATLAB\_Sparse
         \end{infobox}
     \end{tcolorbox}
@@ -586,6 +575,54 @@ but still 4 and 6 times faster than scnlib and scanf implementations respectivel
 
 HDF5 supports loading only a part of dataset as a hyperslab, making it possible to load only the data
 required by a tile to be loaded.
+
+
+
+
+\section{On disk layout}
+
+
+Each of the sequential data members \hdts{row\_ptr}, \hdts{col\_idx}, \hdts{vals}, \hdts{tile\_ptr},
+\hdts{empty\_offset}, \hdts{empty\_offset\_ptr}, are stored as one dimensional datasets of same name
+and same datatype. \hdat{num\_cols} is stored as an attribute.
+
+\hdts{tile\_desc} is stored as an one dimensional dataset, with datatype being
+an array of 4 little endian unsigned 32-bit integers. In essence storing the data to HDF5 file as
+they appear in memory. This does put a soft requirement on the CLI used to transform a CSR matrix to
+CSR5 matrix and the code executing the SpMV being compiled by the same version of a compiler, as
+bit field in-memory layout is implementation defined, but allows faster loading. Furthermore both
+Clang and GCC implement this in the same way so the requirement is only a soft one, as compatibility can
+be easily tested.
+
+\begin{figure}[!h]
+    \begin{tcolorbox}[title=/A, colback=gray!30!white]
+        \begin{infobox}[colback=hdtsc]
+            vals
+        \end{infobox}
+        \begin{infobox}[colback=hdtsc]
+            row\_ptr
+        \end{infobox}
+        \begin{infobox}[colback=hdtsc]
+            col\_idx
+        \end{infobox}
+        \begin{infobox}[colback=hdtsc, width=0.3\textwidth]
+            empty\_offset\_ptr
+        \end{infobox}
+        \begin{infobox}[colback=hdtsc]
+            tile\_ptr
+        \end{infobox}
+        \begin{infobox}[colback=hdtsc]
+            empty\_offset
+        \end{infobox}
+        \begin{infobox}[colback=hdtsc]
+            tile\_desc
+        \end{infobox}
+        \begin{infobox}[colback=hdatc, width=0.2\textwidth]
+            num\_cols
+        \end{infobox}
+    \end{tcolorbox}
+    \caption{Layout of a sparse matrix stored as a HDF5 group}
+\end{figure}
 
 
 
