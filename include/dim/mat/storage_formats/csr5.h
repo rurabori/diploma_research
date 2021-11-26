@@ -77,7 +77,8 @@ struct tile_descriptor_t
         constexpr auto y_shift_amount = 32 - storage_def_t::y_offset;
         constexpr auto scansum_lshift_amount = y_shift_amount - storage_def_t::scansum_offset;
         constexpr auto scansum_rshift_amount = 32 - storage_def_t::scansum_offset;
-        constexpr auto bit_flag_shift_amount = storage_def_t::y_offset + storage_def_t::scansum_offset;
+        constexpr auto bit_flag_lshift_amount = scansum_lshift_amount - storage_def_t::bit_flag;
+        constexpr auto bit_flag_rshift_amount = 32 - storage_def_t::bit_flag;
 
         struct vectorized_impl
         {
@@ -97,7 +98,7 @@ struct tile_descriptor_t
         return vectorized_impl{
           .y_offset = _mm_srli_epi32(_mm_slli_epi32(current_desc, y_shift_amount), y_shift_amount),
           .scansum_offset = _mm_srli_epi32(_mm_slli_epi32(current_desc, scansum_lshift_amount), scansum_rshift_amount),
-          .bit_flag = _mm_srli_epi32(current_desc, bit_flag_shift_amount)};
+          .bit_flag = _mm_srli_epi32(_mm_slli_epi32(current_desc, bit_flag_lshift_amount), bit_flag_rshift_amount)};
     }
 
     auto iterate_columns(std::invocable<size_t, tile_column_descriptor> auto&& body) const {
