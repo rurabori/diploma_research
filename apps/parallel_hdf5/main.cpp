@@ -1,23 +1,14 @@
-#include "dim/io/h5/dataset.h"
-#include "dim/io/h5/dataspace.h"
-#include "dim/io/h5/group.h"
-#include "dim/io/h5/plist.h"
-#include "dim/io/h5/type.h"
-#include "dim/mat/storage_formats/base.h"
-#include <H5Fpublic.h>
-#include <H5Ppublic.h>
-#include <H5Spublic.h>
-#include <H5Tpublic.h>
-#include <cstdint>
 #include <dim/io/h5.h>
 #include <dim/mpi/mpi.h>
-#include <filesystem>
+
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
-#include <hdf5.h>
-#include <initializer_list>
 #include <mpi.h>
+
+#include <filesystem>
+#include <initializer_list>
+#include <cstdint>
 #include <stdexcept>
 
 namespace h5 = dim::io::h5;
