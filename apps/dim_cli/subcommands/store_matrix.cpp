@@ -5,6 +5,8 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
 
+#include <magic_enum.hpp>
+
 #include <dim/io/format.h>
 #include <dim/io/h5.h>
 #include <dim/io/matrix_market.h>
@@ -85,11 +87,27 @@ auto convert_to_hdf5(dim::mat::csr<double>&& csr) {
     return std::forward<decltype(csr5)>(csr5);
 }
 
+auto deduce_output_path(std::filesystem::path base, dim_cli::store_matrix_t::out_format format)
+  -> std::filesystem::path {
+    // clear all extensions.
+    while (base.has_extension())
+        base.replace_extension();
+
+    // add new one.
+    base.replace_extension(fmt::format(".{}.h5", magic_enum::enum_name(format)));
+    return base;
+}
+
 auto store(const dim_cli::store_matrix_t& arguments, dim::mat::csr<double>&& matrix) {
     using format_t = dim_cli::store_matrix_t::out_format;
     namespace h5 = dim::io::h5;
 
-    auto file = h5::file_t::create(arguments.output, *arguments.append ? H5F_ACC_RDWR | H5F_ACC_CREAT : H5F_ACC_TRUNC);
+    const auto& out_name
+      = arguments.output ? *arguments.output : deduce_output_path(arguments.input, *arguments.format);
+
+    spdlog::info("storing matrix as group '{}' to {}", *arguments.group_name, out_name.native());
+
+    auto file = h5::file_t::create(out_name, *arguments.append ? H5F_ACC_RDWR | H5F_ACC_CREAT : H5F_ACC_TRUNC);
     auto group = file.create_group(*arguments.group_name);
 
     const auto config = load_config(*arguments.config);
@@ -116,8 +134,6 @@ auto store_matrix(const dim_cli::store_matrix_t& arguments) -> int {
     spdlog::stopwatch stopwatch{};
     auto&& csr = load_as_csr(arguments);
     spdlog::info("load and conversion to CSR took: {}s", stopwatch);
-
-    spdlog::info("storing matrix as group '{}' to {}", *arguments.group_name, arguments.output.native());
 
     stopwatch.reset();
     store(arguments, std::move(csr));

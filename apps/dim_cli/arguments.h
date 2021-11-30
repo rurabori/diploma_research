@@ -31,7 +31,7 @@ struct dim_cli
         };
 
         path input;
-        path output;
+        std::optional<path> output;
         std::optional<std::string> in_group_name{"A"};
         std::optional<std::string> group_name{"A"};
         std::optional<bool> append{false};
