@@ -549,7 +549,7 @@ public:
 
         const auto row_offset = detail::strip_dirty(tile_ptr.front());
 
-        //#pragma omp parallel
+#pragma omp parallel
         {
             const auto tid = static_cast<size_t>(::omp_get_thread_num());
 
@@ -559,7 +559,7 @@ public:
               .start_row_start
               = tid < num_thread_active ? (detail::strip_dirty(tile_ptr[tid * chunk]) - row_offset) : 0};
 
-            //#pragma omp for schedule(static, chunk)
+#pragma omp for schedule(static, chunk)
             for (size_t tile_id = 0; tile_id < tile_count; ++tile_id) {
                 const auto iteration_data = thread_data.get_iter_data(*this, tile_id);
 
