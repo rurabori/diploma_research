@@ -1,11 +1,11 @@
-#include "dim/bit.h"
-#include "dim/mat/storage_formats/csr5.h"
 #include <doctest/doctest.h>
 
-#include <algorithm>
-
+#include <dim/bit.h>
+#include <dim/io/h5.h>
 #include <dim/io/matrix_market.h>
 #include <dim/mat/storage_formats.h>
+
+#include <algorithm>
 #include <immintrin.h>
 
 using csr5_t = dim::mat::csr5<double>;
@@ -38,25 +38,23 @@ TEST_CASE("Test conversion from CSR") {
     REQUIRE_EQ(csr5.tail_partition_start(), 154);
 
     REQUIRE_EQ(csr5.tile_desc[0],
-               tile_desc_t{
-                 .columns = {tile_col_desc_t{.y_offset = 0, .scansum_offset = 0, .bit_flag = 0b1000'0100'0010'0001},
-                             tile_col_desc_t{.y_offset = 4, .scansum_offset = 0, .bit_flag = 0b1000'1000'1000'1000},
-                             tile_col_desc_t{.y_offset = 8, .scansum_offset = 0, .bit_flag = 0b1010'1000'1000'1000},
-                             tile_col_desc_t{.y_offset = 13, .scansum_offset = 0, .bit_flag = 0b1010'1010'1010'1010}}});
+               tile_desc_t{.columns = {{.y_offset = 0, .scansum_offset = 0, .bit_flag = 0b1000'0100'0010'0001},
+                                       {.y_offset = 4, .scansum_offset = 0, .bit_flag = 0b1000'1000'1000'1000},
+                                       {.y_offset = 8, .scansum_offset = 0, .bit_flag = 0b1010'1000'1000'1000},
+                                       {.y_offset = 13, .scansum_offset = 0, .bit_flag = 0b1010'1010'1010'1010}}});
 
-    REQUIRE_EQ(
-      csr5.tile_desc[1],
-      tile_desc_t{.columns = {tile_col_desc_t{.y_offset = 0, .scansum_offset = 3, .bit_flag = 0b0000'0000'0000'0010},
-                              tile_col_desc_t{.y_offset = 2, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000},
-                              tile_col_desc_t{.y_offset = 2, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000},
-                              tile_col_desc_t{.y_offset = 2, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000}}});
+    REQUIRE_EQ(csr5.tile_desc[1],
+               tile_desc_t{.columns = {{.y_offset = 0, .scansum_offset = 3, .bit_flag = 0b0000'0000'0000'1110},
+                                       {.y_offset = 4, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000},
+                                       {.y_offset = 4, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000},
+                                       {.y_offset = 4, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000}}});
 
     // check that we are outputting to the correct row from tiles with empty columns.
-    REQUIRE_EQ(csr5.tile_desc_offset.size(), csr5.tile_count);
-    REQUIRE(dim::mat::detail::is_dirty(csr5.tile_ptr[1]));
+    REQUIRE_EQ(csr5.tile_desc_offset_ptr.size(), csr5.tile_count + 1);
+    REQUIRE_EQ(csr5.tile_desc_offset.size(), csr5.tile_desc[1].columns[3].y_offset + 1);
+    REQUIRE_NE(csr5.tile_ptr[1].idx(), 0);
     REQUIRE_EQ(csr5.tile_desc_offset_ptr[1], 0);
-    REQUIRE_EQ(csr5.tile_desc_offset[csr5.tile_desc_offset_ptr[1] + 1],
-               154 - dim::mat::detail::strip_dirty(csr5.tile_ptr[1]));
+    REQUIRE_EQ(csr5.tile_desc_offset[3], 154 - csr5.tile_ptr[1].idx());
 }
 
 auto vec_equal(__m128i vec, __m128i vec2) noexcept -> bool {
@@ -68,11 +66,11 @@ auto vec_equal(__m256i vec, __m256i vec2) noexcept -> bool {
 }
 
 TEST_CASE("Test tile descriptor vectorization") {
-    constexpr auto descriptor = tile_desc_t{
-      .columns = {tile_col_desc_t{.y_offset = 0, .scansum_offset = 3, .bit_flag = 0b1000'0100'0010'0001},
-                  tile_col_desc_t{.y_offset = 4, .scansum_offset = 2, .bit_flag = 0b1000'1000'1000'1000},
-                  tile_col_desc_t{.y_offset = 8, .scansum_offset = 1, .bit_flag = 0b1010'1000'1000'1000},
-                  tile_col_desc_t{.y_offset = 13, .scansum_offset = 0, .bit_flag = 0b1010'1010'1010'1010}}};
+    constexpr auto descriptor
+      = tile_desc_t{.columns = {{.y_offset = 0, .scansum_offset = 3, .bit_flag = 0b1000'0100'0010'0001},
+                                {.y_offset = 4, .scansum_offset = 2, .bit_flag = 0b1000'1000'1000'1000},
+                                {.y_offset = 8, .scansum_offset = 1, .bit_flag = 0b1010'1000'1000'1000},
+                                {.y_offset = 13, .scansum_offset = 0, .bit_flag = 0b1010'1010'1010'1010}}};
 
     const auto desc_equal = [&descriptor](const auto& vec, auto&& accessor) {
         return vec_equal(vec, _mm_set_epi32(static_cast<int>(accessor(descriptor.columns[3])),

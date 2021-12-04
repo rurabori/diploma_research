@@ -10,8 +10,6 @@
 #include <optional>
 #include <string>
 
-using dim::mat::detail::strip_dirty;
-
 namespace fs = std::filesystem;
 namespace h5 = dim::io::h5;
 
@@ -51,8 +49,14 @@ auto main_impl(const arguments_t& args) {
     const auto csr5 = read_matrix(args.input_file, *args.input_group);
     spdlog::info("loading matrix took {}s", sw);
 
+    const auto first_tile_row = csr5.tile_ptr.front().idx();
+    const auto last_tile_row = csr5.tile_ptr.back().idx();
+    const auto global_last_row = csr5.skip_tail ? last_tile_row : (csr5.dimensions.rows - 1);
+    // the range is closed from both sides hence the +1. f.x. [0,0] has 1 element etc.
+    const auto this_node_elements = global_last_row - first_tile_row + 1;
+
     std::vector<double> x(csr5.dimensions.cols, 1.);
-    std::vector<double> y(csr5.dimensions.rows, 0.);
+    std::vector<double> y(this_node_elements, 0.);
     auto calibrator = csr5.allocate_calibrator();
 
     const auto rank = mpi_rank();
@@ -62,13 +66,10 @@ auto main_impl(const arguments_t& args) {
     csr5.spmv({.x = x, .y = y, .calibrator = calibrator});
     spdlog::info("spmv took {}s", sw);
 
-    const auto first_tile_row = strip_dirty(csr5.tile_ptr.front());
-    const auto last_tile_row = strip_dirty(csr5.tile_ptr.back());
+    auto&& first_node_row = y.front();
+    auto&& last_node_row = y.back();
 
     sw.reset();
-    auto&& first_node_row = y[0];
-    auto&& last_node_row = y[(csr5.skip_tail ? last_tile_row : csr5.dimensions.rows) - first_tile_row];
-
     if (rank == 0) {
         // we're the main node.
         double sum{};
@@ -96,20 +97,20 @@ auto main_impl(const arguments_t& args) {
     const auto is_main_node = rank == 0;
 
     auto write_start = first_tile_row + !is_main_node;
-    auto write_end = csr5.skip_tail ? last_tile_row : (csr5.dimensions.rows - 1);
-    spdlog::info("writing elements [{},{})", write_start, write_end);
+
+    const auto to_write = std::span{y}.subspan(!is_main_node);
+    spdlog::info("writing elements [{},{}] {} elems", write_start, global_last_row, to_write.size());
 
     auto filespace = dataset.get_dataspace();
-    filespace.select_hyperslab(write_start, write_end - write_start + 1);
+    filespace.select_hyperslab(write_start, to_write.size());
 
     sw.reset();
-
-    auto span = std::span{y}.subspan(!is_main_node, write_end - write_start + 1);
 
     auto xfer_pl = h5::plist_t::create(H5P_DATASET_XFER);
     h5_try ::H5Pset_dxpl_mpio(xfer_pl.get_id(), H5FD_MPIO_COLLECTIVE);
 
-    dataset.write(span.data(), H5T_NATIVE_DOUBLE, h5::dataspace_t::create(hsize_t{span.size()}), filespace, xfer_pl);
+    dataset.write(to_write.data(), H5T_NATIVE_DOUBLE, h5::dataspace_t::create(hsize_t{to_write.size()}), filespace,
+                  xfer_pl);
 
     spdlog::info("writing to output file took {}s", sw);
 
