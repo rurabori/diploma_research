@@ -3,8 +3,10 @@
 #include <dim/io/format.h>
 #include <dim/io/h5.h>
 
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
+
 #include <stdexcept>
 
 #include "arguments.h"
@@ -44,6 +46,8 @@ auto output_result(const arguments_t arguments, std::span<double> result) {
 } // namespace
 
 int main_impl(const arguments_t& arguments) {
+    spdlog::set_default_logger(spdlog::stdout_color_mt("csr5_single_node"));
+
     spdlog::stopwatch sw;
     auto matrix = load_csr5(arguments.input_file, *arguments.matrix_group);
     spdlog::info("CSR5 loading took {}s", sw);

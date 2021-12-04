@@ -2,12 +2,15 @@
 #include <dim/mpi/mpi.h>
 #include <dim/simple_main.h>
 
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/stopwatch.h>
 
 #include <filesystem>
 #include <mpi.h>
 #include <optional>
 #include <string>
+
+using dim::mat::detail::strip_dirty;
 
 namespace fs = std::filesystem;
 namespace h5 = dim::io::h5;
@@ -44,7 +47,9 @@ auto read_matrix(const fs::path& path, const std::string& name) {
 }
 
 auto main_impl(const arguments_t& args) {
+    spdlog::stopwatch sw;
     const auto csr5 = read_matrix(args.input_file, *args.input_group);
+    spdlog::info("loading matrix took {}s", sw);
 
     std::vector<double> x(csr5.dimensions.cols, 1.);
     std::vector<double> y(csr5.dimensions.rows, 0.);
@@ -53,13 +58,16 @@ auto main_impl(const arguments_t& args) {
     const auto rank = mpi_rank();
     const auto size = mpi_size();
 
-    spdlog::stopwatch sw;
+    sw.reset();
     csr5.spmv({.x = x, .y = y, .calibrator = calibrator});
     spdlog::info("{} spmv took {}s", rank, sw);
 
+    const auto first_tile_row = strip_dirty(csr5.tile_ptr.front());
+    const auto last_tile_row = strip_dirty(csr5.tile_ptr.back());
+
     sw.reset();
     auto&& first_node_row = y[0];
-    auto&& last_node_row = y[(csr5.skip_tail ? csr5.tile_ptr.back() : csr5.dimensions.rows) - csr5.tile_ptr.front()];
+    auto&& last_node_row = y[(csr5.skip_tail ? last_tile_row : csr5.dimensions.rows) - first_tile_row];
 
     if (rank == 0) {
         // we're the main node.
@@ -85,18 +93,22 @@ auto main_impl(const arguments_t& args) {
     auto dataset = out_file.create_dataset(*args.output_dataset, H5T_IEEE_F64LE,
                                            h5::dataspace_t::create(hsize_t{csr5.dimensions.rows}));
 
-    const auto is_main_node = bool(rank);
-    auto xfer_pl = h5::plist_t::create(H5P_DATASET_XFER);
-    h5_try ::H5Pset_dxpl_mpio(xfer_pl.get_id(), H5FD_MPIO_COLLECTIVE);
+    const auto is_main_node = rank == 0;
 
-    sw.reset();
-    auto write_start = csr5.tile_ptr.front() + !is_main_node;
-    auto write_end = csr5.skip_tail ? csr5.tile_ptr.back() : (csr5.dimensions.rows - 1);
+    auto write_start = first_tile_row + !is_main_node;
+    auto write_end = csr5.skip_tail ? last_tile_row : (csr5.dimensions.rows - 1);
+    spdlog::info("writing elements [{},{})", write_start, write_end);
 
     auto filespace = dataset.get_dataspace();
     filespace.select_hyperslab(write_start, write_end - write_start + 1);
 
-    auto span = std::span{y}.subspan(is_main_node, write_end - write_start + 1);
+    sw.reset();
+    
+    auto span = std::span{y}.subspan(!is_main_node, write_end - write_start + 1);
+
+    auto xfer_pl = h5::plist_t::create(H5P_DATASET_XFER);
+    h5_try ::H5Pset_dxpl_mpio(xfer_pl.get_id(), H5FD_MPIO_COLLECTIVE);
+
     dataset.write(span.data(), H5T_NATIVE_DOUBLE, h5::dataspace_t::create(hsize_t{span.size()}), filespace, xfer_pl);
 
     spdlog::info("{} writing to output file took {}s", rank, sw);
@@ -107,6 +119,8 @@ auto main_impl(const arguments_t& args) {
 int main(int argc, char* argv[]) try {
     auto app = structopt ::app(brr ::app_info.full_name, brr ::app_info.version);
     dim::mpi::ctx mpi_ctx{argc, argv};
+    spdlog::set_default_logger(spdlog::stdout_color_mt(fmt::format("mpi_csr5 (n{:02})", mpi_rank())));
+
     return main_impl(app.parse<arguments_t>(argc, argv));
 } catch (const structopt ::exception& e) {
     fmt::print(stderr, "{}", e.help());

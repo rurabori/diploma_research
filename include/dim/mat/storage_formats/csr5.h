@@ -581,8 +581,9 @@ public:
 
                 auto y_local = spmv_data.y.subspan(row_start);
 
-                const auto offset_pointer = empty_rows ? tile_desc_offset_ptr[tile_id] : 0;
-                const auto compute_y_idx = [this, empty_rows, offset_pointer](auto&& offset) {
+                const auto offset_pointer
+                  = empty_rows ? tile_desc_offset_ptr[tile_id] - tile_desc_offset_ptr.front() : 0;
+                const auto compute_y_idx = [&, empty_rows, offset_pointer](auto&& offset) {
                     return empty_rows ? _mm_i32gather_epi32(
                              reinterpret_cast<const int*>(&tile_desc_offset[offset_pointer]), offset, 4)
                                       : offset;
@@ -693,9 +694,10 @@ public:
 
         auto num_cali = num_thread_active < thread_count ? num_thread_active : thread_count;
 
+        const auto base = detail::strip_dirty(tile_ptr.front());
+
         for (size_t i = 0; i < num_cali; i++)
-            spmv_data.y[detail::strip_dirty(tile_ptr[i * chunk]) - tile_ptr.front()]
-              += spmv_data.calibrator[i * stride];
+            spmv_data.y[detail::strip_dirty(tile_ptr[i * chunk]) - base] += spmv_data.calibrator[i * stride];
     }
 
     auto spmv_tail_partition(spmv_data_t spmv_data) const noexcept {
