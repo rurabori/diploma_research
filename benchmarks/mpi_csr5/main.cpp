@@ -60,7 +60,7 @@ auto main_impl(const arguments_t& args) {
 
     sw.reset();
     csr5.spmv({.x = x, .y = y, .calibrator = calibrator});
-    spdlog::info("{} spmv took {}s", rank, sw);
+    spdlog::info("spmv took {}s", sw);
 
     const auto first_tile_row = strip_dirty(csr5.tile_ptr.front());
     const auto last_tile_row = strip_dirty(csr5.tile_ptr.back());
@@ -84,7 +84,7 @@ auto main_impl(const arguments_t& args) {
                        MPI_STATUS_IGNORE);
         last_node_row += sum;
     }
-    spdlog::info("{} synchronizing edge results took {}s", rank, sw);
+    spdlog::info("synchronizing edge results took {}s", sw);
 
     auto access = h5::plist_t::create(H5P_FILE_ACCESS);
     h5_try ::H5Pset_fapl_mpio(access.get_id(), MPI_COMM_WORLD, MPI_INFO_NULL);
@@ -103,7 +103,7 @@ auto main_impl(const arguments_t& args) {
     filespace.select_hyperslab(write_start, write_end - write_start + 1);
 
     sw.reset();
-    
+
     auto span = std::span{y}.subspan(!is_main_node, write_end - write_start + 1);
 
     auto xfer_pl = h5::plist_t::create(H5P_DATASET_XFER);
@@ -111,7 +111,7 @@ auto main_impl(const arguments_t& args) {
 
     dataset.write(span.data(), H5T_NATIVE_DOUBLE, h5::dataspace_t::create(hsize_t{span.size()}), filespace, xfer_pl);
 
-    spdlog::info("{} writing to output file took {}s", rank, sw);
+    spdlog::info("writing to output file took {}s", sw);
 
     return 0;
 }
