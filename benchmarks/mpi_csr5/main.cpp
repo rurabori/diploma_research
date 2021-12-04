@@ -10,8 +10,6 @@
 #include <optional>
 #include <string>
 
-using dim::mat::detail::strip_dirty;
-
 namespace fs = std::filesystem;
 namespace h5 = dim::io::h5;
 
@@ -51,8 +49,8 @@ auto main_impl(const arguments_t& args) {
     const auto csr5 = read_matrix(args.input_file, *args.input_group);
     spdlog::info("loading matrix took {}s", sw);
 
-    const auto first_tile_row = strip_dirty(csr5.tile_ptr.front());
-    const auto last_tile_row = strip_dirty(csr5.tile_ptr.back());
+    const auto first_tile_row = csr5.tile_ptr.front().idx();
+    const auto last_tile_row = csr5.tile_ptr.back().idx();
     const auto global_last_row = csr5.skip_tail ? last_tile_row : (csr5.dimensions.rows - 1);
     // the range is closed from both sides hence the +1. f.x. [0,0] has 1 element etc.
     const auto this_node_elements = global_last_row - first_tile_row + 1;

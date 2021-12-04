@@ -162,15 +162,15 @@ namespace detail {
         return value & ~msb<Ty>;
     }
 
-    template<bool StripDirty = true, std::ranges::random_access_range Partitions, typename Callable>
-    void iterate_tiles(const Partitions& partitions, Callable&& callable) {
+    template<bool StripDirty = true, std::ranges::random_access_range Tiles, typename Callable>
+    void iterate_tiles(const Tiles& tiles, Callable&& callable) {
         constexpr auto conditional_strip = [](auto value) { return StripDirty ? strip_dirty(value) : value; };
 
 #pragma omp parallel for
-        for (size_t id = 1; id < partitions.size(); id++) {
-            const auto partition_id = id - 1;
-            std::forward<Callable>(callable)(partition_id, conditional_strip(partitions[partition_id]),
-                                             conditional_strip(partitions[partition_id + 1]));
+        for (size_t id = 1; id < tiles.size(); id++) {
+            const auto tile_id = id - 1;
+            std::forward<Callable>(callable)(tile_id, conditional_strip(tiles[tile_id].raw),
+                                             conditional_strip(tiles[tile_id + 1].raw));
         }
     }
 
@@ -230,6 +230,20 @@ namespace detail {
 
 } // namespace detail
 
+template<typename StorageType>
+struct tile_ptr_t
+{
+    using storage_t = StorageType;
+
+    StorageType raw;
+
+    auto mark_dirty() noexcept -> void { raw = detail::mark_dirty(raw); }
+    [[nodiscard]] auto is_dirty() const noexcept -> bool { return detail::is_dirty(raw); }
+    [[nodiscard]] auto idx() const noexcept -> StorageType { return detail::strip_dirty(raw); }
+
+    friend auto operator<=>(const tile_ptr_t&, const tile_ptr_t&) noexcept = default;
+};
+
 template<std::floating_point ValueType = double, size_t Sigma = 16, size_t Omega = 4,
          std::signed_integral SignedType = int32_t, std::unsigned_integral UnsignedType = uint32_t,
          template<typename> typename StorageContainer = cache_aligned_vector>
@@ -244,6 +258,7 @@ struct csr5
 
     using tile_descriptor_type = tile_descriptor_t<sigma, omega>;
     using tile_col_storage = typename tile_descriptor_type::tile_column_descriptor::storage_t;
+    using tile_ptr_type = tile_ptr_t<UnsignedType>;
 
     // same as CSR
     dimensions_t dimensions;
@@ -252,7 +267,7 @@ struct csr5
     StorageContainer<UnsignedType> row_ptr;
 
     size_t tile_count{};
-    StorageContainer<UnsignedType> tile_ptr;
+    StorageContainer<tile_ptr_type> tile_ptr;
     StorageContainer<tile_descriptor_type> tile_desc;
     StorageContainer<UnsignedType> tile_desc_offset_ptr;
     StorageContainer<UnsignedType> tile_desc_offset;
@@ -293,7 +308,7 @@ private:
 
             const auto num_set = static_cast<UnsignedType>(tile_desc[tile_id].set_scansum_and_y_offsets());
 
-            const auto has_empty_rows = detail::is_dirty(tile_ptr[tile_id]);
+            const auto has_empty_rows = tile_ptr[tile_id].is_dirty();
             if (has_empty_rows) {
                 // y_idx for some columns of the tile may be 1 bigger than number of segments it contains, may be
                 // avoided by rearchitecturing the code a bit.
@@ -311,7 +326,7 @@ private:
         tile_desc_offset.resize(tile_desc_offset_ptr.back());
         iterate_tiles([&](const auto tile_id, const auto row_start, const auto row_stop) {
             // no empty segments in this tile.
-            if (!detail::is_dirty(tile_ptr[tile_id]))
+            if (!tile_ptr[tile_id].is_dirty())
                 return;
 
             const auto offset_ptr = tile_desc_offset_ptr[tile_id];
@@ -395,17 +410,17 @@ private:
             // clamp to [0, nnz]
             const auto boundary = static_cast<SignedType>(std::min(tile_id * sigma * omega, nnz));
 
-            tile_ptr[tile_id] = static_cast<UnsignedType>(detail::upper_bound_idx(row_ptr, boundary));
+            tile_ptr[tile_id] = {static_cast<UnsignedType>(detail::upper_bound_idx(row_ptr, boundary))};
         }
 
         const auto row_idx = dim::span<const UnsignedType>{row_ptr};
-        iterate_tiles([&](auto partition_id, auto start, auto stop) {
+        iterate_tiles([&](auto tile_id, auto start, auto stop) {
             if (start == stop)
                 return;
 
             // +1 because it needs to be inclusive.
             if (detail::is_dirty(row_idx.subspan(start, stop - start + 1)))
-                tile_ptr[partition_id] = static_cast<UnsignedType>(detail::mark_dirty(start));
+                tile_ptr[tile_id].mark_dirty();
         });
     }
 
@@ -430,9 +445,7 @@ public:
         return val;
     }
 
-    [[nodiscard]] auto tail_partition_start() const noexcept -> UnsignedType {
-        return detail::strip_dirty(tile_ptr.back());
-    }
+    [[nodiscard]] auto tail_partition_start() const noexcept -> UnsignedType { return tile_ptr.back().idx(); }
 
     auto load_x(dim::span<const ValueType> x, dim::span<const UnsignedType> column_index_partition,
                 size_t offset) const noexcept {
@@ -547,37 +560,36 @@ public:
         const auto num_thread_active
           = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(chunk)));
 
-        const auto row_offset = detail::strip_dirty(tile_ptr.front());
+        const auto row_offset = tile_ptr.front().idx();
 
 #pragma omp parallel
         {
             const auto tid = static_cast<size_t>(::omp_get_thread_num());
 
-            spmv_thread_data thread_data{
-              .data = spmv_data,
-              .tid = tid,
-              .start_row_start
-              = tid < num_thread_active ? (detail::strip_dirty(tile_ptr[tid * chunk]) - row_offset) : 0};
+            spmv_thread_data thread_data{.data = spmv_data,
+                                         .tid = tid,
+                                         .start_row_start
+                                         = tid < num_thread_active ? (tile_ptr[tid * chunk].idx() - row_offset) : 0};
 
 #pragma omp for schedule(static, chunk)
             for (size_t tile_id = 0; tile_id < tile_count; ++tile_id) {
                 const auto iteration_data = thread_data.get_iter_data(*this, tile_id);
 
-                auto row_start = tile_ptr[tile_id] - row_offset;
-                const auto row_stop = detail::strip_dirty(tile_ptr[tile_id + 1]) - row_offset;
+                const auto current_ptr = tile_ptr[tile_id];
+
+                const auto row_stop = tile_ptr[tile_id + 1].idx() - row_offset;
 
                 const auto current_descriptor = tile_desc[tile_id];
-
                 const auto fast_direct = has_rbit_set(current_descriptor.columns[0].bit_flag, 0);
 
                 // the tile only has elements from a single row.
-                if (row_start == row_stop) {
+                if (const auto row_start = current_ptr.raw - row_offset; row_start == row_stop) {
                     thread_data.store_to_row_start(row_start, iteration_data.partition_fast_track(), fast_direct);
                     continue;
                 }
 
-                const auto empty_rows = detail::is_dirty(row_start);
-                row_start = detail::strip_dirty(row_start);
+                const auto empty_rows = current_ptr.is_dirty();
+                const auto row_start = current_ptr.idx() - row_offset;
 
                 auto y_local = spmv_data.y.subspan(row_start);
 
@@ -694,17 +706,17 @@ public:
 
         auto num_cali = num_thread_active < thread_count ? num_thread_active : thread_count;
 
-        const auto base = detail::strip_dirty(tile_ptr.front());
+        const auto base = tile_ptr.front().idx();
 
         for (size_t i = 0; i < num_cali; i++)
-            spmv_data.y[detail::strip_dirty(tile_ptr[i * chunk]) - base] += spmv_data.calibrator[i * stride];
+            spmv_data.y[tile_ptr[i * chunk].idx() - base] += spmv_data.calibrator[i * stride];
     }
 
     auto spmv_tail_partition(spmv_data_t spmv_data) const noexcept {
         if (skip_tail)
             return;
 
-        const auto offset = detail::strip_dirty(tile_ptr.front());
+        const auto offset = tile_ptr.front().idx();
 
         const auto first_tail_element = tile_count * tile_size();
 

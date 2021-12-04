@@ -52,9 +52,9 @@ TEST_CASE("Test conversion from CSR") {
     // check that we are outputting to the correct row from tiles with empty columns.
     REQUIRE_EQ(csr5.tile_desc_offset_ptr.size(), csr5.tile_count + 1);
     REQUIRE_EQ(csr5.tile_desc_offset.size(), csr5.tile_desc[1].columns[3].y_offset + 1);
-    REQUIRE(dim::mat::detail::is_dirty(csr5.tile_ptr[1]));
+    REQUIRE_NE(csr5.tile_ptr[1].idx(), 0);
     REQUIRE_EQ(csr5.tile_desc_offset_ptr[1], 0);
-    REQUIRE_EQ(csr5.tile_desc_offset[3], 154 - dim::mat::detail::strip_dirty(csr5.tile_ptr[1]));
+    REQUIRE_EQ(csr5.tile_desc_offset[3], 154 - csr5.tile_ptr[1].idx());
 }
 
 auto vec_equal(__m128i vec, __m128i vec2) noexcept -> bool {

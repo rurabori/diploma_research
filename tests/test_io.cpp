@@ -63,7 +63,7 @@ TEST_CASE("dim::io::csr5_hdf5_roundtrip") {
       .vals = {1., 2., 3., 4., 5.},
       .col_idx = {1, 2, 3, 4, 5},
       .row_ptr = {1, 2, 3, 4, 5},
-      .tile_ptr = {1, 2, 3},
+      .tile_ptr = {{1}, {2}, {3}},
       .tile_desc = {{.columns = {{.y_offset = 0, .scansum_offset = 0, .bit_flag = 0b1000'0100'0010'0001},
                                  {.y_offset = 4, .scansum_offset = 0, .bit_flag = 0b1000'1000'1000'1000},
                                  {.y_offset = 8, .scansum_offset = 0, .bit_flag = 0b1010'1000'1000'1000},

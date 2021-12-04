@@ -20,6 +20,16 @@ struct type_translator_t<csr5_t::tile_descriptor_type>
     static auto on_disk() noexcept -> type_t { return h5::type_t::create_array(underlying_translator_t::on_disk(), 4); }
 };
 
+template<>
+struct type_translator_t<csr5_t::tile_ptr_type>
+{
+    using underlying_t = csr5_t::tile_ptr_type::storage_t;
+    using underlying_translator_t = type_translator_t<underlying_t>;
+
+    static auto in_memory() noexcept -> decltype(auto) { return underlying_translator_t::in_memory(); }
+    static auto on_disk() noexcept -> decltype(auto) { return underlying_translator_t::on_disk(); }
+};
+
 dataset_props_t::operator plist_t() const {
     auto result = plist_t::create(H5P_DATASET_CREATE);
     if (chunk_size)
@@ -116,10 +126,10 @@ auto load_csr5_partial(group_view_t group, csr5_partial_identifier_t part) -> ma
       = mat::dimensions_t{.rows = static_cast<uint32_t>(row_ptr_dataset.get_dataspace().get_dim() - 1),
                           .cols = group.open_attribute("column_count").read<uint32_t>()};
 
-    const auto row_start = mat::detail::strip_dirty(tile_ptr.front());
+    const auto row_start = tile_ptr.front().idx();
     // for last process, we need to load even rows after the last tile to compute the tail sum.
     // +1 because indices are 0 based and the tile_ptr needs to access row_ptr[row_end]
-    const auto row_end = is_last_part ? row_ptr_length : mat::detail::strip_dirty(tile_ptr.back()) + 1;
+    const auto row_end = is_last_part ? row_ptr_length : tile_ptr.back().idx() + 1;
     auto&& row_ptr = group.open_dataset("row_ptr").read_slab<decltype(csr5_t::row_ptr)>(row_start, row_end - row_start);
 
     const auto vals_dataset = group.open_dataset("vals");
