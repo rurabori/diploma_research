@@ -238,6 +238,7 @@ struct tile_ptr_t
     StorageType raw;
 
     auto mark_dirty() noexcept -> void { raw = detail::mark_dirty(raw); }
+    auto relative(StorageType to) const noexcept -> tile_ptr_t { return {raw - to}; }
     [[nodiscard]] auto is_dirty() const noexcept -> bool { return detail::is_dirty(raw); }
     [[nodiscard]] auto idx() const noexcept -> StorageType { return detail::strip_dirty(raw); }
 
@@ -552,44 +553,76 @@ public:
         }
     };
 
-    auto spmv_full_partitions(spmv_data_t spmv_data) const {
+    enum class spmv_strategy
+    {
+        //! @brief adresses output vector directly.
+        absolute,
+        //! @brief adresses output vector relatively to where first tile starts.
+        partial
+    };
+
+    template<spmv_strategy Strategy = spmv_strategy::absolute>
+    [[nodiscard]] auto tile_ptr_accessor() const noexcept {
+        if constexpr (Strategy == spmv_strategy::absolute) {
+            return [this](size_t idx) { return tile_ptr[idx]; };
+        } else {
+            return [tiles = std::span{tile_ptr}, row_offset = tile_ptr.front().idx()](size_t idx) {
+                return tiles[idx].relative(row_offset);
+            };
+        }
+    }
+
+    struct spmv_parallel_data_t
+    {
+        size_t thread_count{static_cast<size_t>(::omp_get_max_threads())};
+        size_t chunk_size{};
+        size_t active_thread_count{};
+
+        [[nodiscard]] auto is_active(size_t tid) const noexcept -> bool { return tid < active_thread_count; }
+        [[nodiscard]] auto calibrator_count() const noexcept -> size_t {
+            return std::min(thread_count, active_thread_count);
+        }
+    };
+
+    [[nodiscard]] auto get_parallel_data() const noexcept -> spmv_parallel_data_t {
         const auto thread_count = static_cast<size_t>(::omp_get_max_threads());
-        const auto chunk
+        const auto chunk_size
           = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(thread_count)));
 
-        const auto num_thread_active
-          = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(chunk)));
+        return {.thread_count = thread_count,
+                .chunk_size = chunk_size,
+                .active_thread_count
+                = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(chunk_size)))};
+    }
 
-        const auto row_offset = tile_ptr.front().idx();
-
+    auto spmv_full_partitions(spmv_data_t spmv_data, const spmv_parallel_data_t& parallel_data, auto&& accessor) const {
 #pragma omp parallel
         {
             const auto tid = static_cast<size_t>(::omp_get_thread_num());
 
-            spmv_thread_data thread_data{.data = spmv_data,
-                                         .tid = tid,
-                                         .start_row_start
-                                         = tid < num_thread_active ? (tile_ptr[tid * chunk].idx() - row_offset) : 0};
+            spmv_thread_data thread_data{
+              .data = spmv_data,
+              .tid = tid,
+              .start_row_start = parallel_data.is_active(tid) ? accessor(tid * parallel_data.chunk_size).idx() : 0};
 
-#pragma omp for schedule(static, chunk)
+#pragma omp for schedule(static, parallel_data.chunk_size)
             for (size_t tile_id = 0; tile_id < tile_count; ++tile_id) {
                 const auto iteration_data = thread_data.get_iter_data(*this, tile_id);
 
-                const auto current_ptr = tile_ptr[tile_id];
-
-                const auto row_stop = tile_ptr[tile_id + 1].idx() - row_offset;
+                const auto current_ptr = accessor(tile_id);
+                const auto row_stop = accessor(tile_id + 1).idx();
 
                 const auto current_descriptor = tile_desc[tile_id];
                 const auto fast_direct = has_rbit_set(current_descriptor.columns[0].bit_flag, 0);
 
                 // the tile only has elements from a single row.
-                if (const auto row_start = current_ptr.raw - row_offset; row_start == row_stop) {
+                if (const auto row_start = current_ptr.raw; row_start == row_stop) {
                     thread_data.store_to_row_start(row_start, iteration_data.partition_fast_track(), fast_direct);
                     continue;
                 }
 
                 const auto empty_rows = current_ptr.is_dirty();
-                const auto row_start = current_ptr.idx() - row_offset;
+                const auto row_start = current_ptr.idx();
 
                 auto y_local = spmv_data.y.subspan(row_start);
 
@@ -609,7 +642,7 @@ public:
 
                 // remember if the first element of the first partition of the current thread is the first element of a
                 // new row
-                const bool first_all_direct = tile_id == tid * chunk && fast_direct;
+                const bool first_all_direct = tile_id == tid * parallel_data.chunk_size && fast_direct;
 
                 // set the 0th bit of the descriptor to 1.
                 // NOLINTNEXTLINE - clang doesn't support bit_cast yet.
@@ -695,28 +728,21 @@ public:
         }
     }
 
-    auto spmv_calibrator(spmv_data_t spmv_data) const noexcept {
+    auto spmv_calibrator(spmv_data_t spmv_data, const spmv_parallel_data_t& parallel_data,
+                         auto&& accessor) const noexcept {
         constexpr auto stride = spmv_thread_data::stride;
 
-        const auto thread_count = static_cast<size_t>(::omp_get_max_threads());
-        const auto chunk
-          = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(thread_count)));
-        const auto num_thread_active
-          = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(chunk)));
-
-        auto num_cali = num_thread_active < thread_count ? num_thread_active : thread_count;
-
-        const auto base = tile_ptr.front().idx();
-
-        for (size_t i = 0; i < num_cali; i++)
-            spmv_data.y[tile_ptr[i * chunk].idx() - base] += spmv_data.calibrator[i * stride];
+        for (size_t i = 0; i < parallel_data.calibrator_count(); i++)
+            spmv_data.y[accessor(i * parallel_data.chunk_size).idx()] += spmv_data.calibrator[i * stride];
     }
 
+    template<spmv_strategy Strategy = spmv_strategy::absolute>
     auto spmv_tail_partition(spmv_data_t spmv_data) const noexcept {
         if (skip_tail)
             return;
 
-        const auto offset = tile_ptr.front().idx();
+        // TODO: abstract this away to a separate method as well.
+        const auto offset = Strategy == spmv_strategy::absolute ? 0 : tile_ptr.front().idx();
 
         const auto first_tail_element = tile_count * tile_size();
 
@@ -740,14 +766,19 @@ public:
         }
     }
 
+    template<spmv_strategy Strategy = spmv_strategy::absolute>
     auto spmv(spmv_data_t spmv_data) const {
-        spmv_full_partitions(spmv_data);
-        spmv_calibrator(spmv_data);
-        spmv_tail_partition(spmv_data);
+        const auto parallel_data = get_parallel_data();
+        const auto accessor = tile_ptr_accessor<Strategy>();
+
+        spmv_full_partitions(spmv_data, parallel_data, accessor);
+        spmv_calibrator(spmv_data, parallel_data, accessor);
+        spmv_tail_partition<Strategy>(spmv_data);
     }
 
+    template<spmv_strategy Strategy = spmv_strategy::absolute>
     auto spmv(dim::span<const ValueType> x, dim::span<ValueType> y, dim::span<ValueType> calibrator) const {
-        spmv(spmv_data_t{.x = x, .y = y, .calibrator = calibrator});
+        spmv<Strategy>(spmv_data_t{.x = x, .y = y, .calibrator = calibrator});
     }
 
     auto allocate_calibrator() const noexcept -> StorageContainer<ValueType> {
@@ -756,9 +787,10 @@ public:
                                            ValueType{});
     }
 
+    template<spmv_strategy Strategy = spmv_strategy::absolute>
     auto spmv(dim::span<const ValueType> x, dim::span<ValueType> y) const {
         auto calibrator = allocate_calibrator();
-        return spmv(x, y, calibrator);
+        return spmv<Strategy>(x, y, calibrator);
     }
 };
 
