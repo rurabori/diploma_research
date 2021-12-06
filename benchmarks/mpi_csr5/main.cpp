@@ -1,4 +1,5 @@
 #include <dim/io/h5.h>
+#include <dim/io/h5/plist.h>
 #include <dim/mpi/mpi.h>
 #include <dim/simple_main.h>
 
@@ -91,8 +92,15 @@ auto main_impl(const arguments_t& args) {
     h5_try ::H5Pset_fapl_mpio(access.get_id(), MPI_COMM_WORLD, MPI_INFO_NULL);
 
     auto out_file = h5::file_t::create(args.output_file, H5F_ACC_TRUNC, h5::plist_t::defaulted(), access);
-    auto dataset = out_file.create_dataset(*args.output_dataset, H5T_IEEE_F64LE,
-                                           h5::dataspace_t::create(hsize_t{csr5.dimensions.rows}));
+    auto data_creation_props = h5::plist_t::create(H5P_DATASET_CREATE);
+
+    const auto fill = double{0.};
+    h5_try ::H5Pset_fill_value(data_creation_props.get_id(), H5T_NATIVE_DOUBLE, &fill);
+    h5_try ::H5Pset_fill_time(data_creation_props.get_id(), H5D_FILL_TIME_IFSET);
+
+    auto dataset
+      = out_file.create_dataset(*args.output_dataset, H5T_IEEE_F64LE,
+                                h5::dataspace_t::create(hsize_t{csr5.dimensions.rows}), h5::plist_t::defaulted());
 
     const auto is_main_node = rank == 0;
 
