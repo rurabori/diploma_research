@@ -50,6 +50,8 @@ auto main_impl(const arguments_t& args) {
     const auto csr5 = read_matrix(args.input_file, *args.input_group);
     spdlog::info("loading matrix took {}s", sw);
 
+    using csr5_t = decltype(csr5);
+
     const auto first_tile_row = csr5.tile_ptr.front().idx();
     const auto last_tile_row = csr5.tile_ptr.back().idx();
     const auto global_last_row = csr5.skip_tail ? last_tile_row : (csr5.dimensions.rows - 1);
@@ -64,7 +66,7 @@ auto main_impl(const arguments_t& args) {
     const auto size = mpi_size();
 
     sw.reset();
-    csr5.spmv({.x = x, .y = y, .calibrator = calibrator});
+    csr5.spmv<csr5_t::spmv_strategy::partial>({.x = x, .y = y, .calibrator = calibrator});
     spdlog::info("spmv took {}s", sw);
 
     auto&& first_node_row = y.front();
