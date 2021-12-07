@@ -13,6 +13,9 @@
 #include "dim/io/h5/file.h"
 #include <dim/simple_main.h>
 
+#include <fmt/chrono.h>
+#include <fmt/ranges.h>
+
 #include "version.h"
 
 namespace h5 = dim::io::h5;
@@ -56,10 +59,17 @@ int main_impl(const arguments_t& arguments) {
 
     auto x = cache_aligned_vector<double>(dimensions.cols, 1.);
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
+    auto calibrator = matrix.allocate_calibrator();
 
-    sw.reset();
-    matrix.spmv(dim::span{x}, dim::span{Y});
-    spdlog::info("CSR5 SpMV took {}s", sw);
+    auto run_times = std::vector<decltype(sw.elapsed())>(*arguments.num_runs);
+
+    for (auto& run : run_times) {
+        sw.reset();
+        matrix.spmv({.x = x, .y = Y, .calibrator = calibrator});
+        run = sw.elapsed();
+    }
+
+    spdlog::info("CSR5 SpMV took {}", run_times);
 
     if (arguments.output_file)
         output_result(arguments, Y);
