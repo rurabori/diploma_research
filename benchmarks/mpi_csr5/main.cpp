@@ -3,6 +3,9 @@
 #include <dim/mpi/mpi.h>
 #include <dim/simple_main.h>
 
+#include <fmt/chrono.h>
+#include <fmt/ranges.h>
+
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/stopwatch.h>
 
@@ -18,10 +21,11 @@ struct arguments_t
 {
     fs::path input_file;
     fs::path output_file;
+    std::optional<size_t> num_runs{1};
     std::optional<std::string> input_group{"A"};
     std::optional<std::string> output_dataset{"Y"};
 };
-STRUCTOPT(arguments_t, input_file, output_file, input_group, output_dataset);
+STRUCTOPT(arguments_t, input_file, output_file, num_runs, input_group, output_dataset);
 
 template<const auto& Fun, typename Ty>
 auto mpi_query_com(MPI_Comm comm) {
@@ -65,9 +69,15 @@ auto main_impl(const arguments_t& args) {
     const auto rank = mpi_rank();
     const auto size = mpi_size();
 
+    auto run_times = std::vector<decltype(sw.elapsed())>(*args.num_runs);
+
     sw.reset();
-    csr5.spmv<csr5_t::spmv_strategy::partial>({.x = x, .y = y, .calibrator = calibrator});
-    spdlog::info("spmv took {}s", sw);
+    for (auto&& run : run_times) {
+        sw.reset();
+        csr5.spmv<csr5_t::spmv_strategy::partial>({.x = x, .y = y, .calibrator = calibrator});
+        run = sw.elapsed();
+    }
+    spdlog::info("spmv took {}", run_times);
 
     auto&& first_node_row = y.front();
     auto&& last_node_row = y.back();
