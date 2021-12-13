@@ -34,27 +34,27 @@ TEST_CASE("Test conversion from CSR") {
     REQUIRE_FALSE(std::equal(csr5.vals.begin(), csr5.vals.end(), csr.values.begin()));
 
     // we only have 2 full tiles.
-    REQUIRE_EQ(csr5.tile_count, 2);
+    REQUIRE_EQ(csr5.csr5_info.tile_count, 2);
     REQUIRE_EQ(csr5.tail_partition_start(), 154);
 
-    REQUIRE_EQ(csr5.tile_desc[0],
+    REQUIRE_EQ(csr5.csr5_info.tile_desc[0],
                tile_desc_t{.columns = {{.y_offset = 0, .scansum_offset = 0, .bit_flag = 0b1000'0100'0010'0001},
                                        {.y_offset = 4, .scansum_offset = 0, .bit_flag = 0b1000'1000'1000'1000},
                                        {.y_offset = 8, .scansum_offset = 0, .bit_flag = 0b1010'1000'1000'1000},
                                        {.y_offset = 13, .scansum_offset = 0, .bit_flag = 0b1010'1010'1010'1010}}});
 
-    REQUIRE_EQ(csr5.tile_desc[1],
+    REQUIRE_EQ(csr5.csr5_info.tile_desc[1],
                tile_desc_t{.columns = {{.y_offset = 0, .scansum_offset = 3, .bit_flag = 0b0000'0000'0000'1110},
                                        {.y_offset = 4, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000},
                                        {.y_offset = 4, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000},
                                        {.y_offset = 4, .scansum_offset = 0, .bit_flag = 0b0000'0000'0000'0000}}});
 
     // check that we are outputting to the correct row from tiles with empty columns.
-    REQUIRE_EQ(csr5.tile_desc_offset_ptr.size(), csr5.tile_count + 1);
-    REQUIRE_EQ(csr5.tile_desc_offset.size(), csr5.tile_desc[1].columns[3].y_offset + 1);
-    REQUIRE_NE(csr5.tile_ptr[1].idx(), 0);
-    REQUIRE_EQ(csr5.tile_desc_offset_ptr[1], 0);
-    REQUIRE_EQ(csr5.tile_desc_offset[3], 154 - csr5.tile_ptr[1].idx());
+    REQUIRE_EQ(csr5.csr5_info.tile_desc_offset_ptr.size(), csr5.csr5_info.tile_count + 1);
+    REQUIRE_EQ(csr5.csr5_info.tile_desc_offset.size(), csr5.csr5_info.tile_desc[1].columns[3].y_offset + 1);
+    REQUIRE_NE(csr5.csr5_info.tile_ptr[1].idx(), 0);
+    REQUIRE_EQ(csr5.csr5_info.tile_desc_offset_ptr[1], 0);
+    REQUIRE_EQ(csr5.csr5_info.tile_desc_offset[3], 154 - csr5.csr5_info.tile_ptr[1].idx());
 }
 
 auto vec_equal(__m128i vec, __m128i vec2) noexcept -> bool {
