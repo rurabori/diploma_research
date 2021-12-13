@@ -22,6 +22,7 @@
 
 #include <emmintrin.h>
 #include <immintrin.h>
+#include <stdexcept>
 #include <xmmintrin.h>
 
 namespace dim::mat {
@@ -36,7 +37,7 @@ struct tile_column_descriptor_t
     storage_t scansum_offset : def_t::scansum_offset = 0;
     storage_t bit_flag : def_t::bit_flag = 0;
 
-    [[nodiscard]] constexpr auto num_bits_set(bool is_first) const noexcept -> size_t {
+    [[nodiscard]] constexpr auto num_bits_set(bool is_first = false) const noexcept -> size_t {
         return static_cast<size_t>(std::popcount(bit_flag | static_cast<storage_t>(is_first)));
     }
 
@@ -143,6 +144,8 @@ struct tile_descriptor_t
     [[nodiscard]] auto operator==(const tile_descriptor_t& other) const noexcept {
         return std::equal(std::begin(columns), std::end(columns), std::begin(other.columns));
     }
+
+    [[nodiscard]] auto is_uncapped() const noexcept -> bool { return !has_rbit_set(columns[0].bit_flag, 0); }
 };
 
 namespace detail {
@@ -261,112 +264,182 @@ struct csr5
     using tile_col_storage = typename tile_descriptor_type::tile_column_descriptor::storage_t;
     using tile_ptr_type = tile_ptr_t<UnsignedType>;
 
+    struct csr5_info_t
+    {
+        size_t tile_count{};
+        StorageContainer<tile_ptr_type> tile_ptr;
+        StorageContainer<tile_descriptor_type> tile_desc;
+        StorageContainer<UnsignedType> tile_desc_offset_ptr;
+        StorageContainer<UnsignedType> tile_desc_offset;
+
+        auto iterate_tiles(std::invocable<size_t, size_t, size_t> auto&& callable) const {
+            detail::iterate_tiles(tile_ptr, callable);
+        }
+
+        [[nodiscard]] auto empty_offset_for(size_t tile_id) const noexcept -> UnsignedType {
+            return tile_desc_offset_ptr[tile_id] - tile_desc_offset_ptr.front();
+        }
+
+        [[nodiscard]] auto first_row_idx() const noexcept -> UnsignedType { return tile_ptr.front().idx(); }
+        [[nodiscard]] auto last_row_idx() const noexcept -> UnsignedType {
+            assert(tile_count);
+
+            const auto tile_id = tile_count - 1;
+            const auto ptr = tile_ptr[tile_id];
+
+            const auto last_col = tile_desc[tile_id].columns[Omega - 1];
+
+            // y_idx is always > 0 (bit_flag[0, 0] is always 1 implicitly) + we add number of sections started - 1
+            // because y_index is telling us index of next section that would start after it.
+            const auto relative_offset = last_col.y_offset + last_col.num_bits_set() - 1;
+
+            if (!ptr.is_dirty())
+                return ptr.idx() + static_cast<UnsignedType>(relative_offset);
+
+            return ptr.idx() + tile_desc_offset[empty_offset_for(tile_id) + relative_offset];
+        }
+
+    private:
+        auto set_bit_flag(std::span<const UnsignedType> row_ptr_) -> void {
+            iterate_tiles([&](auto tile_id, auto row_start, auto row_stop) {
+                auto&& current_tile_desc = tile_desc[tile_id];
+
+                for (auto rid = row_start; rid <= row_stop; rid++) {
+                    const auto idx = static_cast<size_t>(row_ptr_[rid]);
+
+                    // if we aren't in the correct tile yet, skip.
+                    if (tile_id != idx / (omega * sigma))
+                        continue;
+
+                    const auto tile_row = idx % sigma;
+                    const auto tile_col = (idx / sigma) % omega;
+
+                    current_tile_desc.columns[tile_col].bit_flag |= dim::set_rbit<tile_col_storage>(tile_row);
+                }
+            });
+        }
+
+        auto set_tile_descriptor_y_and_segsum_offsets() -> void {
+            iterate_tiles([&](auto tile_id, auto row_start, auto row_stop) {
+                // skip tiles which have all elements in the same row (they are fast tracked).
+                if (row_start == row_stop)
+                    return;
+
+                const auto num_set = static_cast<UnsignedType>(tile_desc[tile_id].set_scansum_and_y_offsets());
+
+                const auto has_empty_rows = tile_ptr[tile_id].is_dirty();
+                if (has_empty_rows) {
+                    // y_idx for some columns of the tile may be 1 bigger than number of segments it contains, may be
+                    // avoided by rearchitecturing the code a bit.
+                    const auto needed_offsets = num_set + 1;
+                    // total number of empty segments for this partition.
+                    tile_desc_offset_ptr[tile_id] = needed_offsets;
+                    // total number of empty segments for all partitions.
+                    tile_desc_offset_ptr.back() += needed_offsets;
+                }
+            });
+        }
+
+        auto generate_tile_offset(std::span<const UnsignedType> row_ptr_) -> void {
+            std::exclusive_scan(tile_desc_offset_ptr.begin(), tile_desc_offset_ptr.end(), tile_desc_offset_ptr.begin(),
+                                0);
+            tile_desc_offset.resize(tile_desc_offset_ptr.back());
+
+            iterate_tiles([&](const auto tile_id, const auto row_start, const auto row_stop) {
+                // no empty segments in this tile.
+                if (!tile_ptr[tile_id].is_dirty())
+                    return;
+
+                const auto offset_ptr = tile_desc_offset_ptr[tile_id];
+                auto current_descriptor = tile_desc[tile_id];
+                current_descriptor.columns[0].bit_flag |= 1;
+
+                // this is inclusive.
+                const auto rows = row_ptr_.subspan(row_start, row_stop - row_start + 1);
+                current_descriptor.iterate_columns([&](size_t col, auto desc) {
+                    auto y_offset = desc.y_offset;
+                    const auto col_idx_base = tile_id * omega * sigma + col * sigma;
+
+                    for (size_t row = 0; row < sigma; ++row) {
+                        if (!has_rbit_set(desc.bit_flag, row))
+                            continue;
+
+                        // look for this index in the row table.
+                        const auto global_idx = col_idx_base + row;
+
+                        tile_desc_offset[offset_ptr + y_offset]
+                          = static_cast<UnsignedType>(detail::upper_bound_idx(rows, global_idx));
+
+                        ++y_offset;
+                    }
+                });
+            });
+        }
+
+        auto generate_tile_descriptor(std::span<const UnsignedType> row_ptr_) -> void {
+            tile_desc.resize(tile_count);
+            tile_desc_offset_ptr.resize(tile_ptr.size());
+
+            set_bit_flag(row_ptr_);
+            set_tile_descriptor_y_and_segsum_offsets();
+
+            // we have some empty segments.
+            if (tile_desc_offset_ptr.back())
+                generate_tile_offset(row_ptr_);
+        }
+
+        auto generate_tile_pointer(const size_t nnz, std::span<const UnsignedType> row_ptr_) {
+            tile_ptr.resize(tile_count + 1);
+
+#pragma omp parallel for
+            for (size_t tile_id = 0; tile_id < tile_ptr.size(); tile_id++) {
+                // compute partition boundaries by partition of size sigma * omega,
+                // clamp to [0, nnz]
+                const auto boundary = static_cast<SignedType>(std::min(tile_id * sigma * omega, nnz));
+
+                tile_ptr[tile_id] = {static_cast<UnsignedType>(detail::upper_bound_idx(row_ptr_, boundary))};
+            }
+
+            iterate_tiles([&](auto tile_id, auto start, auto stop) {
+                if (start == stop)
+                    return;
+
+                // +1 because it needs to be inclusive.
+                if (detail::is_dirty(row_ptr_.subspan(start, stop - start + 1)))
+                    tile_ptr[tile_id].mark_dirty();
+            });
+        }
+
+    public:
+        static auto from_csr(const csr<ValueType, StorageContainer>& csr) -> csr5_info_t {
+            const auto tile_size = sigma * omega;
+            const auto num_non_zero = csr.values.size();
+
+            const auto tile_count
+              = static_cast<size_t>(std::floor(static_cast<double>(num_non_zero) / static_cast<double>(tile_size)));
+
+            csr5_info_t result{.tile_count = tile_count};
+            result.generate_tile_pointer(csr.values.size(), csr.row_start_offsets);
+            result.generate_tile_descriptor(csr.row_start_offsets);
+
+            return result;
+        }
+    };
+
     // same as CSR
     dimensions_t dimensions;
     StorageContainer<ValueType> vals;
     StorageContainer<UnsignedType> col_idx;
     StorageContainer<UnsignedType> row_ptr;
 
-    size_t tile_count{};
-    StorageContainer<tile_ptr_type> tile_ptr;
-    StorageContainer<tile_descriptor_type> tile_desc;
-    StorageContainer<UnsignedType> tile_desc_offset_ptr;
-    StorageContainer<UnsignedType> tile_desc_offset;
+    csr5_info_t csr5_info;
 
     // TODO: these are irrelevant for the matrix itself, needed only for SPmV, make them arguments.
     size_t val_offset{0};
     bool skip_tail{false};
 
 private:
-    auto iterate_tiles(std::invocable<size_t, size_t, size_t> auto&& callable) const {
-        detail::iterate_tiles(tile_ptr, callable);
-    }
-
-    auto set_bit_flag() -> void {
-        iterate_tiles([&](auto tile_id, auto row_start, auto row_stop) {
-            auto&& current_tile_desc = tile_desc[tile_id];
-
-            for (auto rid = row_start; rid <= row_stop; rid++) {
-                const auto idx = static_cast<size_t>(row_ptr[rid]);
-
-                // if we aren't in the correct tile yet, skip.
-                if (tile_id != idx / (omega * sigma))
-                    continue;
-
-                const auto tile_row = idx % sigma;
-                const auto tile_col = (idx / sigma) % omega;
-
-                current_tile_desc.columns[tile_col].bit_flag |= dim::set_rbit<tile_col_storage>(tile_row);
-            }
-        });
-    }
-
-    auto set_tile_descriptor_y_and_segsum_offsets() -> void {
-        iterate_tiles([&](auto tile_id, auto row_start, auto row_stop) {
-            // skip tiles which have all elements in the same row (they are fast tracked).
-            if (row_start == row_stop)
-                return;
-
-            const auto num_set = static_cast<UnsignedType>(tile_desc[tile_id].set_scansum_and_y_offsets());
-
-            const auto has_empty_rows = tile_ptr[tile_id].is_dirty();
-            if (has_empty_rows) {
-                // y_idx for some columns of the tile may be 1 bigger than number of segments it contains, may be
-                // avoided by rearchitecturing the code a bit.
-                const auto needed_offsets = num_set + 1;
-                // total number of empty segments for this partition.
-                tile_desc_offset_ptr[tile_id] = needed_offsets;
-                // total number of empty segments for all partitions.
-                tile_desc_offset_ptr.back() += needed_offsets;
-            }
-        });
-    }
-
-    auto generate_tile_offset() -> void {
-        std::exclusive_scan(tile_desc_offset_ptr.begin(), tile_desc_offset_ptr.end(), tile_desc_offset_ptr.begin(), 0);
-        tile_desc_offset.resize(tile_desc_offset_ptr.back());
-        iterate_tiles([&](const auto tile_id, const auto row_start, const auto row_stop) {
-            // no empty segments in this tile.
-            if (!tile_ptr[tile_id].is_dirty())
-                return;
-
-            const auto offset_ptr = tile_desc_offset_ptr[tile_id];
-            auto current_descriptor = tile_desc[tile_id];
-            current_descriptor.columns[0].bit_flag |= 1;
-
-            // this is inclusive.
-            const auto rows = dim::span{row_ptr}.subspan(row_start, row_stop - row_start + 1);
-            current_descriptor.iterate_columns([&](size_t col, auto desc) {
-                auto y_offset = desc.y_offset;
-                const auto col_idx_base = tile_id * omega * sigma + col * sigma;
-
-                for (size_t row = 0; row < sigma; ++row) {
-                    if (!has_rbit_set(desc.bit_flag, row))
-                        continue;
-
-                    // look for this index in the row table.
-                    const auto global_idx = col_idx_base + row;
-
-                    tile_desc_offset[offset_ptr + y_offset]
-                      = static_cast<UnsignedType>(detail::upper_bound_idx(rows, global_idx));
-
-                    ++y_offset;
-                }
-            });
-        });
-    }
-
-    auto generate_tile_descriptor() -> void {
-        tile_desc.resize(tile_count);
-        tile_desc_offset_ptr.resize(tile_ptr.size());
-
-        set_bit_flag();
-        set_tile_descriptor_y_and_segsum_offsets();
-
-        // we have some empty segments.
-        if (tile_desc_offset_ptr.back())
-            generate_tile_offset();
-    }
+    auto iterate_tiles(auto&&... args) const { csr5_info.iterate_tiles(std::forward<decltype(args)>(args)...); }
 
     auto transpose(std::ranges::random_access_range auto& to_transpose) -> void {
         using value_t = std::ranges::range_value_t<decltype(to_transpose)>;
@@ -400,56 +473,25 @@ private:
         transpose(col_idx);
     }
 
-    auto generate_tile_pointer() {
-        tile_ptr.resize(tile_count + 1);
-
-        const auto nnz = vals.size();
-
-#pragma omp parallel for
-        for (size_t tile_id = 0; tile_id < tile_ptr.size(); tile_id++) {
-            // compute partition boundaries by partition of size sigma * omega,
-            // clamp to [0, nnz]
-            const auto boundary = static_cast<SignedType>(std::min(tile_id * sigma * omega, nnz));
-
-            tile_ptr[tile_id] = {static_cast<UnsignedType>(detail::upper_bound_idx(row_ptr, boundary))};
-        }
-
-        const auto row_idx = dim::span<const UnsignedType>{row_ptr};
-        iterate_tiles([&](auto tile_id, auto start, auto stop) {
-            if (start == stop)
-                return;
-
-            // +1 because it needs to be inclusive.
-            if (detail::is_dirty(row_idx.subspan(start, stop - start + 1)))
-                tile_ptr[tile_id].mark_dirty();
-        });
-    }
-
 public:
     static auto from_csr(csr<ValueType, StorageContainer> csr) -> csr5 {
-        const auto tile_size = sigma * omega;
-        const auto num_non_zero = csr.values.size();
-
-        const auto tile_count
-          = static_cast<size_t>(std::floor(static_cast<double>(num_non_zero) / static_cast<double>(tile_size)));
+        auto&& info = csr5_info_t::from_csr(csr);
 
         csr5 val{.dimensions = csr.dimensions,
                  .vals = std::move(csr.values),
                  .col_idx = std::move(csr.col_indices),
                  .row_ptr = std::move(csr.row_start_offsets),
-                 .tile_count = tile_count};
+                 .csr5_info = std::move(info)};
 
-        val.generate_tile_pointer();
-        val.generate_tile_descriptor();
         val.transpose();
 
         return val;
     }
 
-    [[nodiscard]] auto tail_partition_start() const noexcept -> UnsignedType { return tile_ptr.back().idx(); }
+    [[nodiscard]] auto tail_partition_start() const noexcept -> UnsignedType { return csr5_info.tile_ptr.back().idx(); }
 
-    auto load_x(dim::span<const ValueType> x, dim::span<const UnsignedType> column_index_partition,
-                size_t offset) const noexcept {
+    static auto load_x(dim::span<const ValueType> x, dim::span<const UnsignedType> column_index_partition,
+                       size_t offset) noexcept {
         return _mm256_set_pd(x[column_index_partition[offset + 3]], x[column_index_partition[offset + 2]],
                              x[column_index_partition[offset + 1]], x[column_index_partition[offset]]);
     }
@@ -564,9 +606,9 @@ public:
     template<spmv_strategy Strategy = spmv_strategy::absolute>
     [[nodiscard]] auto tile_ptr_accessor() const noexcept {
         if constexpr (Strategy == spmv_strategy::absolute) {
-            return [this](size_t idx) { return tile_ptr[idx]; };
+            return [this](size_t idx) { return csr5_info.tile_ptr[idx]; };
         } else {
-            return [tiles = std::span{tile_ptr}, row_offset = tile_ptr.front().idx()](size_t idx) {
+            return [tiles = std::span{csr5_info.tile_ptr}, row_offset = csr5_info.tile_ptr.front().idx()](size_t idx) {
                 return tiles[idx].relative(row_offset);
             };
         }
@@ -586,13 +628,13 @@ public:
 
     [[nodiscard]] auto get_parallel_data() const noexcept -> spmv_parallel_data_t {
         const auto thread_count = static_cast<size_t>(::omp_get_max_threads());
-        const auto chunk_size
-          = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(thread_count)));
+        const auto chunk_size = static_cast<size_t>(
+          std::ceil(static_cast<double>(csr5_info.tile_count) / static_cast<double>(thread_count)));
 
         return {.thread_count = thread_count,
                 .chunk_size = chunk_size,
-                .active_thread_count
-                = static_cast<size_t>(std::ceil(static_cast<double>(tile_count) / static_cast<double>(chunk_size)))};
+                .active_thread_count = static_cast<size_t>(
+                  std::ceil(static_cast<double>(csr5_info.tile_count) / static_cast<double>(chunk_size)))};
     }
 
     auto spmv_full_partitions(spmv_data_t spmv_data, const spmv_parallel_data_t& parallel_data, auto&& accessor) const {
@@ -606,13 +648,13 @@ public:
               .start_row_start = parallel_data.is_active(tid) ? accessor(tid * parallel_data.chunk_size).idx() : 0};
 
 #pragma omp for schedule(static, parallel_data.chunk_size)
-            for (size_t tile_id = 0; tile_id < tile_count; ++tile_id) {
+            for (size_t tile_id = 0; tile_id < csr5_info.tile_count; ++tile_id) {
                 const auto iteration_data = thread_data.get_iter_data(*this, tile_id);
 
                 const auto current_ptr = accessor(tile_id);
                 const auto row_stop = accessor(tile_id + 1).idx();
 
-                const auto current_descriptor = tile_desc[tile_id];
+                const auto current_descriptor = csr5_info.tile_desc[tile_id];
                 const auto fast_direct = has_rbit_set(current_descriptor.columns[0].bit_flag, 0);
 
                 // the tile only has elements from a single row.
@@ -626,11 +668,10 @@ public:
 
                 auto y_local = spmv_data.y.subspan(row_start);
 
-                const auto offset_pointer
-                  = empty_rows ? tile_desc_offset_ptr[tile_id] - tile_desc_offset_ptr.front() : 0;
+                const auto offset_pointer = empty_rows ? csr5_info.empty_offset_for(tile_id) : 0;
                 const auto compute_y_idx = [&, empty_rows, offset_pointer](auto&& offset) {
                     return empty_rows ? _mm_i32gather_epi32(
-                             reinterpret_cast<const int*>(&tile_desc_offset[offset_pointer]), offset, 4)
+                             reinterpret_cast<const int*>(&csr5_info.tile_desc_offset[offset_pointer]), offset, 4)
                                       : offset;
                 };
 
@@ -742,9 +783,9 @@ public:
             return;
 
         // TODO: abstract this away to a separate method as well.
-        const auto offset = Strategy == spmv_strategy::absolute ? 0 : tile_ptr.front().idx();
+        const auto offset = Strategy == spmv_strategy::absolute ? 0 : csr5_info.tile_ptr.front().idx();
 
-        const auto first_tail_element = tile_count * tile_size();
+        const auto first_tail_element = csr5_info.tile_count * tile_size();
 
         const auto tail_start = tail_partition_start() - offset;
         const auto tail_stop = dimensions.rows - offset;
@@ -768,6 +809,9 @@ public:
 
     template<spmv_strategy Strategy = spmv_strategy::absolute>
     auto spmv(spmv_data_t spmv_data) const {
+        if (spmv_data.x.size() != dimensions.cols)
+            throw std::invalid_argument{"can't multiply, vector size doesn't match column count of the matrix"};
+
         const auto parallel_data = get_parallel_data();
         const auto accessor = tile_ptr_accessor<Strategy>();
 
@@ -792,6 +836,14 @@ public:
         auto calibrator = allocate_calibrator();
         return spmv<Strategy>(x, y, calibrator);
     }
+
+    [[nodiscard]] auto first_tile_uncapped() const noexcept -> bool {
+        return csr5_info.tile_desc.front().is_uncapped();
+    }
+
+    [[nodiscard]] auto first_row_idx() const noexcept { return csr5_info.first_row_idx(); }
+
+    [[nodiscard]] auto last_row_idx() const noexcept { return csr5_info.last_row_idx(); }
 };
 
 } // namespace dim::mat
