@@ -27,26 +27,13 @@ struct arguments_t
 };
 STRUCTOPT(arguments_t, input_file, output_file, num_runs, input_group, output_dataset);
 
-template<const auto& Fun, typename Ty>
-auto mpi_query_com(MPI_Comm comm) {
-    Ty result;
-    if (const auto status = Fun(comm, &result); status != MPI_SUCCESS)
-        throw std::runtime_error{fmt::format("MPI failed with status code: {}", status)};
-
-    return result;
-}
-
-auto mpi_rank() { return static_cast<size_t>(mpi_query_com<::MPI_Comm_rank, int>(MPI_COMM_WORLD)); }
-
-auto mpi_size() { return static_cast<size_t>(mpi_query_com<::MPI_Comm_size, int>(MPI_COMM_WORLD)); }
-
 auto read_matrix(const fs::path& path, const std::string& name) {
     auto access = h5::plist_t::create(H5P_FILE_ACCESS);
     h5_try ::H5Pset_fapl_mpio(access.get_id(), MPI_COMM_WORLD, MPI_INFO_NULL);
 
     auto in = h5::file_t::open(path, H5F_ACC_RDONLY, access);
 
-    return h5::load_csr5_partial(in.open_group(name), {.idx = mpi_rank(), .total_count = mpi_size()});
+    return h5::load_csr5_partial(in.open_group(name), {.idx = dim::mpi::rank(), .total_count = dim::mpi::size()});
 }
 
 auto main_impl(const arguments_t& args) {
@@ -56,9 +43,8 @@ auto main_impl(const arguments_t& args) {
 
     using csr5_t = decltype(csr5);
 
-    const auto first_tile_row = csr5.tile_ptr.front().idx();
-    const auto last_tile_row = csr5.tile_ptr.back().idx();
-    const auto global_last_row = csr5.skip_tail ? last_tile_row : (csr5.dimensions.rows - 1);
+    const auto first_tile_row = csr5.first_row_idx();
+    const auto global_last_row = csr5.last_row_idx();
     // the range is closed from both sides hence the +1. f.x. [0,0] has 1 element etc.
     const auto this_node_elements = global_last_row - first_tile_row + 1;
 
@@ -66,8 +52,8 @@ auto main_impl(const arguments_t& args) {
     std::vector<double> y(this_node_elements, 0.);
     auto calibrator = csr5.allocate_calibrator();
 
-    const auto rank = mpi_rank();
-    const auto size = mpi_size();
+    const auto rank = dim::mpi::rank();
+    const auto size = dim::mpi::size();
 
     auto run_times = std::vector<decltype(sw.elapsed())>(*args.num_runs);
 
@@ -140,7 +126,7 @@ auto main_impl(const arguments_t& args) {
 int main(int argc, char* argv[]) try {
     auto app = structopt ::app(brr ::app_info.full_name, brr ::app_info.version);
     dim::mpi::ctx mpi_ctx{argc, argv};
-    spdlog::set_default_logger(spdlog::stdout_color_mt(fmt::format("mpi_csr5 (n{:02})", mpi_rank())));
+    spdlog::set_default_logger(spdlog::stdout_color_mt(fmt::format("mpi_csr5 (n{:02})", dim::mpi::rank())));
 
     return main_impl(app.parse<arguments_t>(argc, argv));
 } catch (const structopt ::exception& e) {
