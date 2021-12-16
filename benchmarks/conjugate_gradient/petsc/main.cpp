@@ -1,12 +1,13 @@
 #include <dim/mpi/mpi.h>
 
+#include <mpi.h>
 #include <petsc.h>
 #include <petscerror.h>
 #include <petscmat.h>
 #include <petscoptions.h>
 #include <petscsys.h>
+#include <petscsystypes.h>
 #include <petscviewer.h>
-#include <petscviewerhdf5.h>
 
 #include <fmt/core.h>
 
@@ -19,6 +20,8 @@
 #include <iostream>
 #include <memory>
 #include <system_error>
+
+#include <dim/io/h5.h>
 
 #include "arguments.h"
 #include "petsc_error.h"
@@ -39,15 +42,20 @@ auto is_help_set() -> bool {
 }
 
 auto petsc_main(const arguments& args) -> void {
-    using viewer_t = guard<PetscViewer, PetscViewerHDF5Open, PetscViewerDestroy>;
-    using mat_t = guard<Mat, MatCreate, MatDestroy>;
+    using viewer_t = guard<PetscViewer, PetscViewerBinaryOpen, PetscViewerDestroy>;
+    using mat_t = guard<Mat, MatCreateMPIAIJWithArrays, MatDestroy>;
     using vec_t = guard<Vec, VecCreate, VecDestroy>;
 
-    mat_t A{PETSC_COMM_WORLD};
-    petsc_try PetscObjectSetName(A, std::data(args.matrix_name));
+    auto csr = dim::io::h5::read_matlab_compatible(args.input_matrix.data(), args.matrix_name.data());
 
-    viewer_t in{PETSC_COMM_WORLD, std::data(args.input_matrix), FILE_MODE_READ};
-    petsc_try MatLoad(A, in);
+    auto A = mat_t{MPI_COMM_WORLD,
+                   csr.dimensions.rows,
+                   csr.dimensions.cols,
+                   csr.dimensions.rows,
+                   csr.dimensions.cols,
+                   reinterpret_cast<PetscInt*>(csr.row_start_offsets.data()),
+                   reinterpret_cast<PetscInt*>(csr.col_indices.data()),
+                   csr.values.data()};
 
     auto X = vec_t::uninitialized();
     auto Y = vec_t::uninitialized();
