@@ -1,13 +1,15 @@
-#include <fmt/core.h>
+#include <dim/mpi/mpi.h>
 
 #include <petsc.h>
 #include <petscerror.h>
 #include <petscmat.h>
 #include <petscoptions.h>
 #include <petscsys.h>
+#include <petscviewer.h>
 #include <petscviewerhdf5.h>
 
-#include <petscviewer.h>
+#include <fmt/core.h>
+
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
@@ -18,22 +20,15 @@
 #include <memory>
 #include <system_error>
 
-#include "version.h"
-
 #include "arguments.h"
 #include "petsc_error.h"
 #include "petsc_guard.h"
+#include "version.h"
 
-static constexpr const char* help = "Petsc baseline benchmark" petsc_baseline_VER "\n";
-
-int get_rank() {
-    int rank{};
-    ::MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-    return rank;
-}
+static constexpr const char* help = "Petsc baseline benchmark\n";
 
 auto create_logger_name(const std::filesystem::path& base_dir) -> std::string {
-    return base_dir / fmt::format("petsc_{:03d}.log", get_rank());
+    return base_dir / fmt::format("petsc_{:03d}.log", dim::mpi::rank());
 }
 
 auto is_help_set() -> bool {
@@ -75,7 +70,7 @@ int main(int argc, char* argv[]) try {
     args.create();
 
     spdlog::set_default_logger(
-      spdlog::basic_logger_mt(petsc_baseline_FULL_NAME, create_logger_name(std::data(args.log_directory))));
+      spdlog::basic_logger_mt(brr::app_info.full_name, create_logger_name(std::data(args.log_directory))));
 
     if (is_help_set())
         return 0;
