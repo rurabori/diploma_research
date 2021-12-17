@@ -7,6 +7,7 @@
 #include <numeric>
 #include <vector>
 
+#include <dim/mat/storage_formats/base.h>
 #include <dim/mat/storage_formats/coo.h>
 #include <dim/memory/aligned_allocator.h>
 
@@ -62,6 +63,17 @@ struct csr
 
         return retval;
     }
+};
+
+template<typename CsrType = csr<double>>
+struct csr_partial_t
+{
+    //! @brief dimensions of the full matrix this one is a chunk off.
+    dimensions_t global_dimensions{};
+    //! @brief index of first row which is contained in this chunk.
+    size_t first_row{};
+    //! @brief chunk of full matrix.
+    CsrType matrix_chunk;
 };
 
 } // namespace dim::mat

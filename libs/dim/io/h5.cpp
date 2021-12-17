@@ -1,3 +1,4 @@
+#include "dim/mat/storage_formats/csr.h"
 #include <dim/io/h5.h>
 #include <dim/io/h5/dataset.h>
 #include <dim/io/h5/dataspace.h>
@@ -88,25 +89,27 @@ auto is_hdf5(const std::filesystem::path& path) -> bool {
 }
 
 namespace {
-    struct tile_chunk_t
+    struct partition_t
     {
         size_t start;
         size_t count;
     };
 
-    auto calculate_tile_chunk(dataspace_view_t dataspace, csr5_partial_identifier_t part) -> tile_chunk_t {
-        const auto total_tile_count = dataspace.get_dim();
+    auto calculate_partition(size_t element_count, partial_identifier_t part) -> partition_t {
+        const auto part_size
+          = static_cast<hsize_t>(std::ceil(static_cast<double>(element_count) / static_cast<double>(part.total_count)));
 
-        const auto part_size = static_cast<hsize_t>(
-          std::ceil(static_cast<double>(total_tile_count) / static_cast<double>(part.total_count)));
+        const auto first_element = part_size * part.idx;
+        const auto count = std::min(part_size, element_count - first_element);
 
-        const auto first_tile = part_size * part.idx;
-        const auto tile_count = std::min(part_size, total_tile_count - first_tile);
-
-        return {.start = first_tile, .count = tile_count};
+        return {.start = first_element, .count = count};
     }
 
-    auto load_csr5_info_partial(group_view_t group, dataset_view_t tiles_dataset, tile_chunk_t chunk)
+    auto calculate_partition(dataspace_view_t dataspace, partial_identifier_t part) -> partition_t {
+        return calculate_partition(dataspace.get_dim(), part);
+    }
+
+    auto load_csr5_info_partial(group_view_t group, dataset_view_t tiles_dataset, partition_t chunk)
       -> csr5_t::csr5_info_t {
         auto&& tile_desc = tiles_dataset.read_slab<decltype(csr5_t::csr5_info_t::tile_desc)>(chunk.start, chunk.count);
 
@@ -134,13 +137,13 @@ namespace {
     }
 } // namespace
 
-auto load_csr5_partial(group_view_t group, csr5_partial_identifier_t part) -> csr5_t {
+auto load_csr5_partial(group_view_t group, partial_identifier_t part) -> csr5_t {
     constexpr auto tile_size = csr5_t::tile_size();
 
     const auto is_last_part = part.idx == (part.total_count - 1);
 
     const auto tiles_dataset = group.open_dataset("tile_desc");
-    const auto chunk = calculate_tile_chunk(tiles_dataset.get_dataspace(), part);
+    const auto chunk = calculate_partition(tiles_dataset.get_dataspace(), part);
 
     auto&& csr5_info = load_csr5_info_partial(group, tiles_dataset, chunk);
 
@@ -172,7 +175,40 @@ auto load_csr5_partial(group_view_t group, csr5_partial_identifier_t part) -> cs
                   .skip_tail = !is_last_part};
 }
 auto load_csr5(const std::filesystem::path& path, const std::string& group_name) -> mat::csr5<double> {
-    const auto in = h5::file_t::open(path, H5F_ACC_RDONLY);
-    return dim::io::h5::load_csr5(in.open_group(group_name));
+    const auto in = file_t::open(path, H5F_ACC_RDONLY);
+    return load_csr5(in.open_group(group_name));
 }
+auto load_csr_partial(group_view_t group, partial_identifier_t part) -> mat::csr_partial_t<> {
+    using csr_t = mat::csr<double>;
+    using indices_t = typename csr_t::indices_t;
+    using values_t = typename csr_t::values_t;
+
+    const auto rows_dataset = group.open_dataset("jc");
+    const auto global_dims
+      = mat::dimensions_t{.rows = static_cast<uint32_t>(rows_dataset.get_dataspace().get_dim() - 1),
+                          .cols = group.open_attribute("MATLAB_sparse")};
+
+    const auto [first_row, row_count] = calculate_partition(global_dims.rows, part);
+
+    auto&& row_ptr = rows_dataset.read_slab<indices_t>(first_row, row_count + 1);
+
+    const auto row_start = row_ptr.front();
+    const auto row_stop = row_ptr.back();
+    const auto element_count = row_stop - row_start;
+
+    // normalize to 0.
+    if (row_start)
+        for (auto& row : row_ptr)
+            row -= row_start;
+
+    return mat::csr_partial_t<>{.global_dimensions = global_dims,
+                                .first_row = row_start,
+                                .matrix_chunk = csr_t{
+                                  mat::dimensions_t{.rows = static_cast<uint32_t>(row_count), .cols = global_dims.cols},
+                                  group.open_dataset("data").read_slab<values_t>(row_start, element_count),
+                                  std::move(row_ptr),
+                                  group.open_dataset("ir").read_slab<indices_t>(row_start, element_count),
+                                }};
+}
+
 } // namespace dim::io::h5
