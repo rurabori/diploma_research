@@ -72,6 +72,7 @@ auto main_impl(const arguments_t& args) -> int {
 
     // norm_b = b.magnitude()
     const auto norm_b = mpi_magnitude(owned_r);
+    spdlog::info("norm b = {}", norm_b);
 
     // the output vector for spmv.
     auto temp = dim::mat::cache_aligned_vector<double>(element_count, 0.);
@@ -83,6 +84,8 @@ auto main_impl(const arguments_t& args) -> int {
     auto x_partial = dim::mat::cache_aligned_vector<double>(owned_r.size(), 0.);
 
     auto r_r = mpi_reduce(owned_r);
+
+    spdlog::stopwatch global_sw;
     for (size_t i = 0; i < *args.max_iters; ++i) {
         // end condition.
         if (mpi_magnitude(owned_r) / norm_b <= *args.threshold)
@@ -98,7 +101,7 @@ auto main_impl(const arguments_t& args) -> int {
         spdlog::info("edge sync took {}", sw.elapsed());
 
         sw.reset();
-        // alpha = (r * r)  / (r * temp)
+        // alpha = (r * r)  / (s * temp)
         const auto alpha = r_r / mpi_reduce(owned_s, owned_temp);
         spdlog::info("alpha computation took {}", sw.elapsed());
 
@@ -112,6 +115,7 @@ auto main_impl(const arguments_t& args) -> int {
         auto beta = tmp / std::exchange(r_r, tmp);
 
         sw.reset();
+        // sk+1 = rk+1 + beta * sk;
         std::transform(std::execution::par_unseq, std::begin(owned_r), std::end(owned_r), std::begin(owned_s),
                        std::begin(owned_s), [beta](auto&& r, auto&& s) { return r + beta * s; });
         spdlog::info("computing partial s took {}", sw.elapsed());
@@ -120,6 +124,7 @@ auto main_impl(const arguments_t& args) -> int {
         result_sync.sync(s, owned_s);
         spdlog::info("syncing s took {}", sw.elapsed());
     }
+    spdlog::info("100 iterations done in {}", global_sw.elapsed());
 
     return 0;
 }
