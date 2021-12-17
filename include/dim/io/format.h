@@ -23,7 +23,7 @@ struct fmt::formatter<dim::io::formattable_bytes<StorageType>> : fmt::formatter<
 
     struct normalized
     {
-        double value;
+        double value{};
         std::string_view suffix;
 
         static auto normalize(double bytes) -> normalized {
