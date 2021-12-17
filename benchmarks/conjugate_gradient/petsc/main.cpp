@@ -1,3 +1,5 @@
+#include <dim/io/h5.h>
+#include <dim/mpi/csr.h>
 #include <dim/mpi/mpi.h>
 
 #include <mpi.h>
@@ -7,21 +9,22 @@
 #include <petscoptions.h>
 #include <petscsys.h>
 #include <petscsystypes.h>
+#include <petscvec.h>
 #include <petscviewer.h>
 
+#include <fmt/chrono.h>
 #include <fmt/core.h>
 
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
+#include <spdlog/stopwatch.h>
 
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <memory>
 #include <system_error>
-
-#include <dim/io/h5.h>
 
 #include "arguments.h"
 #include "petsc_error.h"
@@ -41,34 +44,83 @@ auto is_help_set() -> bool {
     return help_set == PETSC_TRUE;
 }
 
-auto petsc_main(const arguments& args) -> void {
-    using viewer_t = guard<PetscViewer, PetscViewerBinaryOpen, PetscViewerDestroy>;
+template<typename Result, const auto& Fun, typename... Args>
+auto petsc_call(Args&&... args) -> Result {
+    Result result{};
+    petsc_try Fun(std::forward<Args>(args)..., &result);
+    return result;
+}
+
+auto load_partial(const arguments& args) {
     using mat_t = guard<Mat, MatCreateMPIAIJWithArrays, MatDestroy>;
-    using vec_t = guard<Vec, VecCreate, VecDestroy>;
+    auto partial = dim::mpi::load_csr_partial(args.input_matrix.data(), args.matrix_name.data(), PETSC_COMM_WORLD);
 
-    auto csr = dim::io::h5::read_matlab_compatible(args.input_matrix.data(), args.matrix_name.data());
+    return mat_t{PETSC_COMM_WORLD,
+                 static_cast<int>(partial.matrix_chunk.dimensions.rows),
+                 PETSC_DECIDE,
+                 static_cast<int>(partial.global_dimensions.rows),
+                 static_cast<int>(partial.global_dimensions.cols),
+                 reinterpret_cast<PetscInt*>(partial.matrix_chunk.row_start_offsets.data()),
+                 reinterpret_cast<PetscInt*>(partial.matrix_chunk.col_indices.data()),
+                 partial.matrix_chunk.values.data()};
+}
 
-    auto A = mat_t{MPI_COMM_WORLD,
-                   csr.dimensions.rows,
-                   csr.dimensions.cols,
-                   csr.dimensions.rows,
-                   csr.dimensions.cols,
-                   reinterpret_cast<PetscInt*>(csr.row_start_offsets.data()),
-                   reinterpret_cast<PetscInt*>(csr.col_indices.data()),
-                   csr.values.data()};
+auto vec_norm(Vec vec) -> PetscReal { return petsc_call<PetscReal, VecNorm>(vec, NORM_2); }
+auto vec_mul(Vec lhs, Vec rhs) -> PetscReal { return petsc_call<PetscScalar, VecDot>(lhs, rhs); }
 
-    auto X = vec_t::uninitialized();
-    auto Y = vec_t::uninitialized();
-    petsc_try MatCreateVecs(A, X.value_ptr(), Y.value_ptr());
+auto petsc_main(const arguments& args) -> void {
+    using vec_t = guard<Vec, VecCreateMPI, VecDestroy>;
 
-    petsc_try PetscObjectSetName(Y, std::data(args.result_name));
+    auto A = load_partial(args);
 
-    petsc_try VecSet(X, 1.0);
+    auto s = vec_t::uninitialized();
+    auto temp = vec_t::uninitialized();
+    petsc_try MatCreateVecs(A, s.value_ptr(), temp.value_ptr());
 
-    petsc_try MatMult(A, X, Y);
+    // s = rhs
+    petsc_try VecSet(s, 1.0);
 
-    viewer_t out{PETSC_COMM_WORLD, std::data(args.output_file), FILE_MODE_WRITE};
-    petsc_try VecView(Y, out);
+    // r = s
+    auto size = petsc_call<PetscInt, VecGetSize>(s);
+    auto r = vec_t{PETSC_COMM_WORLD, PETSC_DECIDE, size};
+    petsc_try VecCopy(s, r);
+
+    auto x = vec_t{PETSC_COMM_WORLD, PETSC_DECIDE, size};
+    petsc_try VecSet(x, 0.);
+
+    const auto norm_b = vec_norm(s);
+    spdlog::info("norm b = {}", norm_b);
+
+    auto r_r = vec_mul(r, r);
+
+    spdlog::stopwatch global_sw;
+    for (size_t iter = 0; iter < 100; ++iter) {
+        if (const auto norm_r = vec_norm(r); norm_r / norm_b <= 1.e-8)
+            break;
+
+        spdlog::stopwatch sw;
+        petsc_try MatMult(A, s, temp);
+        spdlog::info("spmv took {}", sw.elapsed());
+
+        sw.reset();
+        const auto alpha = r_r / vec_mul(s, temp);
+        spdlog::info("alpha computation took {}", sw.elapsed());
+
+        // x += alpha * s;
+        VecAXPY(x, alpha, s);
+
+        // r -= alpha * temp;
+        VecAXPY(r, -alpha, temp);
+
+        const auto tmp = vec_mul(r, r);
+        const auto beta = tmp / std::exchange(r_r, tmp);
+
+        sw.reset();
+        // sk+1 = rk+1 + beta * sk;
+        VecAYPX(s, beta, r);
+        spdlog::info("s computation took {}", sw.elapsed());
+    }
+    spdlog::info("100 iterations done in {}", global_sw.elapsed());
 }
 
 int main(int argc, char* argv[]) try {

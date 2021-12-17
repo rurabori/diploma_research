@@ -1,5 +1,5 @@
-#ifndef APPS_PETSC_BASELINE_PETSC_GUARD
-#define APPS_PETSC_BASELINE_PETSC_GUARD
+#ifndef BENCHMARKS_CONJUGATE_GRADIENT_PETSC_PETSC_GUARD
+#define BENCHMARKS_CONJUGATE_GRADIENT_PETSC_PETSC_GUARD
 
 #include <petsc.h>
 
@@ -11,7 +11,7 @@ struct guard
     struct uninitialized_t
     {};
 
-    Ty value;
+    Ty value{};
 
     template<typename... Args>
     explicit guard(Args&&... args) {
@@ -19,10 +19,23 @@ struct guard
     }
 
     explicit guard(uninitialized_t /*unused*/) {}
+    guard(const guard& other) = delete;
+    guard(guard&& other) noexcept : value{std::exchange(other.value, nullptr)} {};
+
+    guard& operator=(const guard& other) = delete;
+    guard& operator=(guard&& other) noexcept { std::swap(other.value, value); }
 
     static guard uninitialized() { return guard{uninitialized_t{}}; }
 
-    ~guard() { Deleter(&value); }
+    ~guard() { release(); }
+
+    auto release() -> void {
+        if (!value)
+            return;
+
+        Deleter(&value);
+        value = nullptr;
+    }
 
     PetscObject as_object() { return reinterpret_cast<PetscObject>(value); }
 
@@ -45,4 +58,4 @@ struct init_guard
     ~init_guard() { PetscFinalize(); }
 };
 
-#endif /* APPS_PETSC_BASELINE_PETSC_GUARD */
+#endif /* BENCHMARKS_CONJUGATE_GRADIENT_PETSC_PETSC_GUARD */
