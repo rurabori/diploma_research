@@ -843,7 +843,9 @@ public:
 
     [[nodiscard]] auto first_row_idx() const noexcept { return csr5_info.first_row_idx(); }
 
-    [[nodiscard]] auto last_row_idx() const noexcept { return csr5_info.last_row_idx(); }
+    [[nodiscard]] auto last_row_idx() const noexcept {
+        return skip_tail ? csr5_info.last_row_idx() : dimensions.rows - 1;
+    }
 };
 
 } // namespace dim::mat

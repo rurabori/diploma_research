@@ -80,7 +80,7 @@ auto main_impl(const arguments_t& args) -> int {
 
     auto calibrator = mpi_mat.matrix.allocate_calibrator();
 
-    auto x_partial = dim::mat::cache_aligned_vector<double>(element_count, 0.);
+    auto x_partial = dim::mat::cache_aligned_vector<double>(owned_r.size(), 0.);
 
     auto r_r = mpi_reduce(owned_r);
     for (size_t i = 0; i < *args.max_iters; ++i) {
@@ -89,7 +89,7 @@ auto main_impl(const arguments_t& args) -> int {
             break;
 
         sw.reset();
-        // temp = A*r
+        // temp = A*s
         mpi_mat.matrix.spmv<csr5_strat>({.x = s, .y = temp, .calibrator = calibrator});
         spdlog::info("spmv took {}", sw.elapsed());
 
