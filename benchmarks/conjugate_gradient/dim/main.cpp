@@ -66,15 +66,19 @@ auto main_impl(const arguments_t& args) -> int {
 
     auto global_sw = stopwatch{};
 
+    spdlog::info("starting to load matrix");
     auto sw = stopwatch{};
     const auto mpi_mat = csr5_partial::load(args.input_file, *args.group_name);
     const auto matrix_load_time = sw.elapsed();
+    spdlog::info("loaded matrix in {}", matrix_load_time);
 
+    spdlog::info("creating synchronization");
     sw.reset();
     const auto output_range = mpi_mat.output_range();
     const auto sync_first_row = mpi_mat.matrix.first_tile_uncapped();
     auto sync = mpi_mat.make_sync();
     const auto sync_time = sw.elapsed();
+    spdlog::info("creating synchronization took {}", sync_time);
 
     const auto element_count = output_range.count();
 
@@ -109,6 +113,8 @@ auto main_impl(const arguments_t& args) -> int {
     auto s_dist_time = dim::bench::second{};
     auto r_r_time = dim::bench::second{};
     for (size_t i = 0; i < *args.max_iters; ++i) {
+        spdlog::info("running iteration {}", i);
+
         // end condition.
         if (std::sqrt(r_r) / norm_b <= *args.threshold)
             break;
