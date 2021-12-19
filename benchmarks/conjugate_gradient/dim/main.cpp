@@ -156,11 +156,22 @@ auto main_impl(const arguments_t& args) -> int {
     const auto cg_time = cg_sw.elapsed();
     const auto global_time = global_sw.elapsed();
 
-    std::ofstream{fmt::format("stats_{:02}.json", dim::mpi::rank())} << nlohmann::json{
-      {"total", global_time.count()},    {"cg", cg_time.count()},         {"io", matrix_load_time.count()},
-      {"sync_creat", sync_time.count()}, {"spmv", spmv_time.count()},     {"edge_sync", edge_sync_time.count()},
-      {"alpha", alpha_time.count()},     {"part_x", part_x_time.count()}, {"part_r", part_r_time.count()},
-      {"part_s", part_s_time.count()},   {"s_dist", s_dist_time.count()}, {"r_r", r_r_time.count()}};
+    std::ofstream{fmt::format("stats_{:02}.json", dim::mpi::rank())} << nlohmann::json({
+      {"total", global_time.count()},
+      {"cg",
+       {{"num_iters", *args.max_iters},
+        {"total", cg_time.count()},
+        {"spmv", spmv_time.count()},
+        {"edge_sync", edge_sync_time.count()},
+        {"alpha", alpha_time.count()},
+        {"part_x", part_x_time.count()},
+        {"part_r", part_r_time.count()},
+        {"part_s", part_s_time.count()},
+        {"s_dist", s_dist_time.count()},
+        {"r_r", r_r_time.count()}}},
+      {"io", matrix_load_time.count()},
+      {"sync_creat", sync_time.count()},
+    });
 
     return 0;
 }
