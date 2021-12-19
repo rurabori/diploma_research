@@ -15,6 +15,7 @@
 #include <dim/mat/storage_formats/base.h>
 #include <dim/mat/storage_formats/csr.h>
 #include <dim/memory/aligned_allocator.h>
+#include <dim/opt.h>
 #include <dim/simd.h>
 #include <dim/span.h>
 
@@ -267,10 +268,10 @@ struct csr5
     struct csr5_info_t
     {
         size_t tile_count{};
-        StorageContainer<tile_ptr_type> tile_ptr;
-        StorageContainer<tile_descriptor_type> tile_desc;
-        StorageContainer<UnsignedType> tile_desc_offset_ptr;
-        StorageContainer<UnsignedType> tile_desc_offset;
+        StorageContainer<tile_ptr_type> tile_ptr{};
+        StorageContainer<tile_descriptor_type> tile_desc{};
+        StorageContainer<UnsignedType> tile_desc_offset_ptr{};
+        StorageContainer<UnsignedType> tile_desc_offset{};
 
         auto iterate_tiles(std::invocable<size_t, size_t, size_t> auto&& callable) const {
             detail::iterate_tiles(tile_ptr, callable);
@@ -458,7 +459,7 @@ private:
                     temp[row][col] = to_transpose[data_offset + col_offset + row];
             }
 
-#pragma omp unroll
+            DIM_UNROLL
             for (size_t row = 0; row < sigma; ++row) {
                 const auto row_offset = row * omega;
 #pragma omp simd
@@ -509,14 +510,14 @@ public:
 
         // these need to be aligned to 32 as the intrinsics require it.
         const spmv_data_t& data;
-        size_t tid;
-        UnsignedType start_row_start;
+        size_t tid{};
+        UnsignedType start_row_start{};
 
         // these need to be aligned to 32 as the intrinsics require it.
-        alignas(32) ValueType sum[8];
-        alignas(32) ValueType first_sum[8];
-        alignas(32) uint64_t cond[8];
-        alignas(32) int y_idx[16];
+        alignas(32) ValueType sum[8] = {};
+        alignas(32) ValueType first_sum[8] = {};
+        alignas(32) uint64_t cond[8] = {};
+        alignas(32) int y_idx[16] = {};
 
         auto store(__m128i y_index, __m256d lsum, __m256i lcond) {
             _mm_store_si128(reinterpret_cast<__m128i*>(std::data(y_idx)), y_index);
@@ -576,7 +577,7 @@ public:
                 auto sum256d = _mm256_setzero_pd();
 
                 // fmadd of a single tile where all elements are from a same row.
-#pragma unroll
+                DIM_UNROLL
                 for (size_t i = 0; i < sigma; i++) {
                     auto curr = load_vals_and_x(i);
                     sum256d = _mm256_fmadd_pd(curr.vals, curr.x, sum256d);

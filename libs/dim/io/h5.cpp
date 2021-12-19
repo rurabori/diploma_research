@@ -57,7 +57,8 @@ auto store(group_view_t group, const dim::mat::csr5<double>& csr5, const csr5_st
 auto load_csr5(group_view_t group) -> dim::mat::csr5<double> {
     using retval_t = mat::csr5<double>;
 
-    retval_t retval{.vals = group.open_dataset("vals"),
+    retval_t retval{.dimensions = {},
+                    .vals = group.open_dataset("vals"),
                     .col_idx = group.open_dataset("col_idx"),
                     .row_ptr = group.open_dataset("row_ptr"),
                     .csr5_info = {.tile_ptr = group.open_dataset("tile_ptr"),

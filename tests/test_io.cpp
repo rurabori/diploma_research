@@ -59,6 +59,7 @@ auto range_equal(const auto& l, const auto& r) {
 
 TEST_CASE("dim::io::csr5_hdf5_roundtrip") {
     const auto example = dim::mat::csr5<double>{
+      .dimensions = {.rows = 4, .cols = 4},
       .vals = {1., 2., 3., 4., 5.},
       .col_idx = {1, 2, 3, 4, 5},
       .row_ptr = {1, 2, 3, 4, 5},

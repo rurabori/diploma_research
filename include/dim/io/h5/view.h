@@ -2,6 +2,7 @@
 #define INCLUDE_DIM_IO_H5_VIEW
 
 #include <H5Ipublic.h>
+#include <stdexcept>
 #include <utility>
 
 namespace dim::io::h5 {
@@ -23,7 +24,10 @@ public:
 template<typename View, const auto& Destroy>
 struct view_wrapper_t : public View
 {
-    explicit view_wrapper_t(hid_t hid) : View{hid} {}
+    explicit view_wrapper_t(hid_t hid) : View{hid} {
+        if (!::H5Iis_valid(View::get_id()))
+            throw std::invalid_argument{"an invalid handle to HDF5 object passed."};
+    }
     view_wrapper_t(const view_wrapper_t&) = delete;
     view_wrapper_t(view_wrapper_t&& o) noexcept : View{std::exchange(std::move(o).take_id(), H5I_INVALID_HID)} {}
     view_wrapper_t& operator=(const view_wrapper_t&) = delete;
