@@ -2,6 +2,7 @@
 #include <dim/bench/timed_section.h>
 #include <dim/csr5_mpi/csr5_mpi.h>
 #include <dim/mpi/mpi.h>
+#include <dim/vec.h>
 
 #include <spdlog/sinks/stdout_sinks.h>
 #include <spdlog/spdlog.h>
@@ -45,18 +46,6 @@ auto mpi_reduce(std::span<const double> a) -> double { return mpi_reduce(a, a); 
 
 auto mpi_magnitude(std::span<const double> b) -> double { return std::sqrt(mpi_reduce(b, b)); }
 
-constexpr auto a_inner = [](auto&& y, auto&& x, auto&& op) {
-    std::transform(std::execution::par_unseq, std::begin(y), std::end(y), std::begin(x), std::begin(y), op);
-};
-
-constexpr auto axpy = [](auto&& y, auto&& x, auto&& alpha) {
-    a_inner(y, x, [alpha](auto&& lhs_elem, auto&& rhs_elem) { return lhs_elem + alpha * rhs_elem; });
-};
-
-constexpr auto aypx = [](auto&& y, auto&& x, auto&& alpha) {
-    a_inner(y, x, [alpha](auto&& lhs_elem, auto&& rhs_elem) { return rhs_elem + alpha * lhs_elem; });
-};
-
 using stopwatch = dim::bench::stopwatch;
 using dim::bench::section;
 
@@ -83,25 +72,24 @@ auto main_impl(const arguments_t& args) -> int {
     const auto element_count = output_range.count();
 
     // r0 = b - A*x0;  x0 = {0...} => r0 = b
-    auto r = dim::mat::cache_aligned_vector<double>(mpi_mat.matrix.dimensions.cols, 1.);
-    const auto owned_r = std::span{r}.subspan(output_range.first_row, element_count).subspan(sync_first_row);
+    auto r = dim::vec<double>(element_count - sync_first_row, 1.);
+
     // s0 = r0
-    auto s = dim::mat::cache_aligned_vector<double>(mpi_mat.matrix.dimensions.cols, 1.);
-    const auto owned_s = std::span{s}.subspan(output_range.first_row, element_count).subspan(sync_first_row);
+    auto s = dim::vec<double>(mpi_mat.matrix.dimensions.cols, 1.);
+    auto s_own = s.subview(output_range.first_row, element_count).subview(sync_first_row);
 
     // norm_b = b.magnitude()
-    const auto norm_b = mpi_magnitude(owned_r);
+    const auto norm_b = mpi_magnitude(r.raw());
 
     // the output vector for spmv.
-    auto temp = dim::mat::cache_aligned_vector<double>(element_count, 0.);
+    auto temp = dim::vec<double>(element_count);
     // and a view into it conditionally skipping first element.
-    const auto owned_temp = std::span{temp}.subspan(sync_first_row);
+    auto temp_own = temp.subview(sync_first_row);
 
     auto calibrator = mpi_mat.matrix.allocate_calibrator();
+    auto x_partial = dim::vec<double>(r.size());
 
-    auto x_partial = dim::mat::cache_aligned_vector<double>(owned_r.size(), 0.);
-
-    auto r_r = mpi_reduce(owned_r);
+    auto r_r = mpi_reduce(r.raw());
 
     const auto cg_sw = stopwatch{};
     auto spmv_time = dim::bench::second{};
@@ -120,12 +108,13 @@ auto main_impl(const arguments_t& args) -> int {
             break;
 
         // temp = A*s
-        spmv_time += section([&] { mpi_mat.matrix.spmv<csr5_strat>({.x = s, .y = temp, .calibrator = calibrator}); });
-        edge_sync_time += section([&] { sync.edge_sync.sync(temp); });
+        spmv_time += section(
+          [&] { mpi_mat.matrix.spmv<csr5_strat>({.x = s.raw(), .y = temp.raw(), .calibrator = calibrator}); });
+        edge_sync_time += section([&] { sync.edge_sync.sync(temp.raw()); });
 
         // alpha = (r * r)  / (s * temp)
         sw.reset();
-        const auto alpha = r_r / mpi_reduce(owned_s, owned_temp);
+        const auto alpha = r_r / mpi_reduce(s_own.raw(), temp_own.raw());
         alpha_time += sw.elapsed();
 
 #pragma omp parallel
@@ -135,13 +124,13 @@ auto main_impl(const arguments_t& args) -> int {
 #pragma omp task
                 {
                     // x += s * alpha
-                    part_x_time += section([&] { axpy(x_partial, owned_s, alpha); });
+                    part_x_time += section([&] { x_partial.axpy(s_own, alpha); });
                 }
 
 #pragma omp task
                 {
                     // r -= temp * alpha
-                    part_r_time += section([&] { axpy(owned_r, owned_temp, -alpha); });
+                    part_r_time += section([&] { r.axpy(temp_own, -alpha); });
                 }
 
 #pragma omp taskwait
@@ -149,15 +138,14 @@ auto main_impl(const arguments_t& args) -> int {
         }
 
         sw.reset();
-        auto tmp = mpi_reduce(owned_r);
+        auto tmp = mpi_reduce(r.raw());
         r_r_time += sw.elapsed();
 
         auto beta = tmp / std::exchange(r_r, tmp);
 
         // sk+1 = rk+1 + beta * sk;
-        part_s_time += section([&] { aypx(owned_s, owned_r, beta); });
-
-        s_dist_time += section([&] { sync.result_sync.sync(s, owned_s); });
+        part_s_time += section([&] { s_own.aypx(r, beta); });
+        s_dist_time += section([&] { sync.result_sync.sync(s.raw(), s_own.raw()); });
     }
     const auto cg_time = cg_sw.elapsed();
     const auto global_time = global_sw.elapsed();

@@ -134,9 +134,9 @@ struct tile_descriptor_t
         const auto desc = generate_scansum_and_present();
 
         iterate_columns([&](size_t col_idx, auto& col) {
-            col.y_offset = static_cast<col_storage>(desc.segn_scan[col_idx]);
-            col.scansum_offset = static_cast<col_storage>(
-              has_rbit_set(desc.present, col_idx) ? std::countr_zero(desc.present >> (col_idx + 1)) : 0);
+            col.y_offset = desc.segn_scan[col_idx];
+            col.scansum_offset
+              = (has_rbit_set(desc.present, col_idx) ? std::countr_zero(desc.present >> (col_idx + 1)) : 0);
         });
 
         return desc.segn_scan[Omega];
