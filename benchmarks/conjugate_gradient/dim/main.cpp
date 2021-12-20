@@ -4,6 +4,7 @@
 #include <dim/mpi/mpi.h>
 #include <dim/vec.h>
 
+#include <omp.h>
 #include <spdlog/sinks/stdout_sinks.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
@@ -49,9 +50,61 @@ auto mpi_magnitude(std::span<const double> b) -> double { return std::sqrt(mpi_r
 using stopwatch = dim::bench::stopwatch;
 using dim::bench::section;
 
+struct general_stats_t
+{
+    size_t local_rows;
+    size_t local_elements;
+    size_t node{dim::mpi::rank()};
+    size_t node_count{dim::mpi::size()};
+    size_t thread_count{::omp_get_max_threads()};
+};
+
+void to_json(nlohmann::json& j, const general_stats_t& stats) {
+    j = nlohmann::json{
+      {"local_rows", stats.local_rows}, {"local_elements", stats.local_elements}, {"node", stats.node},
+      {"node_count", stats.node_count}, {"thread_count", stats.thread_count},
+    };
+}
+
+struct cg_stats_t
+{
+    using second = dim::bench::second;
+
+    size_t num_iters{};
+    second total{};
+
+    struct steps_t
+    {
+        second spmv{};
+        second edge_sync{};
+        second alpha{};
+        second part_x{};
+        second part_r{};
+        second part_s{};
+        second s_dist{};
+        second r_r{};
+    } steps;
+};
+
+void to_json(nlohmann::json& j, const cg_stats_t& stats) {
+    j = nlohmann::json{{"num_iters", stats.num_iters},
+                       {"total", stats.total.count()},
+                       {"steps",
+                        {{"spmv", stats.steps.spmv.count()},
+                         {"edge_sync", stats.steps.edge_sync.count()},
+                         {"alpha", stats.steps.alpha.count()},
+                         {"part_x", stats.steps.part_x.count()},
+                         {"part_r", stats.steps.part_r.count()},
+                         {"part_s", stats.steps.part_s.count()},
+                         {"s_dist", stats.steps.s_dist.count()},
+                         {"r_r", stats.steps.r_r.count()}}}};
+}
+
 auto main_impl(const arguments_t& args) -> int {
     using dim::csr5_mpi::csr5_partial;
     constexpr auto csr5_strat = csr5_partial::matrix_type::spmv_strategy::partial;
+
+    auto general_stats = general_stats_t{};
 
     auto global_sw = stopwatch{};
 
@@ -69,20 +122,23 @@ auto main_impl(const arguments_t& args) -> int {
     const auto sync_time = sw.elapsed();
     spdlog::info("creating synchronization took {}", sync_time);
 
-    const auto element_count = output_range.count();
+    const auto row_count = output_range.count();
+
+    general_stats.local_rows = row_count;
+    general_stats.local_elements = mpi_mat.matrix.vals.size();
 
     // r0 = b - A*x0;  x0 = {0...} => r0 = b
-    auto r = dim::vec<double>(element_count - sync_first_row, 1.);
+    auto r = dim::vec<double>(row_count - sync_first_row, 1.);
 
     // s0 = r0
     auto s = dim::vec<double>(mpi_mat.matrix.dimensions.cols, 1.);
-    auto s_own = s.subview(output_range.first_row, element_count).subview(sync_first_row);
+    auto s_own = s.subview(output_range.first_row, row_count).subview(sync_first_row);
 
     // norm_b = b.magnitude()
     const auto norm_b = mpi_magnitude(r.raw());
 
     // the output vector for spmv.
-    auto temp = dim::vec<double>(element_count);
+    auto temp = dim::vec<double>(row_count);
     // and a view into it conditionally skipping first element.
     auto temp_own = temp.subview(sync_first_row);
 
@@ -91,15 +147,8 @@ auto main_impl(const arguments_t& args) -> int {
 
     auto r_r = mpi_reduce(r.raw());
 
+    auto cg_stats = cg_stats_t{};
     const auto cg_sw = stopwatch{};
-    auto spmv_time = dim::bench::second{};
-    auto edge_sync_time = dim::bench::second{};
-    auto alpha_time = dim::bench::second{};
-    auto part_x_time = dim::bench::second{};
-    auto part_r_time = dim::bench::second{};
-    auto part_s_time = dim::bench::second{};
-    auto s_dist_time = dim::bench::second{};
-    auto r_r_time = dim::bench::second{};
     for (size_t i = 0; i < *args.max_iters; ++i) {
         spdlog::info("running iteration {}", i);
 
@@ -108,64 +157,42 @@ auto main_impl(const arguments_t& args) -> int {
             break;
 
         // temp = A*s
-        spmv_time += section(
+        cg_stats.steps.spmv += section(
           [&] { mpi_mat.matrix.spmv<csr5_strat>({.x = s.raw(), .y = temp.raw(), .calibrator = calibrator}); });
-        edge_sync_time += section([&] { sync.edge_sync.sync(temp.raw()); });
+        cg_stats.steps.edge_sync += section([&] { sync.edge_sync.sync(temp.raw()); });
 
         // alpha = (r * r)  / (s * temp)
         sw.reset();
         const auto alpha = r_r / mpi_reduce(s_own.raw(), temp_own.raw());
-        alpha_time += sw.elapsed();
+        cg_stats.steps.alpha += sw.elapsed();
 
-#pragma omp parallel
-        {
-#pragma omp single
-            {
-#pragma omp task
-                {
-                    // x += s * alpha
-                    part_x_time += section([&] { x_partial.axpy(s_own, alpha); });
-                }
-
-#pragma omp task
-                {
-                    // r -= temp * alpha
-                    part_r_time += section([&] { r.axpy(temp_own, -alpha); });
-                }
-
-#pragma omp taskwait
-            }
-        }
+        // x += s * alpha
+        cg_stats.steps.part_x += section([&] { x_partial.axpy(s_own, alpha); });
+        // r -= temp * alpha
+        cg_stats.steps.part_r += section([&] { r.axpy(temp_own, -alpha); });
 
         sw.reset();
         auto tmp = mpi_reduce(r.raw());
-        r_r_time += sw.elapsed();
+        cg_stats.steps.r_r += sw.elapsed();
 
         auto beta = tmp / std::exchange(r_r, tmp);
 
         // sk+1 = rk+1 + beta * sk;
-        part_s_time += section([&] { s_own.aypx(r, beta); });
-        s_dist_time += section([&] { sync.result_sync.sync(s.raw(), s_own.raw()); });
+        cg_stats.steps.part_s += section([&] { s_own.aypx(r, beta); });
+        cg_stats.steps.s_dist += section([&] { sync.result_sync.sync(s.raw(), s_own.raw()); });
     }
-    const auto cg_time = cg_sw.elapsed();
+    cg_stats.total = cg_sw.elapsed();
+    cg_stats.num_iters = *args.max_iters;
     const auto global_time = global_sw.elapsed();
 
-    std::ofstream{fmt::format("stats_{:02}.json", dim::mpi::rank())} << nlohmann::json({
-      {"total", global_time.count()},
-      {"cg",
-       {{"num_iters", *args.max_iters},
-        {"total", cg_time.count()},
-        {"spmv", spmv_time.count()},
-        {"edge_sync", edge_sync_time.count()},
-        {"alpha", alpha_time.count()},
-        {"part_x", part_x_time.count()},
-        {"part_r", part_r_time.count()},
-        {"part_s", part_s_time.count()},
-        {"s_dist", s_dist_time.count()},
-        {"r_r", r_r_time.count()}}},
-      {"io", matrix_load_time.count()},
-      {"sync_creat", sync_time.count()},
-    });
+    std::ofstream{fmt::format("stats_{:02}.json", dim::mpi::rank())} << std::setw(4)
+                                                                     << nlohmann::json({
+                                                                          {"total", global_time.count()},
+                                                                          {"general_info", general_stats},
+                                                                          {"cg", cg_stats},
+                                                                          {"io", matrix_load_time.count()},
+                                                                          {"sync_creat", sync_time.count()},
+                                                                        });
 
     return 0;
 }
