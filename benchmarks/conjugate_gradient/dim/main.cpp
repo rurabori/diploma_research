@@ -90,14 +90,14 @@ void to_json(nlohmann::json& j, const cg_stats_t& stats) {
     j = nlohmann::json{{"num_iters", stats.num_iters},
                        {"total", stats.total.count()},
                        {"steps",
-                        {{"spmv", stats.steps.spmv.count()},
-                         {"edge_sync", stats.steps.edge_sync.count()},
-                         {"alpha", stats.steps.alpha.count()},
-                         {"part_x", stats.steps.part_x.count()},
-                         {"part_r", stats.steps.part_r.count()},
-                         {"part_s", stats.steps.part_s.count()},
-                         {"s_dist", stats.steps.s_dist.count()},
-                         {"r_r", stats.steps.r_r.count()}}}};
+                        {{"A*s", stats.steps.spmv.count()},
+                         {"edge sync", stats.steps.edge_sync.count()},
+                         {"alpha = (r*r) / s*A*s", stats.steps.alpha.count()},
+                         {"x += s * alpha", stats.steps.part_x.count()},
+                         {"r -= temp * alpha", stats.steps.part_r.count()},
+                         {"sk+1 = rk+1 + beta * sk;", stats.steps.part_s.count()},
+                         {"distributing s", stats.steps.s_dist.count()},
+                         {"r*r", stats.steps.r_r.count()}}}};
 }
 
 auto main_impl(const arguments_t& args) -> int {

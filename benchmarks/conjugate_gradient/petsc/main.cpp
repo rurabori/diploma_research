@@ -1,3 +1,5 @@
+#include <dim/bench/stopwatch.h>
+#include <dim/bench/timed_section.h>
 #include <dim/io/h5.h>
 #include <dim/mpi/csr.h>
 #include <dim/mpi/mpi.h>
@@ -17,11 +19,15 @@
 
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/sinks/stdout_sinks.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
 
+#include <nlohmann/json.hpp>
+
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <system_error>
@@ -68,10 +74,65 @@ auto load_partial(const arguments& args) {
 auto vec_norm(Vec vec) -> PetscReal { return petsc_call<PetscReal, VecNorm>(vec, NORM_2); }
 auto vec_mul(Vec lhs, Vec rhs) -> PetscReal { return petsc_call<PetscScalar, VecDot>(lhs, rhs); }
 
+using second = dim::bench::second;
+using dim::bench::section;
+using dim::bench::stopwatch;
+
+struct general_stats_t
+{
+    size_t local_rows;
+    size_t local_elements;
+    size_t node{dim::mpi::rank()};
+    size_t node_count{dim::mpi::size()};
+    size_t thread_count{::omp_get_max_threads()};
+};
+
+void to_json(nlohmann::json& j, const general_stats_t& stats) {
+    j = nlohmann::json{
+      {"local_rows", stats.local_rows}, {"local_elements", stats.local_elements}, {"node", stats.node},
+      {"node_count", stats.node_count}, {"thread_count", stats.thread_count},
+    };
+}
+
+struct cg_stats_t
+{
+    using second = dim::bench::second;
+
+    size_t num_iters{};
+    second total{};
+
+    struct steps_t
+    {
+        second spmv{};
+        second alpha{};
+        second part_x{};
+        second part_r{};
+        second part_s{};
+        second r_r{};
+    } steps;
+};
+
+void to_json(nlohmann::json& j, const cg_stats_t& stats) {
+    j = nlohmann::json{{"num_iters", stats.num_iters},
+                       {"total", stats.total.count()},
+                       {"steps",
+                        {{"A*s", stats.steps.spmv.count()},
+                         {"alpha = (r*r) / s*A*s", stats.steps.alpha.count()},
+                         {"x += s * alpha", stats.steps.part_x.count()},
+                         {"r -= temp * alpha", stats.steps.part_r.count()},
+                         {"sk+1 = rk+1 + beta * sk;", stats.steps.part_s.count()},
+                         {"r*r", stats.steps.r_r.count()}}}};
+}
 auto petsc_main(const arguments& args) -> void {
     using vec_t = guard<Vec, VecCreateMPI, VecDestroy>;
 
+    const auto global_sw = stopwatch{};
+
+    auto general_stats = general_stats_t{};
+
+    auto local_sw = stopwatch{};
     auto A = load_partial(args);
+    const auto io_time = local_sw.elapsed();
 
     auto s = vec_t::uninitialized();
     auto temp = vec_t::uninitialized();
@@ -89,38 +150,47 @@ auto petsc_main(const arguments& args) -> void {
     petsc_try VecSet(x, 0.);
 
     const auto norm_b = vec_norm(s);
-    spdlog::info("norm b = {}", norm_b);
 
     auto r_r = vec_mul(r, r);
 
-    spdlog::stopwatch global_sw;
-    for (size_t iter = 0; iter < 100; ++iter) {
-        if (const auto norm_r = vec_norm(r); norm_r / norm_b <= 1.e-8)
-            break;
+    auto cg_stats = cg_stats_t{};
+    cg_stats.num_iters = 100;
+    cg_stats.total = section([&] {
+        for (size_t iter = 0; iter < 100; ++iter) {
+            if (const auto norm_r = std::sqrt(r_r); norm_r / norm_b <= 1.e-8)
+                break;
 
-        spdlog::stopwatch sw;
-        petsc_try MatMult(A, s, temp);
-        spdlog::info("spmv took {}", sw.elapsed());
+            cg_stats.steps.spmv += section([&] { petsc_try MatMult(A, s, temp); });
 
-        sw.reset();
-        const auto alpha = r_r / vec_mul(s, temp);
-        spdlog::info("alpha computation took {}", sw.elapsed());
+            local_sw.reset();
+            const auto alpha = r_r / vec_mul(s, temp);
+            cg_stats.steps.alpha += local_sw.elapsed();
 
-        // x += alpha * s;
-        VecAXPY(x, alpha, s);
+            // x += alpha * s;
+            cg_stats.steps.part_x += section([&] { petsc_try VecAXPY(x, alpha, s); });
 
-        // r -= alpha * temp;
-        VecAXPY(r, -alpha, temp);
+            // r -= alpha * temp;
+            cg_stats.steps.part_r += section([&] { petsc_try VecAXPY(r, -alpha, temp); });
 
-        const auto tmp = vec_mul(r, r);
-        const auto beta = tmp / std::exchange(r_r, tmp);
+            local_sw.reset();
+            const auto tmp = vec_mul(r, r);
+            const auto beta = tmp / std::exchange(r_r, tmp);
+            cg_stats.steps.r_r += local_sw.elapsed();
 
-        sw.reset();
-        // sk+1 = rk+1 + beta * sk;
-        VecAYPX(s, beta, r);
-        spdlog::info("s computation took {}", sw.elapsed());
-    }
-    spdlog::info("100 iterations done in {}", global_sw.elapsed());
+            // sk+1 = rk+1 + beta * sk;
+            cg_stats.steps.part_s += section([&] { petsc_try VecAYPX(s, beta, r); });
+        }
+    });
+    cg_stats.total = global_sw.elapsed();
+    const auto global_time = global_sw.elapsed();
+
+    std::ofstream{fmt::format("stats_{:02}.json", dim::mpi::rank())} << std::setw(4)
+                                                                     << nlohmann::json({
+                                                                          {"total", global_time.count()},
+                                                                          {"general_info", general_stats},
+                                                                          {"cg", cg_stats},
+                                                                          {"io", io_time.count()},
+                                                                        });
 }
 
 int main(int argc, char* argv[]) try {
@@ -130,7 +200,7 @@ int main(int argc, char* argv[]) try {
     args.create();
 
     spdlog::set_default_logger(
-      spdlog::basic_logger_mt(brr::app_info.full_name, create_logger_name(std::data(args.log_directory))));
+      spdlog::stderr_logger_mt(fmt::format("{} (n{:02})", brr::app_info.full_name, dim::mpi::rank())));
 
     if (is_help_set())
         return 0;
