@@ -82,6 +82,13 @@
 }
 
 
+\algnewcommand{\algorithmicand}{\textbf{ and }}
+\algnewcommand{\algorithmicor}{\textbf{ or }}
+\algnewcommand{\OR}{\algorithmicor}
+\algnewcommand{\AND}{\algorithmicand}
+\algnewcommand{\var}{\texttt}
+
+
 \begin{document}
 
 \tableofcontents
@@ -629,27 +636,27 @@ be easily tested.
 \section{Loading the matrices}
 
 
-Since CSR5 partitions the non-zero elements of a matrix into tiles of 
+Since CSR5 partitions the non-zero elements of a matrix into tiles of
 size $\sigma * \omega$, each node can load only data relevant for tiles
-assigned to it. This is enabled by two features of HDF5, first of which 
-is reading hyperslabs. A hyperslab is a subset of a HDF5 dataset, so 
-nodes do not have to read whole datasets. 
+assigned to it. This is enabled by two features of HDF5, first of which
+is reading hyperslabs. A hyperslab is a subset of a HDF5 dataset, so
+nodes do not have to read whole datasets.
 
-Second feature enabling this, is HDF5s ability to utilize MPI-IO, allowing concurrent 
-reads from every node rather than reading the matrix in main node 
+Second feature enabling this, is HDF5s ability to utilize MPI-IO, allowing concurrent
+reads from every node rather than reading the matrix in main node
 and distributing it amongst the rest of the nodes. This imposes a minor limitation
 on how the matrix can be stored, or rather how the dataset needs to be structured.
-Since MPI-IO was introduced in MPI revision 2.0 \cite{mpi20} in 1997, its API takes 
-size to be read as an integer argument, thus limiting the maximum amount of data read 
-in a single call to 2GiB. The dataset thus needs to be chunked 
-\footnote{experimentally, chunks of 1000000 elements or ~8MiB of double precision floating 
-point numbers performed best}, else HDF5 tries to read it at once and MPI-IO fails.
+Since MPI-IO was introduced in MPI revision 2.0 \cite{mpi20} in 1997, its API takes
+size to be read as an integer argument, thus limiting the maximum amount of data read
+in a single call to 2GiB. The dataset thus needs to be chunked
+\footnote{experimentally, chunks of 1000000 elements or ~8MiB of double precision floating
+    point numbers performed best}, else HDF5 tries to read it at once and MPI-IO fails.
 
 
-To load part of a CSR5 matrix first the number of tiles needs to be obtained. This can be 
+To load part of a CSR5 matrix first the number of tiles needs to be obtained. This can be
 done by querying size of \csre{tile_desc} dataset which contains descriptor for each tile.
-The number of tiles is then divided by number of nodes, meaning every node gets equal 
-number of tiles (bar the last node which can have less) which in turns means equal number 
+The number of tiles is then divided by number of nodes, meaning every node gets equal
+number of tiles (bar the last node which can have less) which in turns means equal number
 of non-zero elements.
 
 
@@ -670,11 +677,11 @@ of non-zero elements.
 Then, tile descriptors from \csre{tile_desc} dataset, tile pointers from \csre{tile_ptr}
 dataset and empty offsets pointers from \csre{tile_desc_offset_ptr} can be loaded.
 Sizes of slabs are $\#tiles_{node}$, $\#tiles_{node} + 1$ and $\#tiles_{node} + 1$
-respectively, as $*\_ptr$ datasets use $n+1^{st}$ element to denote end of values 
-belonging to $n^{th}$ element. Lastly empty offsets from \csre{tile_desc_offset} 
-are loaded. This forms complete information about CSR5 tiles, and as such, it is 
-stored in a separate structure named \csre{csr5_info}. This information is useful 
-even on its own, for example queries about a certain tile, matrix element or row 
+respectively, as $*\_ptr$ datasets use $n+1^{st}$ element to denote end of values
+belonging to $n^{th}$ element. Lastly empty offsets from \csre{tile_desc_offset}
+are loaded. This forms complete information about CSR5 tiles, and as such, it is
+stored in a separate structure named \csre{csr5_info}. This information is useful
+even on its own, for example queries about a certain tile, matrix element or row
 of matrix and its parent tile can be made just with this information.
 
 \begin{algorithm}
@@ -691,16 +698,16 @@ of matrix and its parent tile can be made just with this information.
 
 \pagebreak
 
-Lastly, slab of \csre{row_ptr} is loaded, starting at \csre{tile_ptr[0]} and 
-ending at last output row of chunk of this matrix. This varies, if it is the last 
-node, the last output row is simply last row of the matrix. For every other tile, 
+Lastly, slab of \csre{row_ptr} is loaded, starting at \csre{tile_ptr[0]} and
+ending at last output row of chunk of this matrix. This varies, if it is the last
+node, the last output row is simply last row of the matrix. For every other tile,
 \csre{y_index} in last column + number of bits set in the bit flag of last column
-(equal to number of started rows) gives relative offset, which, when added to 
-tile\_ptr of the tile will result in absolute offset in y where next row would be. 
-This model maps nicely onto C++ iterator model, where end denotes 
-element one past the end of the range. With this information, \csre{row_ptr} can be 
-loaded. Since, \csre{row_ptr} has the same meaning as in CSR, hyperslabs for 
-values from \csre{vals} dataset, and column indices from \csre{col_idx} dataset 
+(equal to number of started rows) gives relative offset, which, when added to
+tile\_ptr of the tile will result in absolute offset in y where next row would be.
+This model maps nicely onto C++ iterator model, where end denotes
+element one past the end of the range. With this information, \csre{row_ptr} can be
+loaded. Since, \csre{row_ptr} has the same meaning as in CSR, hyperslabs for
+values from \csre{vals} dataset, and column indices from \csre{col_idx} dataset
 are both starting at \csre{row_ptr[0]} and ending at \csre{row_ptr[-1]}.
 
 
@@ -714,8 +721,8 @@ are both starting at \csre{row_ptr[0]} and ending at \csre{row_ptr[-1]}.
         \State $relative\_offset \gets last\_desc[lid].y\_index + secs\_starting$
 
         \If{$dirty(last\_desc)$}
-            \State $empty\_start \gets empty\_off\_ptr[lid]$
-            \State $relative\_offset \gets empty\_off[empty\_start + relative\_offset]$
+        \State $empty\_start \gets empty\_off\_ptr[lid]$
+        \State $relative\_offset \gets empty\_off[empty\_start + relative\_offset]$
         \EndIf
 
         \Return $tile\_ptr[lid] + relative\_offset$
@@ -733,22 +740,79 @@ are both starting at \csre{row_ptr[0]} and ending at \csre{row_ptr[-1]}.
 
 \section{Sparse Matrix Vector Multiplication}
 
-Each node now has a chunk of a matrix loaded. Let $A$ denote the original matrix 
-and $A_{i}$ the chunk loaded by $i^{th}$ node. Then $A = A_{0} + ... + A{n}$. Since 
+Each node now has a chunk of a matrix loaded. Let $A$ denote the original matrix
+and $A_{i}$ the chunk loaded by $i^{th}$ node. Then $A = A_{0} + ... + A{n}$. Since
 matrix multiplication by vector from right is associative, $Ax = A_{0}x + ... + A{n}x = y$
-In other words, the result vector can be obtained by adding result vectors of all nodes. 
+In other words, the result vector can be obtained by adding result vectors of all nodes.
 
-For computing sub-results on each node, a highly parallel SpMV algorithm introduced in 
+For computing sub-results on each node, a highly parallel SpMV algorithm introduced in
 \cite{liu2015csr5} is used.
 
 \subsection{Synchronization}
 
-Furthermore, a tile may share at most one output element with its right neighbour, so 
-the addition is performed only for a limited number of elements, for the rest it is 
-a simple copy. 
+Furthermore, a tile may share at most one output element with its right neighbour, so
+the addition is performed only for a limited number of elements, for the rest it is
+a simple copy.
 
+If a node starts a new output element (its last output index isn't equal the first one),
+it "owns" the element, all of the nodes to the right (in terms of MPI ranks, all nodes
+with higher rank), that have first output element equal to the owning nodes last one
+will synchronize on communicator of the owning node. To this end, each node has two
+MPI communicators. One for synchronizing the first output element to the left and one
+for synchronizing the last one.
 
+Depending on values in these communicators (LEFT, OWN) the nodes can be split into 4 categories:
 
+\begin{itemize}
+    \item (NULL, NULL) - self-contained, not sharing output elements.
+    \item (!NULL, NULL) - doesn't share last output element (for example last node).
+    \item (NULL, !NULL) - doesn't share first output element (for example first node).
+    \item (!NULL, !NULL) - shares both first and last elements.
+\end{itemize}
+
+To create these synchronization communicators, nodes first exchange their "output ranges",
+which consist of index of first and last output elements for each node. From
+these, each node can check if it needs to synchronize to the left and if it needs to
+create a communicator on which nodes to the right of it will sync.
+
+\csre{MPI_Comm_Split} splits a communicator according to a \csre{color} and a \csre{key}.
+\csre{color} is used to group nodes, and \csre{key} is used to create ordering within nodes
+of same \csre{color}. Furthermore, if only a single node is present, the communicator will
+be null.
+
+Thus if all nodes first compute the node to which they will sync then it is possible
+to iterate over every rank and allow every node to establish an owning communicator
+in the iteration in which $i \equiv rank$ and for all the nodes which need to sync
+the element this node owns, to register to this communicator. If no node registers,
+there will simply be no communicator and no synchronization.
+
+\begin{algorithm}
+    \caption{Creating communicators for syncing edge elements}
+    \begin{algorithmic}
+        \Function{create\_syncs}{$my\_rank$, $comm\_size$}
+        \State $\var{output\_ranges} \gets \text{ranges from all nodes}$
+        \State $\var{syncs\_to} \gets \var{my\_rank}$
+        \State $\var{this\_node\_range} \gets \var{output\_ranges[my\_rank]}$
+        \While {$\var{syncs\_to} \neq 0 \AND \text{elements overlap}$} % TODO: latex doesn't like the long condition
+        \State $\var{syncs\_to} \gets \var{syncs\_to} - 1$
+        \EndWhile
+
+        \For{\var{rank = 0; rank < comm\_size; ++rank}}
+        \If{$\var{rank} \equiv \var{my\_rank}$}
+        \State $\var{own\_sync} \gets \var{MPI\_Comm\_Split(comm, my\_rank, my\_rank)}$
+        \ElsIf{$\var{rank} \equiv \var{syncs\_to}$}
+        \State $\var{left\_sync} \gets \var{MPI\_Comm\_Split(comm, syncs\_to, my\_rank)}$
+        \Else {}
+        \State $\var{MPI\_Comm\_Split(comm, MPI\_UNDEFINED, MPI\_UNDEFINED)}$
+        \EndIf
+        \EndFor
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
+
+Once these communicators are established, nodes which have at least once non-NULL
+communicator call \csre{MPI_Allreduce} with either first, last or both elements
+to synchronize the edge elements in every participating node.
 
 
 
