@@ -181,7 +181,6 @@ auto petsc_main(const arguments& args) -> void {
             cg_stats.steps.part_s += section([&] { petsc_try VecAYPX(s, beta, r); });
         }
     });
-    cg_stats.total = global_sw.elapsed();
     const auto global_time = global_sw.elapsed();
 
     std::ofstream{fmt::format("stats_{:02}.json", dim::mpi::rank())} << std::setw(4)
