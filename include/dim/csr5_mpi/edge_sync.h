@@ -17,22 +17,42 @@ class edge_sync_t
 
     class request_t
     {
-        double result{};
-        MPI_Request request{MPI_REQUEST_NULL};
+        struct inactive_tag
+        {};
+        struct active_tag
+        {
+            double to_sync;
+            MPI_Comm comm;
+        };
+
+        double _to_sync{};
+        MPI_Request _request{MPI_REQUEST_NULL};
 
     public:
-        static auto create(double to_sync, MPI_Comm comm) -> request_t;
+        static constexpr auto inactive() noexcept -> inactive_tag { return {}; }
 
-        static auto inactive() -> request_t { return {}; }
+        static constexpr auto active(double to_sync, MPI_Comm comm) noexcept -> active_tag {
+            return {.to_sync = to_sync, .comm = comm};
+        }
 
-        [[nodiscard]] auto active() const noexcept -> bool { return request != MPI_REQUEST_NULL; }
+        explicit request_t(inactive_tag /*unused*/) {}
+        explicit request_t(active_tag args);
+
+        request_t() = delete;
+        request_t(const request_t&) = delete;
+        request_t(request_t&&) = delete;
+        request_t& operator=(const request_t&) = delete;
+        request_t& operator=(request_t&&) = delete;
+        ~request_t() = default;
+
+        [[nodiscard]] auto active() const noexcept -> bool { return _request != MPI_REQUEST_NULL; }
 
         auto await() noexcept -> double;
 
         static auto await_all(std::same_as<request_t> auto&... requests) -> std::array<double, sizeof...(requests)> {
-            MPI_Request handles[] = {requests.request...};
+            MPI_Request handles[] = {requests._request...};
             ::MPI_Waitall(std::size(handles), std::data(handles), MPI_STATUSES_IGNORE);
-            return {requests.result...};
+            return {requests._to_sync...};
         }
     };
 
@@ -42,7 +62,8 @@ class edge_sync_t
         request_t _right_await;
 
     public:
-        future_sync_t(request_t left, request_t right) : _left_await{left}, _right_await{right} {}
+        future_sync_t(auto&& left, auto&& right)
+          : _left_await{std::forward<decltype(left)>(left)}, _right_await{std::forward<decltype(right)>(right)} {}
 
         auto await(std::span<double> result) noexcept -> void;
     };

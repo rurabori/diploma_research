@@ -8,17 +8,17 @@ namespace dim::csr5_mpi {
 auto edge_sync_t::sync(std::span<double> partial) noexcept -> future_sync_t {
     // send requests to both sides.
     if (_left_sync && _right_sync) {
-        return future_sync_t{request_t::create(partial.front(), _left_sync.get()),
-                             request_t::create(partial.back(), _right_sync.get())};
+        return future_sync_t{request_t::active(partial.front(), _left_sync.get()),
+                             request_t::active(partial.back(), _right_sync.get())};
     }
 
     // only left sync our first element overlaps with some node(s) before.
     if (_left_sync)
-        return future_sync_t{request_t::create(partial.front(), _left_sync.get()), request_t::inactive()};
+        return future_sync_t{request_t::active(partial.front(), _left_sync.get()), request_t::inactive()};
 
     // only right sync, our last element overlaps with some node(s) after.
     if (_right_sync)
-        return future_sync_t{request_t::inactive(), request_t::create(partial.back(), _right_sync.get())};
+        return future_sync_t{request_t::inactive(), request_t::active(partial.back(), _right_sync.get())};
 
     return future_sync_t{request_t::inactive(), request_t::inactive()};
 }
@@ -46,14 +46,10 @@ auto edge_sync_t::create(size_t left_sync_root, MPI_Comm parent_comm) -> edge_sy
 }
 
 auto edge_sync_t::request_t::await() noexcept -> double {
-    ::MPI_Wait(&request, MPI_STATUS_IGNORE);
-    return result;
+    ::MPI_Wait(&_request, MPI_STATUS_IGNORE);
+    return _to_sync;
 }
-auto edge_sync_t::request_t::create(double to_sync, MPI_Comm comm) -> request_t {
-    auto result = request_t{};
-    ::MPI_Iallreduce(&to_sync, &result.result, 1, MPI_DOUBLE, MPI_SUM, comm, &result.request);
-    return result;
-}
+
 auto edge_sync_t::future_sync_t::await(std::span<double> result) noexcept -> void {
     if (_left_await.active() && _right_await.active()) {
         auto synced = request_t::await_all(_left_await, _right_await);
@@ -67,5 +63,9 @@ auto edge_sync_t::future_sync_t::await(std::span<double> result) noexcept -> voi
 
     if (_right_await.active())
         result.back() = _right_await.await();
+}
+
+edge_sync_t::request_t::request_t(active_tag args) : _to_sync{args.to_sync} {
+    ::MPI_Iallreduce(&_to_sync, &_to_sync, 1, MPI_DOUBLE, MPI_SUM, args.comm, &_request);
 }
 } // namespace dim::csr5_mpi
