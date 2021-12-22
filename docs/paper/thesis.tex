@@ -738,7 +738,7 @@ are both starting at \csre{row_ptr[0]} and ending at \csre{row_ptr[-1]}.
     \end{algorithmic}
 \end{algorithm}
 
-\section{Sparse Matrix Vector Multiplication}
+\chapter{Distributed Sparse Matrix Vector Multiplication}
 
 Each node now has a chunk of a matrix loaded. Let $A$ denote the original matrix
 and $A_{i}$ the chunk loaded by $i^{th}$ node. Then $A = A_{0} + ... + A{n}$. Since
@@ -748,11 +748,13 @@ In other words, the result vector can be obtained by adding result vectors of al
 For computing sub-results on each node, a highly parallel SpMV algorithm introduced in
 \cite{liu2015csr5} is used.
 
-\subsection{Synchronization}
+\section{Synchronization}
 
 Furthermore, a tile may share at most one output element with its right neighbour, so
 the addition is performed only for a limited number of elements, for the rest it is
 a simple copy.
+
+\subsection{Synchronizing overlapping output ranges}
 
 If a node starts a new output element (its last output index isn't equal the first one),
 it "owns" the element, all of the nodes to the right (in terms of MPI ranks, all nodes
@@ -771,7 +773,7 @@ Depending on values in these communicators (LEFT, OWN) the nodes can be split in
 \end{itemize}
 
 To create these synchronization communicators, nodes first exchange their "output ranges",
-which consist of index of first and last output elements for each node. From
+which consist of indices of first and last output elements for each node. From
 these, each node can check if it needs to synchronize to the left and if it needs to
 create a communicator on which nodes to the right of it will sync.
 
