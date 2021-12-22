@@ -629,28 +629,130 @@ be easily tested.
 \section{Loading the matrices}
 
 
+Since CSR5 partitions the non-zero elements of a matrix into tiles of 
+size $\sigma * \omega$, each node can load only data relevant for tiles
+assigned to it. This is enabled by two features of HDF5, first of which 
+is reading hyperslabs. A hyperslab is a subset of a HDF5 dataset, so 
+nodes do not have to read whole datasets. 
+
+Second feature enabling this, is HDF5s ability to utilize MPI-IO, allowing concurrent 
+reads from every node rather than reading the matrix in main node 
+and distributing it amongst the rest of the nodes. This imposes a minor limitation
+on how the matrix can be stored, or rather how the dataset needs to be structured.
+Since MPI-IO was introduced in MPI revision 2.0 \cite{mpi20} in 1997, its API takes 
+size to be read as an integer argument, thus limiting the maximum amount of data read 
+in a single call to 2GiB. The dataset thus needs to be chunked 
+\footnote{experimentally, chunks of 1000000 elements or ~8MiB of double precision floating 
+point numbers performed best}, else HDF5 tries to read it at once and MPI-IO fails.
+
+
+To load part of a CSR5 matrix first the number of tiles needs to be obtained. This can be 
+done by querying size of \csre{tile_desc} dataset which contains descriptor for each tile.
+The number of tiles is then divided by number of nodes, meaning every node gets equal 
+number of tiles (bar the last node which can have less) which in turns means equal number 
+of non-zero elements.
+
+
+
 \begin{algorithm}
-    \caption{Loading part of CSR5 matrix}
+    \caption{Computing partition size for each node}
     \begin{algorithmic}
-        \Function{slab}{$name$, $start$, $count$}
+        \Function{calculate\_partition}{$tile\_count$, $node\_id$, $node\_count$}
+        \State $partition\_size \gets \lceil\frac{tile\_count}{node\_count}\rceil$
+        \State $first \gets partition\_size * node\_id$
+        \State $count \gets min(partition\_size, tile\_count - first)$
 
-        \Return $datasets[name][start:start + count]$
-        \EndFunction
-
-        \Function{load\_partial}{$first\_tile\_id$, $tile\_count$}
-        \State $block\_size \gets \sigma*\omega$
-        \State $absolute\_start \gets first\_tile\_id * block\_size$
-        \State $element\_count \gets tile\_count * block\_size$
-
-        \State $vals \gets slab("vals", absolute\_start, element\_count)$
-        \State $col\_idx \gets slab("col\_idx", absolute\_start, element\_count)$
-        \State $tile\_desc \gets slab("tile\_desc", first\_tile\_id, tile\_count)$
-        \State $tile\_ptr \gets slab("tile\_ptr", first\_tile\_id, tile\_count + 1)$
-        \State $empty\_offset\_ptr \gets slab("empty\_offset\_ptr", first\_tile\_id, tile\_count + 1)$
-        \State $empty\_offset \gets slab("empty\_offset", empty\_offset\_ptr[0], empty\_offset\_ptr[-1])$
+        \Return $(first, count)$
         \EndFunction
     \end{algorithmic}
 \end{algorithm}
+
+Then, tile descriptors from \csre{tile_desc} dataset, tile pointers from \csre{tile_ptr}
+dataset and empty offsets pointers from \csre{tile_desc_offset_ptr} can be loaded.
+Sizes of slabs are $\#tiles_{node}$, $\#tiles_{node} + 1$ and $\#tiles_{node} + 1$
+respectively, as $*\_ptr$ datasets use $n+1^{st}$ element to denote end of values 
+belonging to $n^{th}$ element. Lastly empty offsets from \csre{tile_desc_offset} 
+are loaded. This forms complete information about CSR5 tiles, and as such, it is 
+stored in a separate structure named \csre{csr5_info}. This information is useful 
+even on its own, for example queries about a certain tile, matrix element or row 
+of matrix and its parent tile can be made just with this information.
+
+\begin{algorithm}
+    \caption{Loading CSR5 info}
+    \begin{algorithmic}
+        \Function{load\_csr5\_info}{$datasets$, $first$, $count$}
+        \State $tile\_desc \gets datasets["tile\_desc"][first:first + count]$
+        \State $tile\_ptr \gets datasets["tile\_ptr"][first:first + count + 1]$
+        \State $empty\_off\_ptr \gets datasets["tile\_desc\_offset\_ptr"][first:first + count + 1]$
+        \State $empty\_off \gets datasets["tile\_desc\_offset"][empty\_off\_ptr[0]:empty\_off\_ptr[-1]]$
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
+
+\pagebreak
+
+Lastly, slab of \csre{row_ptr} is loaded, starting at \csre{tile_ptr[0]} and 
+ending at last output row of chunk of this matrix. This varies, if it is the last 
+node, the last output row is simply last row of the matrix. For every other tile, 
+\csre{y_index} in last column + number of bits set in the bit flag of last column
+(equal to number of started rows) gives relative offset, which, when added to 
+tile\_ptr of the tile will result in absolute offset in y where next row would be. 
+This model maps nicely onto C++ iterator model, where end denotes 
+element one past the end of the range. With this information, \csre{row_ptr} can be 
+loaded. Since, \csre{row_ptr} has the same meaning as in CSR, hyperslabs for 
+values from \csre{vals} dataset, and column indices from \csre{col_idx} dataset 
+are both starting at \csre{row_ptr[0]} and ending at \csre{row_ptr[-1]}.
+
+
+\begin{algorithm}
+    \caption{Loading CSR data}
+    \begin{algorithmic}
+        \Function{last\_out\_idx}{}
+        \State $lid \gets "last tile id"$
+        \State $last\_desc \gets tile\_desc[lid]$
+        \State $secs\_starting \gets popcount(last\_desc[lid].bit\_flag)$
+        \State $relative\_offset \gets last\_desc[lid].y\_index + secs\_starting$
+
+        \If{$dirty(last\_desc)$}
+            \State $empty\_start \gets empty\_off\_ptr[lid]$
+            \State $relative\_offset \gets empty\_off[empty\_start + relative\_offset]$
+        \EndIf
+
+        \Return $tile\_ptr[lid] + relative\_offset$
+        \EndFunction
+
+        \Function{load\_csr\_data}{$datasets$, $first$, $count$}
+        \State $fr_{id} \gets tile\_ptr[0]$
+        \State $lr_{id} \gets last\_out\_idx()$
+        \State $row\_ptr \gets datasets["row\_ptr"][fr_{id}:lr_{id}]$
+        \State $values \gets datasets["vals"][row\_ptr[0]: row\_ptr[-1]]$
+        \State $col\_idx \gets datasets["col\_idx"][row\_ptr[0]: row\_ptr[-1]]$
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
+
+\section{Sparse Matrix Vector Multiplication}
+
+Each node now has a chunk of a matrix loaded. Let $A$ denote the original matrix 
+and $A_{i}$ the chunk loaded by $i^{th}$ node. Then $A = A_{0} + ... + A{n}$. Since 
+matrix multiplication by vector from right is associative, $Ax = A_{0}x + ... + A{n}x = y$
+In other words, the result vector can be obtained by adding result vectors of all nodes. 
+
+For computing sub-results on each node, a highly parallel SpMV algorithm introduced in 
+\cite{liu2015csr5} is used.
+
+\subsection{Synchronization}
+
+Furthermore, a tile may share at most one output element with its right neighbour, so 
+the addition is performed only for a limited number of elements, for the rest it is 
+a simple copy. 
+
+
+
+
+
+
+
 
 
 \setsecnumdepth{part}
