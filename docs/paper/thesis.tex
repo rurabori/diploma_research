@@ -817,6 +817,56 @@ communicator call \csre{MPI_Allreduce} with either first, last or both elements
 to synchronize the edge elements in every participating node.
 
 
+\subsection{Synchronizing non-overlapping output ranges}
+
+
+After synchronizing overlapping output ranges, non-overlapping ranges can be synchronized.
+Ownership rules established in previous section apply to non-overlapping ranges as well.
+First node writing an element "owns" the elements and is the only one broadcasting it to
+other nodes.
+
+To synchronize all elements, first output ranges, must be exchanged. From these ranges,
+an array of offsets into the complete result vector are computed, with each node
+either outputing its whole output range, or skipping the first element in the range if
+it is owned by a node to the left. The actual distribution of results is performed by calling \csre{MPI_Allgatherv}, with
+offsets and sizes computed as explained previously.
+
+\newcommand{\pluseq}{\mathrel{+}=}
+\begin{algorithm}
+    \caption{Synchronizing partial results across processes}
+    \begin{algorithmic}
+        \Function{compute\_offsets}{}
+        \State $\var{output\_ranges} \gets \text{ranges from all nodes}$
+        \State $\var{recvcounts[0]} \gets \var{output\_ranges[0].count}$
+        \State $\var{displs[0]} \gets \var{output\_ranges[0].first\_idx}$
+
+        \For{\var{rank = 1; rank < comm\_size; ++rank}}
+
+        \State $\var{skip\_first} \gets \text{range overlaps}$
+        \If{$\var{skip\_first}$}
+        \State $\var{output\_ranges[rank].first\_idx} \pluseq 1$
+        \EndIf
+
+        \State $\var{recvcounts[rank]} \gets \var{output\_ranges[rank].count}$
+        \State $\var{displs[rank]} \gets \var{output\_ranges[rank].first\_idx}$
+
+        \EndFor
+
+        \Return $\var{recvcounts}, \var{displs}$
+
+        \EndFunction
+
+        \Function{sync}{$\var{owned\_partial\_result}$, $\var{full\_result}$, $\var{comm}$}
+        \State $\var{displs}, \var{recvcounts} \gets \var{compute\_offsets()}$
+        \State $\var{MPI\_Allgatherv(owned\_partial\_result, full\_result, recvcounts, comm)}$
+
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
+
+
+
+
 
 
 
