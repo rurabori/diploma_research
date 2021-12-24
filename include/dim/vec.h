@@ -38,8 +38,16 @@ public:
         a_p_impl(x.raw(), [alpha](ValueType lhs_elem, ValueType rhs_elem) { return rhs_elem + alpha * lhs_elem; });
     }
 
-    auto size() const noexcept -> size_t { return _values.size(); }
+    [[nodiscard]] auto size() const noexcept -> size_t { return _values.size(); }
 };
+
+template<typename ValueType, template<typename> typename StorageContainerL,
+         template<typename> typename StorageContainerR>
+auto dot(const vec_impl<ValueType, StorageContainerL>& l, const vec_impl<ValueType, StorageContainerR>& r)
+  -> ValueType {
+    return std::transform_reduce(std::execution::par_unseq, l.raw().begin(), l.raw().end(), r.raw().begin(),
+                                 ValueType{});
+}
 
 template<typename ValueType>
 class vec_view : public vec_impl<ValueType, std::span>
