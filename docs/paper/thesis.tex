@@ -867,6 +867,150 @@ offsets and sizes computed as explained previously.
 
 
 
+\chapter{Benchmarks}
+
+To measure real world performance of distributed sparse matrix vector multiplication
+three implementations of numerical solvers using conjugate gradient method were produced.
+Single and multi process implementations using csr5 as SpMV algorithm and a PETSc
+multi process implementation.
+
+
+\section{Conjugate gradient method}
+
+% TODO: citations.
+Conjugate gradient method is an algorithm for numerical solution of systems of linear
+equations. In its iterative form, the algorithm is:
+
+\begin{algorithm}
+    \caption{Iterative conjugate gradient}
+    \begin{algorithmic}
+        \Function{conjugate\_gradient}{$\var{A}$, $\var{b}$, $\var{x}$}
+        \State $\var{r} \gets \var{b - A * x}$
+        \State $\var{s} \gets \var{r}$
+        \State $\var{r\_r} \gets \var{r} * \var{r}$
+
+        \For{$\var{i} = 0; \var{i} < \var{max\_iters}; \var{++i}$}
+        \State $\var{As} \gets \var{A} * \var{s}$
+        \State $\var{alpha} \gets \frac{\var{r\_r}}{\var{s'}*\var{As}} $
+        \State $\var{x} \gets \var{x} + \var{alpha} * \var{s}$
+        \State $\var{r} \gets \var{r} - \var{alpha} * \var{As}$
+        \State $\var{r\_r\_new} \gets \var{r'} * \var{r}$
+
+        \If{$\var{sqrt(r\_r\_new)} < \var{threshold}$}
+        \State $\textbf{break}$
+        \EndIf
+
+        \State $\var{beta} \gets \frac{\var{r\_r\_new}}{\var{r\_r}}$
+        \State $\var{r\_r} \gets \var{r\_r\_new}$
+        \State $\var{s} \gets \var{r} + \var{beta} * \var{s}$
+
+        \EndFor
+
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
+
+
+Running single process implementation of conjugate gradient solver on GAP-web
+matrix, using 64 threads sparse matrix vector multiplication accounts for around 60\%
+of the time in a single iteration. The vector operations (for example,
+$\var{x} \pluseq \var{s} * \var{alpha}$) lend themselves well to parallelization too.
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.6]{static/cg_steps.png}
+    \caption{Percentage of time spent in steps of iteration of cg}
+\end{figure}
+
+The benchmarked matrix (GAP-web) of dimensions 50636151 rows x 50636151 columns, with
+1930292948 non-zero elements has on-disk size of 22.57 GiB. Loading the matrix even in
+binary form takes twice as long as performing 100 iterations of conjugate gradient.
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.6]{static/io_sequential_h5.png}
+    \caption{Percentage of time spent in steps of iteration of cg}
+\end{figure}
+
+The matrix loading can be sped up by using MPI-IO capabilities of HDF5, as discussed
+in Matrix loading section. By doing so total computation has improved considerably.
+
+A benchmark performing 100 iterations of conjugate gradient, performed by a single
+process using 128 threads can be sped up quite considerably by using 4 MPI processes
+with 32 threads each instead. The matrix loading times can be shortened by using MPI-IO
+capabilities discussed in section about Matrix loading, resulting in 2.8x speedup.
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.6]{static/io_time.pdf}
+    \caption{Loading times of GAP-web matrix}
+\end{figure}
+
+\section{Distributed conjugate gradient implementation}
+
+Each process has a full copy of \csre{s}.
+
+$\var{As} \gets \var{A} * \var{s}$, each process can perform SpMV on its local part of
+\csre{A}. This will result, in each process having part of \csre{As}, with some overlapping
+output elements having only part of it's value which needs to be synchronized.
+
+$\var{alpha} \gets \frac{\var{r\_r}}{\var{s} * \var{As}}$. Since each process only has part of
+\csre{As} and full \csre{s}, it can do its part of the $\var{s} * \var{As}$.
+Dot product of two vectors is computed as $x * y = \sum x_i * y_i$, so $\var{s} * \var{As}$
+can be rewritten as $a * As = \sum_{p=0}^{np} \sum_{i=os_p}^{oe_p} s_i * As_{i-os_p}$ where
+$np$ is number of processes, and $os_p$ and $oe_p$ denote start and end of output for process
+$p$ respectively.The outer sum can be computed using \csre{MPI_Allreduce},
+summing the results of inner sum for each process.
+
+For the elements that need to be synchronized (multiple processes are computing their sub-values),
+the resulting element is a sum of all of the subresults thus $s * As = \sum s_i * As_i$ term for $i$
+which is computed by multiple processes can be rewriten as $s_i * (As_{i_{p1}} + ... + As_{i_{pn}})$.
+As multiplication in $R$ is distributive, this can be rewritten as $s_i * As_{i_{p1}} + ... + s_i * As_{i_{pn}}$
+so there is no need to synchronize $As_i$ as result will be synchonized when partial results for
+each process are summed.
+
+$\var{x} \gets \var{x} + \var{alpha} * \var{s}$ each process only has the part of \csre{x},
+coinciding with the output ranges into \csre{As} it owns. Thus thus each process only
+modifies said part of \csre{x}.
+
+$\var{r} \gets \var{r} - \var{alpha} * \var{As}$ Similarly to previous step, each process
+only modifies the part of residual vector \csre{r}. Synchronization of overlapping
+output elements for \csre{As} must be done before this step, as process which owns the
+element uses it to modify \var{r} in this step.
+
+$\var{r\_r\_new} \gets \var{r'} * \var{r}$ Same as in alpha computation, the dot product
+can be divided into sub sums, which can then be summed across all processes, using
+\csre{MPI_Allreduce}.
+
+$\var{s} \gets \var{r} + \var{beta} * \var{s}$ each process computes only part of new
+\csre{s}, corresponding to its output range in \csre{As}. The resulting \csre{s} is
+then distributed to all processes using same algorithm as described in section
+about synchronization of distributed SpMV results using \csre{MPI_Allgatherv}.
+This distribution step is the heaviest as far as MPI communication goes.
+
+
+The resulting solver is on average 1.5x faster per-iteration when ran on GAP-web,
+with single process implementation using 128 threads and multi process implementation
+using 4 processes with 32 threads each.
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.6]{static/mpi_vs_st.pdf}
+    \caption{Average iteration times of single and multi process implementations}
+\end{figure}
+
+When combined with the matrix loading speedup, the time it takes to load matrix and
+run 100 iterations is halved for this matrix.
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.6]{static/io_vs_cg.pdf}
+    \caption{Time spent doing IO vs conjugate gradient}
+\end{figure}
+
+
+
+
 
 
 
