@@ -132,6 +132,7 @@ int main_impl(const arguments_t& args) {
         // sk+1 = rk+1 + beta * sk;
         cg_stats.steps.s += section([&] { s.aypx(r, beta); });
     }
+    cg_stats.num_iters = *args.max_iters;
     cg_stats.total = cg_sw.elapsed();
     const auto global_time = global_sw.elapsed();
 
