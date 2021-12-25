@@ -864,6 +864,8 @@ public:
                 body(coords_t{.row = static_cast<UnsignedType>(row), .col = col_idx[i]}, vals[i]);
         }
     }
+
+    auto non_zero_count() const noexcept -> size_t { return vals.size(); }
 };
 
 } // namespace dim::mat
