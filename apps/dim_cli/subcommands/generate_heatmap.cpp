@@ -31,12 +31,8 @@ auto get_color(size_t i) {
     using cv::Scalar;
 
     static const Scalar colors[] = {
-      {50, 127, 12},   // red
-      {50, -128, 12},  // green
-      {50, 127, -12},  // violet
-      {50, -128, -12}, // blue
-      {68, 46, 7},     // orange
-      {100, -16, 9}    // yellow
+      {227, 206, 166}, {180, 120, 31}, {138, 223, 178}, {44, 160, 51},  {153, 154, 251}, {28, 26, 227},
+      {111, 191, 253}, {0, 127, 255},  {214, 178, 202}, {154, 61, 106}, {153, 255, 255}, {40, 89, 177},
     };
 
     return colors[i];
@@ -50,16 +46,20 @@ auto colored_map(const dim_cli::generate_heatmap_t& args, const auto& matrix) {
     const auto row_step = calculate_step(resolution[1], matrix.dimensions.rows);
     spdlog::info("heatmap pixel equals {}x{} chunk of matrix", col_step, row_step);
 
-    auto res = cv::Mat(cv::Size(resolution[0], resolution[1]), CV_32SC4);
-    auto i = 0;
+    auto res = cv::Mat(cv::Size(resolution[0], resolution[1]), CV_8UC3, cv::Scalar{0, 0, 0});
+    auto i = size_t{};
     matrix.iterate([&](const auto& coords, double /*value*/) {
-        auto& elem = res.at<cv::Vec<uint32_t, 4>>(partition(coords.row, row_step), partition(coords.col, col_step));
-        const auto col = get_color(partition(i, val_step));
+        auto& elem = res.at<cv::Vec<uint8_t, 3>>(partition(coords.row, row_step), partition(coords.col, col_step));
+        const auto process = partition(i++, val_step);
+        const auto col = get_color(process);
+
+        // do not recolor.
+        if (elem[0])
+            return;
+
         elem[0] = col[0];
         elem[1] = col[1];
         elem[2] = col[2];
-        elem[3] += 1;
-        ++i;
     });
 
     return res;
