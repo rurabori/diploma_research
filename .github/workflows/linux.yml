@@ -47,6 +47,7 @@ jobs:
 
       - name: Add conan remotes
         run: >
+          pip3 install --upgrade conan &&
           conan config init &&
           conan config set general.revisions_enabled=1 &&
           conan remote add rurabori-conan https://rurabori.jfrog.io/artifactory/api/conan/rurabori-conan &&
