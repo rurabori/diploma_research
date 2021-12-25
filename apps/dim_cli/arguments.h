@@ -76,6 +76,16 @@ struct dim_cli
     };
     download_t download;
 
+    struct generate_heatmap_t : structopt::sub_command
+    {
+        // file to load a matrix from.
+        path input_file;
+        // output file, defaulted to <input_file>.png
+        std::optional<path> output_file;
+        std::optional<std::string> group{"A"};
+    };
+    generate_heatmap_t generate_heatmap;
+
     std::optional<log_level_t> log_level{log_level_t::warn};
 };
 
@@ -83,6 +93,7 @@ STRUCTOPT(dim_cli::compare_results_t, input_file, input_file_2, lhs_group, rhs_g
 STRUCTOPT(dim_cli::store_matrix_t, input, output, in_group_name, group_name, append, format, config);
 STRUCTOPT(dim_cli::csr5_info_t, input, row, matrix_group);
 STRUCTOPT(dim_cli::download_t, url, destination_dir, format);
-STRUCTOPT(dim_cli, store_matrix, csr5_info, compare_results, download, log_level);
+STRUCTOPT(dim_cli::generate_heatmap_t, input_file, output_file, group);
+STRUCTOPT(dim_cli, store_matrix, csr5_info, compare_results, download, generate_heatmap, log_level);
 
 #endif /* APPS_DIM_CLI_ARGUMENTS */

@@ -34,7 +34,7 @@ STRUCTOPT(arguments_t, input_file);
 
 struct general_stats_t
 {
-    size_t thread_count{::omp_get_max_threads()};
+    size_t thread_count{static_cast<size_t>(::omp_get_max_threads())};
 };
 
 void to_json(nlohmann::json& j, const general_stats_t& stats) {

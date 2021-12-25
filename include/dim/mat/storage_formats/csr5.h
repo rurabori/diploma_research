@@ -847,6 +847,23 @@ public:
     [[nodiscard]] auto last_row_idx() const noexcept {
         return skip_tail ? csr5_info.last_row_idx() : dimensions.rows - 1;
     }
+
+    struct coords_t
+    {
+        UnsignedType row;
+        UnsignedType col;
+    };
+
+    auto iterate(std::invocable<coords_t, ValueType> auto const& body) const noexcept -> void {
+        for (size_t end_row_ptr = 1; end_row_ptr < row_ptr.size(); ++end_row_ptr) {
+            const auto row = end_row_ptr - 1;
+            const auto row_start = row_ptr[row];
+            const auto row_end = row_ptr[end_row_ptr];
+
+            for (size_t i = row_start; i < row_end; ++i)
+                body(coords_t{.row = static_cast<UnsignedType>(row), .col = col_idx[i]}, vals[i]);
+        }
+    }
 };
 
 } // namespace dim::mat

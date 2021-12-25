@@ -7,6 +7,7 @@ find_package(LibArchive REQUIRED CONFIG)
 find_package(scn REQUIRED CONFIG)
 find_package(yaml-cpp REQUIRED CONFIG)
 find_package(Threads REQUIRED)
+find_package(OpenCV REQUIRED CONFIG)
 
 brr_add_executable(dim_cli)
 
@@ -21,7 +22,8 @@ target_link_libraries(
           LibArchive::LibArchive
           scn::scn
           Threads::Threads
-          yaml-cpp::yaml-cpp)
+          yaml-cpp::yaml-cpp
+          opencv::opencv)
 
 install(TARGETS dim_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES ${CMAKE_HOME_DIRECTORY}/resources/config.yaml TYPE SYSCONF)

@@ -56,7 +56,7 @@ struct general_stats_t
     size_t local_elements;
     size_t node{dim::mpi::rank()};
     size_t node_count{dim::mpi::size()};
-    size_t thread_count{::omp_get_max_threads()};
+    size_t thread_count{static_cast<size_t>(::omp_get_max_threads())};
 };
 
 void to_json(nlohmann::json& j, const general_stats_t& stats) {

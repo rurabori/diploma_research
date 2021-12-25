@@ -1,30 +1,11 @@
 
-#include <H5Fpublic.h>
-#include <H5Gpublic.h>
-#include <H5Ppublic.h>
-#include <cstddef>
-#include <filesystem>
-#include <memory>
-#include <optional>
-#include <span>
-#include <stdexcept>
-#include <string>
-#include <string_view>
-
-#include <spdlog/common.h>
-#include <spdlog/logger.h>
 #include <spdlog/spdlog.h>
-#include <spdlog/stopwatch.h>
-
-#include <scn/scn.h>
 
 #include <dim/io/h5.h>
 #include <dim/io/matrix_market.h>
 
 #include "arguments.h"
-#include "subcommands/csr5_info.h"
-#include "subcommands/download.h"
-#include "subcommands/store_matrix.h"
+#include "subcommands.h"
 
 #include "version.h"
 
@@ -77,6 +58,9 @@ int main(int argc, char* argv[]) try {
 
     if (arguments.csr5_info.has_value())
         return csr5_info(arguments.csr5_info);
+
+    if (arguments.generate_heatmap.has_value())
+        return generate_heatmap(arguments.generate_heatmap);
 
     fmt::print("{}", app.help());
 
