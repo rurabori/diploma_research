@@ -4,6 +4,8 @@
 #include <fmt/chrono.h>
 #include <fmt/format.h>
 
+#include <limits>
+#include <opencv2/core/cvdef.h>
 #include <opencv2/core/matx.hpp>
 #include <opencv2/opencv.hpp>
 
@@ -62,6 +64,8 @@ auto colored_map(const dim_cli::generate_heatmap_t& args, const auto& matrix) {
         elem[2] = col[2];
     });
 
+    cv::resize(res, res, cv::Size{4096, 4096});
+
     return res;
 }
 
@@ -72,13 +76,19 @@ auto bw_map(const dim_cli::generate_heatmap_t& args, const auto& matrix) {
     const auto row_step = calculate_step(resolution[1], matrix.dimensions.rows);
     spdlog::info("heatmap pixel equals {}x{} chunk of matrix", col_step, row_step);
 
-    auto res = cv::Mat(cv::Size(resolution[0], resolution[1]), CV_32SC1);
+    auto tmp = cv::Mat(cv::Size(resolution[0], resolution[1]), CV_32SC1);
+    auto upper = int32_t{};
     matrix.iterate([&](const auto& coords, double /*value*/) {
-        auto& elem = res.at<uint32_t>(partition(coords.row, row_step), partition(coords.col, col_step));
+        auto& elem = tmp.at<int32_t>(partition(coords.row, row_step), partition(coords.col, col_step));
         elem += 1;
+        upper = std::max(elem, upper);
     });
 
-    return res;
+    auto result = cv::Mat{};
+    tmp.convertTo(result, CV_8U, 255. / static_cast<double>(upper));
+    cv::resize(result, result, cv::Size{4096, 4096});
+
+    return result;
 }
 
 } // namespace
