@@ -40,12 +40,13 @@ auto generate_heatmap(const dim_cli::generate_heatmap_t& args) -> int {
     spdlog::info("loaded {} in {} ({} x {}, {} non zero elements)", args.input_file.string(), sw.elapsed(),
                  matrix.dimensions.rows, matrix.dimensions.rows, matrix.non_zero_count());
 
+    const auto resolution = *args.resolution;
 
-    const auto col_step = calculate_step(1024, matrix.dimensions.cols);
-    const auto row_step = calculate_step(1024, matrix.dimensions.rows);
+    const auto col_step = calculate_step(resolution[0], matrix.dimensions.cols);
+    const auto row_step = calculate_step(resolution[1], matrix.dimensions.rows);
     spdlog::info("heatmap pixel equals {}x{} chunk of matrix", col_step, row_step);
 
-    auto res = cv::Mat(cv::Size(1024, 1024), CV_32SC1);
+    auto res = cv::Mat(cv::Size(resolution[0], resolution[1]), CV_32SC1);
     matrix.iterate([&](const auto& coords, double /*value*/) {
         auto& elem = res.at<uint32_t>(get_out_pix(coords.row, row_step), get_out_pix(coords.col, col_step));
         elem += 1;
