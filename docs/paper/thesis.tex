@@ -911,20 +911,31 @@ equations. In its iterative form, the algorithm is:
 \end{algorithm}
 
 
-Running single process implementation of conjugate gradient solver on GAP-web
-matrix, using 64 threads sparse matrix vector multiplication accounts for around 60\%
-of the time in a single iteration. The vector operations (for example,
-$\var{x} \pluseq \var{s} * \var{alpha}$) lend themselves well to parallelization too.
 
 \begin{figure}[htp]
     \centering
     \includegraphics[scale=0.6]{static/cg_steps.png}
-    \caption{Percentage of time spent in steps of iteration of cg}
+    \caption{Percentage of time spent in steps of iteration of cg (128 CPUs)}
 \end{figure}
+
+Running single process implementation of conjugate gradient solver on GAP-web
+matrix, using 128 threads sparse matrix vector multiplication accounts for around 44\%
+of the time in a single iteration. The vector operations (for example,
+$\var{x} \pluseq \var{s} * \var{alpha}$) lend themselves well to parallelization too.
+
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.6]{static/single_process.pdf}
+    \caption{Scaling of single process implementation conjugate gradient with CPU count}
+\end{figure}
+
 
 The benchmarked matrix (GAP-web) of dimensions 50636151 rows x 50636151 columns, with
 1930292948 non-zero elements has on-disk size of 22.57 GiB. Loading the matrix even in
 binary form takes twice as long as performing 100 iterations of conjugate gradient.
+
+\pagebreak
 
 \begin{figure}[htp]
     \centering
@@ -932,19 +943,6 @@ binary form takes twice as long as performing 100 iterations of conjugate gradie
     \caption{Percentage of time spent in steps of iteration of cg}
 \end{figure}
 
-The matrix loading can be sped up by using MPI-IO capabilities of HDF5, as discussed
-in Matrix loading section. By doing so total computation has improved considerably.
-
-A benchmark performing 100 iterations of conjugate gradient, performed by a single
-process using 128 threads can be sped up quite considerably by using 4 MPI processes
-with 32 threads each instead. The matrix loading times can be shortened by using MPI-IO
-capabilities discussed in section about Matrix loading, resulting in 2.8x speedup.
-
-\begin{figure}[htp]
-    \centering
-    \includegraphics[scale=0.6]{static/io_time.pdf}
-    \caption{Loading times of GAP-web matrix}
-\end{figure}
 
 \section{Distributed conjugate gradient implementation}
 
@@ -997,6 +995,18 @@ using 4 processes with 32 threads each.
     \centering
     \includegraphics[scale=0.6]{static/mpi_vs_st.pdf}
     \caption{Average iteration times of single and multi process implementations}
+\end{figure}
+
+
+A benchmark performing 100 iterations of conjugate gradient, performed by a single
+process using 128 threads can be sped up quite considerably by using 4 MPI processes
+with 32 threads each instead. The matrix loading times can be shortened by using MPI-IO
+capabilities discussed in section about Matrix loading, resulting in 2.8x speedup.
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.6]{static/io_time.pdf}
+    \caption{Loading times of GAP-web matrix}
 \end{figure}
 
 When combined with the matrix loading speedup, the time it takes to load matrix and
