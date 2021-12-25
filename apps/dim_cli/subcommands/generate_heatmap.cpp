@@ -76,17 +76,18 @@ auto bw_map(const dim_cli::generate_heatmap_t& args, const auto& matrix) {
     const auto row_step = calculate_step(resolution[1], matrix.dimensions.rows);
     spdlog::info("heatmap pixel equals {}x{} chunk of matrix", col_step, row_step);
 
-    auto tmp = cv::Mat(cv::Size(resolution[0], resolution[1]), CV_32SC1);
-    auto upper = int32_t{};
+    auto res = cv::Mat(cv::Size(static_cast<int>(resolution[0]), static_cast<int>(resolution[1])), CV_16UC1);
+    auto upper = uint16_t{};
     matrix.iterate([&](const auto& coords, double /*value*/) {
-        auto& elem = tmp.at<int32_t>(partition(coords.row, row_step), partition(coords.col, col_step));
+        auto& elem = res.at<uint16_t>(partition(coords.row, row_step), partition(coords.col, col_step));
         elem += 1;
         upper = std::max(elem, upper);
     });
 
+    const auto scale = static_cast<double>(std::numeric_limits<uint16_t>::max()) / static_cast<double>(upper);
+
     auto result = cv::Mat{};
-    tmp.convertTo(result, CV_8U, 255. / static_cast<double>(upper));
-    cv::resize(result, result, cv::Size{4096, 4096});
+    res.convertTo(result, CV_8U, scale * 0.00390625);
 
     return result;
 }
@@ -105,9 +106,10 @@ auto generate_heatmap(const dim_cli::generate_heatmap_t& args) -> int {
     spdlog::info("loaded {} in {} ({} x {}, {} non zero elements)", args.input_file.string(), sw.elapsed(),
                  matrix.dimensions.rows, matrix.dimensions.rows, matrix.non_zero_count());
 
-    const auto res = args.process_count ? colored_map(args, matrix) : bw_map(args, matrix);
+    const auto img = args.process_count ? colored_map(args, matrix) : bw_map(args, matrix);
+
     const auto path = args.output_file ? *args.output_file : output_path(args.input_file);
-    cv::imwrite(path.string(), res);
+    cv::imwrite(path.string(), img);
 
     return 0;
 }
