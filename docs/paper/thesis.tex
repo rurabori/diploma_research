@@ -1018,14 +1018,33 @@ the single process implementation is running on 16 threads.
 It can further be observed, that sparse matrix vector multiplication scales well with
 number of CPUs available.
 
+\subsection{IO}
+
+With the benchmarked matrices ranging in size from 9GiB up to 50GiB, loading the matrices,
+may become a non-negligible part of total computation time. Following graphs show impact of
+IO on total run-time of benchmark as well as achieved throughput using the fastest single process
+configuration with 128CPUs available.
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.5]{static/io_sp.pdf}
+    \caption{Time spent doing IO vs conjugate gradient (128 CPUs used)}
+\end{figure}
+
+By using HDF5 to store matrices in binary format and utilizing fast NVMe storage available
+on RCI nodes the impact of IO on total run time can be minimized. However even after doing so,
+for \csre{GAP-web} matrix, loading the matrix takes up 26\% of total benchmark runtime.
+
+\pagebreak
+
 \section{Distributed conjugate gradient implementation}
 
-First, three MPI layouts were benchmarked, each totaling 128CPUs. A layout 
-in this text will mean a triplet of \textbf{node count} $N$, 
+First, three MPI layouts were benchmarked, each totaling 128CPUs. A layout
+in this text will mean a triplet of \textbf{node count} $N$,
 \textbf{number of processes per node} $P$
-and \textbf{number of cpus per process} $C$ (usually abbreviated to \csre{N-P-C}). 
-The benchmarked layouts were \csre{2-1-64}, \csre{4-1-32} and \csre{8-1-16}, keeping 
-the same CPU count as the fastest single process implementation so that the results 
+and \textbf{number of cpus per process} $C$ (usually abbreviated to \csre{N-P-C}).
+The benchmarked layouts were \csre{2-1-64}, \csre{4-1-32} and \csre{8-1-16}, keeping
+the same CPU count as the fastest single process implementation so that the results
 can be compared directly.
 
 \begin{figure}[htp]
@@ -1034,26 +1053,18 @@ can be compared directly.
     \caption{Average iteration times of single and multi process implementations}
 \end{figure}
 
-A benchmark performing 100 iterations of conjugate gradient, performed by a single
-process using 128 threads can be sped up quite considerably by using 4 MPI processes
-with 32 threads each instead. The matrix loading times can be shortened by using MPI-IO
-capabilities discussed in section about Matrix loading, resulting in 2.8x speedup.
+\subsection{IO}
+
+RCI cluster provides BeeGFS parallel filesystem and by utilizing the algorithm described in 
+Section 4.2, the IO throughput can be improved on considerably. Using best-performing \csre{8-1-16}
+layout results, throughput has improved by a factor of 2.5, 5.6 and 6.9 for nlpkkt240, gap-web 
+and gap-kron respectively.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.6]{static/io_time.pdf}
-    \caption{Loading times of GAP-web matrix}
+    \includegraphics[scale=0.5]{static/io_mp.pdf}
+    \caption{Time spent doing IO vs conjugate gradient (8-1-16 layout)}
 \end{figure}
-
-When combined with the matrix loading speedup, the time it takes to load matrix and
-run 100 iterations is halved for this matrix.
-
-\begin{figure}[htp]
-    \centering
-    \includegraphics[scale=0.6]{static/io_vs_cg.pdf}
-    \caption{Time spent doing IO vs conjugate gradient}
-\end{figure}
-
 
 
 
