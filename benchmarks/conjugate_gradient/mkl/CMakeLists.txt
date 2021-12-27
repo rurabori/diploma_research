@@ -1,4 +1,6 @@
 set(MKL_MPI "openmpi")
+set(MKL_TARGET_ARCH "intel64")
+
 
 find_package(MKL)
 
