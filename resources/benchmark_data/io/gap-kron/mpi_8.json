@@ -1,0 +1,7 @@
+{
+    "avg": 3.9564500324000003,
+    "matrix": "GAP-kron.csr5.h5",
+    "num_runs": 10,
+    "process_count": 8,
+    "total": 39.564500324
+}

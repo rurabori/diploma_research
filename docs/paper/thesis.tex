@@ -864,18 +864,7 @@ offsets and sizes computed as explained previously.
     \end{algorithmic}
 \end{algorithm}
 
-
-
-
-\chapter{Benchmarks}
-
-To measure real world performance of distributed sparse matrix vector multiplication
-three implementations of numerical solvers using conjugate gradient method were produced.
-Single and multi process implementations using csr5 as SpMV algorithm and a PETSc
-multi process implementation.
-
-
-\section{Conjugate gradient method}
+\chapter{Conjugate gradient method}
 
 % TODO: citations.
 Conjugate gradient method is an algorithm for numerical solution of systems of linear
@@ -909,40 +898,6 @@ equations. In its iterative form, the algorithm is:
         \EndFunction
     \end{algorithmic}
 \end{algorithm}
-
-
-
-\begin{figure}[htp]
-    \centering
-    \includegraphics[scale=0.6]{static/cg_steps.png}
-    \caption{Percentage of time spent in steps of iteration of cg (128 CPUs)}
-\end{figure}
-
-Running single process implementation of conjugate gradient solver on GAP-web
-matrix, using 128 threads sparse matrix vector multiplication accounts for around 44\%
-of the time in a single iteration. The vector operations (for example,
-$\var{x} \pluseq \var{s} * \var{alpha}$) lend themselves well to parallelization too.
-
-
-\begin{figure}[htp]
-    \centering
-    \includegraphics[scale=0.6]{static/single_process.pdf}
-    \caption{Scaling of single process implementation conjugate gradient with CPU count}
-\end{figure}
-
-
-The benchmarked matrix (GAP-web) of dimensions 50636151 rows x 50636151 columns, with
-1930292948 non-zero elements has on-disk size of 22.57 GiB. Loading the matrix even in
-binary form takes twice as long as performing 100 iterations of conjugate gradient.
-
-\pagebreak
-
-\begin{figure}[htp]
-    \centering
-    \includegraphics[scale=0.6]{static/io_sequential_h5.png}
-    \caption{Percentage of time spent in steps of iteration of cg}
-\end{figure}
-
 
 \section{Distributed conjugate gradient implementation}
 
@@ -987,16 +942,97 @@ about synchronization of distributed SpMV results using \csre{MPI_Allgatherv}.
 This distribution step is the heaviest as far as MPI communication goes.
 
 
-The resulting solver is on average 1.5x faster per-iteration when ran on GAP-web,
-with single process implementation using 128 threads and multi process implementation
-using 4 processes with 32 threads each.
+\chapter{Benchmarks}
+
+To measure real world performance of distributed sparse matrix vector multiplication
+three implementations of numerical solvers using conjugate gradient method were produced.
+Single and multi process implementations using csr5 as SpMV algorithm and a PETSc
+multi process implementation.
+
+\section{Specification}
+
+Each implementation will load matrix $A$ and perform 100 iterations of conjugate
+gradient method, trying to find $x$ satisfying $Ax=\mathbb{1}$.
+
+Each step of conjugate gradient iteration is kept track of, and the total time
+for each step is output in a JSON file.
+
+\subsection{Benchmark data}
+
+Three square matrices were selected for benchmarking.
+
+\begin{tabular}{|c|c|c|c|}
+    \hline
+    \textbf{name}      & \textbf{n} & \textbf{non zeroes} & \textbf{CSR5 on-disk size} [GiB] \\
+    \hline
+    \hline
+    \textbf{nlpkkt240} & 27993600x  & 774472352           & 9.1                              \\
+    \hline
+    \textbf{GAP-web}   & 50636151   & 1930292948          & 22.6                             \\
+    \hline
+    \textbf{GAP-kron}  & 134217726  & 4223264644          & 49.6                             \\
+    \hline
+\end{tabular}
+
+
+\subsection{Compilation options}
+
+\textbf{Compiler}: \texttt{GCC 10.3} \\
+\textbf{Optimization level}: \texttt{-O3} \\
+\textbf{Microarchitecture}: \texttt{native (znver3)} \\
+
+
+\subsection{Hardware}
+
+The code was ran on RCI cluster, using AMD nodes.\\
+\textbf{CPU}: \texttt{2 x AMD EPYC 7543 (64 cores/128 threads 2.8GHz)} \\
+\textbf{RAM}: \texttt{1TB}\\
+\textbf{Storage}: \texttt{8TB NVMe}
+
+
+\section{Single process implementation}
+
+Single process implementation uses CSR5 format for storing the sparse matrix and the
+SpMV algorithm  described in \cite{liu2015csr5} for the \csre{A*s} step. It was ran
+with 16, 32, 64 and 128 CPUs available for each input matrix.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.6]{static/mpi_vs_st.pdf}
-    \caption{Average iteration times of single and multi process implementations}
+    \includegraphics[scale=0.35]{static/single_process.pdf}
+    \caption{Scaling of single process implementation conjugate gradient with CPU count}
 \end{figure}
 
+Benchmark results show, that the sparse matrix vector multiplication
+$A * s$ is the most computationaly intensive step as it takes 68.5, 77.5 and 95.4\% of
+total iteration time for nlpkkt240, gap-web and gap-kron matrices respectively when
+the single process implementation is running on 16 threads.
+
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.6]{static/cg_sp_nlpkkt240_16.pdf}
+    \caption{Percentage of time spent in steps of cg (nlpkkt240, 16CPUs)}
+\end{figure}
+
+
+It can further be observed, that sparse matrix vector multiplication scales well with
+number of CPUs available.
+
+\section{Distributed conjugate gradient implementation}
+
+First, three MPI layouts were benchmarked, each totaling 128CPUs. A layout 
+in this text will mean a triplet of \textbf{node count} $N$, 
+\textbf{number of processes per node} $P$
+and \textbf{number of cpus per process} $C$ (usually abbreviated to \csre{N-P-C}). 
+The benchmarked layouts were \csre{2-1-64}, \csre{4-1-32} and \csre{8-1-16}, keeping 
+the same CPU count as the fastest single process implementation so that the results 
+can be compared directly.
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.35]{static/mpi.pdf}
+    \caption{Average iteration times of single and multi process implementations}
+\end{figure}
 
 A benchmark performing 100 iterations of conjugate gradient, performed by a single
 process using 128 threads can be sped up quite considerably by using 4 MPI processes
