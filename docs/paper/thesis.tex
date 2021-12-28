@@ -29,7 +29,11 @@
 \usepackage{minted}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
-% TODO: reenable minted if possible.
+
+\usepackage{tikz}
+\usetikzlibrary{calc}
+
+
 \usepackage{minted}
 \usepackage{amsthm,amssymb,amsfonts}
 \usepackage{tikz,lipsum,lmodern}
@@ -772,6 +776,44 @@ Depending on values in these communicators (LEFT, OWN) the nodes can be split in
     \item (!NULL, !NULL) - shares both first and last elements.
 \end{itemize}
 
+To illustrate, let $A$ be a $4x4$ square matrix with 8 non-zero elements. When ran with
+four processes, each gets 2 non-zero elements.
+
+
+\begin{tikzpicture}[
+        p1node/.style={rectangle, fill=blue!50, very thick, minimum size=5mm},
+        p2node/.style={rectangle, fill=red!50, very thick, minimum size=5mm},
+        p3node/.style={rectangle, fill=green!50, very thick, minimum size=5mm},
+        p4node/.style={rectangle, fill=yellow!50, very thick, minimum size=5mm}
+    ]
+
+    % matrix
+    \draw[step=0.5cm,gray,very thin] (0,0) grid (2,2);
+
+    % r0
+    \node[p1node] at (0.25, 1.75) {1};
+    \node[p1node] at (1.25, 1.75) {2};
+
+    %r1
+    \node[p2node] at (0.75, 1.25) {3};
+
+    %r2
+    \node[p2node] at (0.25, 0.75) {4};
+    \node[p3node] at (1.25, 0.75) {5};
+
+    %r3
+    \node[p3node] at (0.25, 0.25) {6};
+    \node[p4node] at (1.25, 0.25) {7};
+    \node[p4node] at (1.75, 0.25) {8};
+
+    \node at (2.5, 1) {$* x = $};
+
+    \coordinate (yCoo) at (3, 0.75);
+
+    \draw[step=0.5cm,gray,very thin] (yCoo) grid ($ (yCoo) + (2, 0.5)$);
+
+\end{tikzpicture}
+
 To create these synchronization communicators, nodes first exchange their "output ranges",
 which consist of indices of first and last output elements for each node. From
 these, each node can check if it needs to synchronize to the left and if it needs to
@@ -1055,9 +1097,9 @@ can be compared directly.
 
 \subsection{IO}
 
-RCI cluster provides BeeGFS parallel filesystem and by utilizing the algorithm described in 
+RCI cluster provides BeeGFS parallel filesystem and by utilizing the algorithm described in
 Section 4.2, the IO throughput can be improved on considerably. Using best-performing \csre{8-1-16}
-layout results, throughput has improved by a factor of 2.5, 5.6 and 6.9 for nlpkkt240, gap-web 
+layout results, throughput has improved by a factor of 2.5, 5.6 and 6.9 for nlpkkt240, gap-web
 and gap-kron respectively.
 
 \begin{figure}[htp]
