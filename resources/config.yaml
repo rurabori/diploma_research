@@ -1,19 +1,19 @@
 csr:
   values:
-    chunk_size: null
+    chunk_size: 10000000
     compression_level: null
   col_idx:
-    chunk_size: null
+    chunk_size: 10000000
     compression_level: null
   row_idx:
     chunk_size: null
     compression_level: null
 csr5:
   vals:
-    chunk_size: null
+    chunk_size: 10000000
     compression_level: null
   col_idx:
-    chunk_size: null
+    chunk_size: 10000000
     compression_level: null
   row_ptr:
     chunk_size: null

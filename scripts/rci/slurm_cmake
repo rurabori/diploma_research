@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+. /home/rurabori/code/diploma_research/.venv/bin/activate
+
+srun -p amdfast --cpus-per-task=16 cmake "$@"
