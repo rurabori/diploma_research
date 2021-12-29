@@ -1,0 +1,24 @@
+{
+    "cg": {
+        "num_iters": 100,
+        "steps": {
+            "A*s": 20.145459191000004,
+            "alpha = (r*r) / s*A*s": 0.67071592,
+            "distributing s": 33.65720886100001,
+            "r -= temp * alpha": 0.26048633100000007,
+            "r*r": 0.324201102,
+            "sk+1 = rk+1 + beta * sk;": 0.7857936310000004,
+            "x += s * alpha": 0.17145218499999992
+        },
+        "total": 56.038406566
+    },
+    "general_info": {
+        "local_elements": 0,
+        "local_rows": 6998400,
+        "node": 0,
+        "node_count": 4,
+        "thread_count": 32
+    },
+    "io": 8.600584089,
+    "total": 64.794355041
+}
