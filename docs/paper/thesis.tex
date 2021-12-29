@@ -31,7 +31,7 @@
 \usepackage{algpseudocode}
 
 \usepackage{tikz}
-\usetikzlibrary{calc}
+\usetikzlibrary{positioning,fit,calc}
 
 
 \usepackage{minted}
@@ -719,8 +719,8 @@ are both starting at \csre{row_ptr[0]} and ending at \csre{row_ptr[-1]}.
     \caption{Loading CSR data}
     \begin{algorithmic}
         \Function{last\_out\_idx}{}
-        \State $lid \gets "last tile id"$
-        \State $last\_desc \gets tile\_desc[lid]$
+        \State \(lid \gets "last tile id"\)
+        \State \(last\_desc \gets tile\_desc[lid]\)
         \State $secs\_starting \gets popcount(last\_desc[lid].bit\_flag)$
         \State $relative\_offset \gets last\_desc[lid].y\_index + secs\_starting$
 
@@ -758,83 +758,182 @@ Furthermore, a tile may share at most one output element with its right neighbou
 the addition is performed only for a limited number of elements, for the rest it is
 a simple copy.
 
+
+To illustrate, let $A$ be a $4x4$ square matrix with 8 non-zero elements, multiplied by a vector
+$x$, while SPmV is distributed across four processes labeled p1-p4 and let $\sigma = 2$ and $\omega = 1$.
+Thus, each process gets one CSR5 tile containing 2 non-zero elements.
+
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}[
+            p1node/.style={rectangle, fill=blue!50, very thick, minimum size=5mm},
+            p2node/.style={rectangle, fill=red!50, very thick, minimum size=5mm},
+            p3node/.style={rectangle, fill=green!50, very thick, minimum size=5mm},
+            p4node/.style={rectangle, fill=yellow!50, very thick, minimum size=5mm},
+        ]
+
+        \coordinate (ACoo) at (0, 0);
+
+        \coordinate (yCoo) at (3 - 0.001, 1 - 0.001);
+
+        \node at ($ (ACoo) + (-1, 1)$) {$A =$};
+
+        % matrix
+        \draw[step=0.5cm,gray,very thin] (ACoo) grid ($ (ACoo) + (2,2) $);
+
+        % r0
+        \node[p1node] at ($ (ACoo) + (0.25, 1.75) $) {1};
+        \node[p1node] at ($ (ACoo) + (1.25, 1.75) $) {2};
+
+        %r1
+        \node[p2node] at ($ (ACoo) + (0.75, 1.25) $) {3};
+
+        %r2
+        \node[p2node] at ($ (ACoo) + (0.25, 0.75) $) {4};
+        \node[p3node] at ($ (ACoo) + (1.25, 0.75) $) {5};
+
+        %r3
+        \node[p3node] at ($ (ACoo) + (0.25, 0.25) $) {6};
+        \node[p4node] at ($ (ACoo) + (1.25, 0.25) $) {7};
+        \node[p4node] at ($ (ACoo) + (1.75, 0.25) $) {8};
+
+
+        \matrix [draw,below left] at (5, 2.25) {
+            \node [p1node,label=right:p1] {}; \\
+            \node [p2node,label=right:p2] {}; \\
+            \node [p3node,label=right:p3] {}; \\
+            \node [p4node,label=right:p4] {}; \\
+        };
+    \end{tikzpicture}
+    \caption{Distribution of $A$ across 4 processes}
+\end{figure}
+
+
+
 \subsection{Synchronizing overlapping output ranges}
 
-If a node starts a new output element (its last output index isn't equal the first one),
-it "owns" the element, all of the nodes to the right (in terms of MPI ranks, all nodes
-with higher rank), that have first output element equal to the owning nodes last one
-will synchronize on communicator of the owning node. To this end, each node has two
-MPI communicators. One for synchronizing the first output element to the left and one
-for synchronizing the last one.
+Let \textbf{output index} be an index into result vector $y$ of sparse matrix vector
+multiplication $Ax = y$ and \textbf{output range} be a pair of output indices, denoting
+first and last output index for each process.
 
-Depending on values in these communicators (LEFT, OWN) the nodes can be split into 4 categories:
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}[
+            p1node/.style={rectangle, fill=blue!50, very thick, minimum size=5mm},
+            p2node/.style={rectangle, fill=red!50, very thick, minimum size=5mm},
+            p3node/.style={rectangle, fill=green!50, very thick, minimum size=5mm},
+            p4node/.style={rectangle, fill=yellow!50, very thick, minimum size=5mm}
+        ]
 
-\begin{itemize}
-    \item (NULL, NULL) - self-contained, not sharing output elements.
-    \item (!NULL, NULL) - doesn't share last output element (for example last node).
-    \item (NULL, !NULL) - doesn't share first output element (for example first node).
-    \item (!NULL, !NULL) - shares both first and last elements.
-\end{itemize}
+        \node at (0, 0.75) {$p_1 = \{0, 0\}$};
+        \node at (2, 0.75) {$p_2 = \{1, 2\}$};
+        \node at (4, 0.75) {$p_3 = \{2, 3\}$};
+        \node at (6, 0.75) {$p_4 = \{3, 3\}$};
 
-To illustrate, let $A$ be a $4x4$ square matrix with 8 non-zero elements. When ran with
-four processes, each gets 2 non-zero elements.
+        \coordinate (yCoo) at (2, -0.5);
+        \node at ($ (yCoo) + (-0.5, 0.2) $) {$y = $};
 
 
-\begin{tikzpicture}[
-        p1node/.style={rectangle, fill=blue!50, very thick, minimum size=5mm},
-        p2node/.style={rectangle, fill=red!50, very thick, minimum size=5mm},
-        p3node/.style={rectangle, fill=green!50, very thick, minimum size=5mm},
-        p4node/.style={rectangle, fill=yellow!50, very thick, minimum size=5mm}
-    ]
+        % p1 output
+        \filldraw[blue!50] (yCoo) rectangle ($ (yCoo) + (0.5, 0.5)$);
 
-    % matrix
-    \draw[step=0.5cm,gray,very thin] (0,0) grid (2,2);
+        % p2 output
+        \filldraw[red!50] ($(yCoo) + (0.5, 0) $) -- ($(yCoo) + (1, 0) $) -- ($ (yCoo) + (1.5, 0.5)$) -- ($ (yCoo) + (0.5, 0.5)$) -- cycle;
 
-    % r0
-    \node[p1node] at (0.25, 1.75) {1};
-    \node[p1node] at (1.25, 1.75) {2};
+        % p3 output
+        \filldraw[green!50] ($(yCoo) + (1, 0) $) -- ($(yCoo) + (1.5, 0) $) -- ($ (yCoo) + (2, 0.5)$) -- ($ (yCoo) + (1.5, 0.5)$) -- cycle;
 
-    %r1
-    \node[p2node] at (0.75, 1.25) {3};
+        % p4 output
+        \filldraw[yellow!50] ($(yCoo) + (1.5, 0) $) -- ($(yCoo) + (2, 0) $) -- ($ (yCoo) + (2, 0.5)$)-- cycle;
 
-    %r2
-    \node[p2node] at (0.25, 0.75) {4};
-    \node[p3node] at (1.25, 0.75) {5};
+        \draw[step=0.5cm,gray,very thin] (yCoo) grid ($ (yCoo) + (2 + 0.001, 0.5 + 0.001)$);
+    \end{tikzpicture}
+    \caption{Output ranges for processes p1-p4}
+\end{figure}
 
-    %r3
-    \node[p3node] at (0.25, 0.25) {6};
-    \node[p4node] at (1.25, 0.25) {7};
-    \node[p4node] at (1.75, 0.25) {8};
+Neighboring processes may share an output index. In the case of \(Ax = y\) established in previous section,
+\(y_2\) and \(y_3\) are partially computed by processes p2, p3 and p3, p4 respectively. To enable synchronization
+of these elements, an ownership model needs to be defined. The process with lowest rank
+(in terms of MPI ranks), that writes to an output index owns the element of \(y\) it points to.
+Thus \(y_2\) is owned by p2 and \(y_3\) is owned by p3.
 
-    \node at (2.5, 1) {$* x = $};
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}[
+            p1own/.style={rectangle, draw=blue!90, very thick, minimum size=5mm},
+            p2own/.style={rectangle, draw=red!90, very thick, minimum size=5mm},
+            p3own/.style={rectangle, draw=green!90, very thick, minimum size=5mm},
+            p4own/.style={rectangle, draw=yellow!90, very thick, minimum size=5mm},
+        ]
 
-    \coordinate (yCoo) at (3, 0.75);
+        \coordinate (yCoo) at (0.5 - 0.001, 1 - 0.001);
+        \node at ($ (yCoo) + (-0.5, 0.2) $) {$y = $};
 
-    \draw[step=0.5cm,gray,very thin] (yCoo) grid ($ (yCoo) + (2, 0.5)$);
+        % p1 output
+        \filldraw[blue!50] (yCoo) rectangle ($ (yCoo) + (0.5, 0.5)$);
 
-\end{tikzpicture}
+        % p2 output
+        \filldraw[red!50] ($(yCoo) + (0.5, 0) $) -- ($(yCoo) + (1, 0) $) -- ($ (yCoo) + (1.5, 0.5)$) -- ($ (yCoo) + (0.5, 0.5)$) -- cycle;
 
-To create these synchronization communicators, nodes first exchange their "output ranges",
-which consist of indices of first and last output elements for each node. From
-these, each node can check if it needs to synchronize to the left and if it needs to
-create a communicator on which nodes to the right of it will sync.
+        % p3 output
+        \filldraw[green!50] ($(yCoo) + (1, 0) $) -- ($(yCoo) + (1.5, 0) $) -- ($ (yCoo) + (2, 0.5)$) -- ($ (yCoo) + (1.5, 0.5)$) -- cycle;
+
+        % p4 output
+        \filldraw[yellow!50] ($(yCoo) + (1.5, 0) $) -- ($(yCoo) + (2, 0) $) -- ($ (yCoo) + (2, 0.5)$)-- cycle;
+
+        \draw[step=0.5cm,gray,very thin] (yCoo) grid ($ (yCoo) + (2 + 0.001, 0.5 + 0.001)$);
+
+        \node[p3own] at ($(yCoo) + (1.75, 0.25)$) {};
+        \node[p2own] at ($(yCoo) + (1.25, 0.25)$) {};
+        \node[p2own] at ($(yCoo) + (0.75, 0.25)$) {};
+        \node[p1own] at ($(yCoo) + (0.25, 0.25)$) {};
+
+        \matrix [draw,below left] at ($(yCoo) + (3, 2)$) {
+            \node {Owned by:};  &
+            \node [p1own] {p1}; &
+            \node [p2own] {p2}; &
+            \node [p3own] {p3}; &
+            \node [p4own] {p4};   \\
+        };
+    \end{tikzpicture}
+    \caption{Ownership of \(y\)}
+\end{figure}
+
+To synchronize the elements, each process has two MPI communicators. One for synchronizing the element
+it owns, referred to as OWN, and one for synchronizing the element it does not own referred to as LEFT.
+Either of these communicators can be \csre{MPI_COMM_NULL} if no synchronization is necessary for the owned
+(or non-owned) element.
+
+First step in creating synchronization communicators is processes exchanging their output ranges,
+which consist of indices of first and last output elements for each process. From
+these, each process can check if it needs to synchronize to the left and if it needs to
+create a communicator on which processs to the right of it will sync.
+
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}
+        \node at (0, 0) {Output ranges: $\{\{0, 0\}, \{1, 2\}, \{1, 2\}, \{2, 2\}\}$};
+        \node at (0, -0.5) {Left sync rank: $\{0, 1, 1, 3\}$};
+    \end{tikzpicture}
+    \caption{Pre-computation step of synchronizing \(y\)}
+\end{figure}
 
 \csre{MPI_Comm_Split} splits a communicator according to a \csre{color} and a \csre{key}.
-\csre{color} is used to group nodes, and \csre{key} is used to create ordering within nodes
-of same \csre{color}. Furthermore, if only a single node is present, the communicator will
-be null.
+\csre{color} is used to group processes, and \csre{key} is used to create ordering within processes
+of same \csre{color}. Furthermore, if only a single processs is present, the
+returned communicator will be \csre{MPI_COMM_NULL}. Thus if all processes first compute the
+process which will own the first output index in their output range then it is possible
+to iterate over every rank and allow every process to establish an owning communicator
+in the iteration in which \(i = rank\) and for all the processes which need to synchronize
+the element this process owns, to register to this communicator. If no process registers,
+the communicator returned is \csre{MPI_COMM_NULL} and no
+synchronization is performed.
 
-Thus if all nodes first compute the node to which they will sync then it is possible
-to iterate over every rank and allow every node to establish an owning communicator
-in the iteration in which $i \equiv rank$ and for all the nodes which need to sync
-the element this node owns, to register to this communicator. If no node registers,
-there will simply be no communicator and no synchronization.
-
-\begin{algorithm}
+\begin{algorithm}[htp]
     \caption{Creating communicators for syncing edge elements}
     \begin{algorithmic}
         \Function{create\_syncs}{$my\_rank$, $comm\_size$}
-        \State $\var{output\_ranges} \gets \text{ranges from all nodes}$
+        \State $\var{output\_ranges} \gets \text{ranges from all processes}$
         \State $\var{syncs\_to} \gets \var{my\_rank}$
         \State $\var{this\_node\_range} \gets \var{output\_ranges[my\_rank]}$
         \While {$\var{syncs\_to} \neq 0 \AND \text{elements overlap}$} % TODO: latex doesn't like the long condition
@@ -854,13 +953,132 @@ there will simply be no communicator and no synchronization.
     \end{algorithmic}
 \end{algorithm}
 
-Once these communicators are established, nodes which have at least one non-NULL
+Depending on values of LEFT and OWN communicators the processes can be split into 4 categories:
+
+\begin{itemize}
+    \item (NULL, NULL) - self-contained, not sharing any output indices (p1).
+    \item (NULL, !NULL) - doesn't share first output element (p2).
+    \item (!NULL, NULL) - doesn't share last output element (p4).
+    \item (!NULL, !NULL) - shares both first and last elements (p3).
+\end{itemize}
+
+
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}[
+            node distance=7mm,
+            commst/.style={rectangle, very thick, minimum size=5mm, anchor=west},
+            tag/.style={minimum size=5mm, anchor=west},
+            commstnull/.style={rectangle, very thick, minimum size=5mm, draw=gray!90, anchor=west},
+        ]
+
+        \node (p1) {p1};
+
+        \node (p1lt) [below=of p1.west, tag] {LEFT};
+        \node (p1l) [right=1.5cm of p1lt.west, commstnull] {x};
+
+        \node (p1ot) [below=of p1lt.west, tag] {OWN};
+        \node (p1o) [below=of p1l.west, commstnull] {x};
+
+        \node [draw=blue!90, fit={(p1) (p1lt) (p1l) (p1o)}] {};
+
+        \node (p2) at (2.5, 0) {p2};
+
+        \node (p2lt) [below=of p2.west, tag] {LEFT};
+        \node (p2l) [right=1.5cm of p2lt.west, commstnull] {x};
+
+        \node (p2ot) [below=of p2lt.west, tag] {OWN};
+        \node (p2o) [below=of p2l.west, commst, style={draw=red!90}] {0};
+
+        \node [draw=red!90, fit={(p2) (p2lt) (p2l) (p2o)}] {};
+
+        \node (p3) at (5, 0) {p3};
+
+        \node (p3lt) [below=of p3.west, tag] {LEFT};
+        \node (p3l) [right=1.5cm of p3lt.west, commst, style={draw=red!90}] {1};
+
+        \node (p3ot) [below=of p3lt.west, tag] {OWN};
+        \node (p3o) [below=of p3l.west, commst, style={draw=green!90}] {0};
+
+        \node [draw=green!90, fit={(p3) (p3lt) (p3l) (p3o)}] {};
+
+        \node (p4) at (7.5, 0) {p4};
+
+        \node (p4lt) [below=of p4.west, tag] {LEFT};
+        \node (p4l) [right=1.5cm of p4lt.west, commst, style={draw=green!90}] {1};
+
+        \node (p4ot) [below=of p4lt.west, tag] {OWN};
+        \node (p4o) [below=of p4l.west, commstnull] {x};
+
+        \node [draw=yellow!90, fit={(p4) (p4lt) (p4l) (p4o)}] {};
+    \end{tikzpicture}
+    \caption{Synchronization communicators}
+\end{figure}
+
+
+Once the communicators are established, processes which have at least one non-NULL
 communicator call \csre{MPI_Allreduce} with either first, last or both elements
-to synchronize the edge elements in every participating node.
+to synchronize the edge elements in every participating process.
+
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}[proc/.style={circle, minimum width=5mm, scale=0.8}]
+        \node (p1) [proc, style={draw=blue!90}] {p1};
+        \node (p2) [right=of p1, proc, style={draw=red!90}] {p2};
+        \node (p3) [right=of p2, proc, style={draw=green!90}] {p3};
+        \node (p4) [right=of p3, proc, style={draw=yellow!90}] {p4};
+
+        \node (p11) [below=0.5cm of p1, rectangle, draw=black!90, anchor=center] {3};
+
+        \node (p21) [below=0.5cm of p2, rectangle, draw=black!90, anchor=east] {3};
+        \node (p22) [right=0cm of p21.east, rectangle, draw=red!90] {4};
+
+        \node (p31) [below=0.5cm of p3, rectangle, draw=red!90,anchor=east] {5};
+        \node (p32) [right=0cm of p31.east, rectangle, draw=green!90] {6};
+
+        \node (p41) [below=0.5cm of p4, rectangle, draw=green!90, anchor=center] {15};
+
+        \draw [dotted] (-1, -1.6) -- (7, -1.6);
+        \node (st) [scale=0.5] at (6.3, -1.5) {synchronization};
+
+        \node [left=0.2cm of p11, anchor=east] {$y_{px}$ (no sync)};
+
+        \node (r23) [circle, fill=white!100, draw=red!90, minimum width=5mm, scale=0.8, anchor=center] at ($(p22)!0.5!(p31) + (0, -0.75)$) {$+$};
+        \node (r34) [circle, fill=white!100, draw=green!90, minimum width=5mm, scale=0.8, anchor=center] at ($(p32)!0.5!(p41) + (0, -0.75)$) {$+$};
+
+        \draw [-stealth] (p22) -- (r23);
+        \draw [-stealth] (p31) -- (r23);
+
+        \draw [-stealth] (p32) -- (r34);
+        \draw [-stealth] (p41) -- (r34);
+
+        \node (sp11) [below=1.25cm of p11, rectangle, draw=black!90, anchor=center] {3};
+
+        \node (sp21) [below=1.25cm of p21, rectangle, draw=black!90, anchor=center] {3};
+        \node (sp22) [below=1.25cm of p22, rectangle, draw=black!90, anchor=center] {9};
+
+        \node (sp31) [below=1.25cm of p31, rectangle, draw=black!90, anchor=center] {9};
+        \node (sp32) [right=0cm of sp31, rectangle, draw=black!90, anchor=west] {31};
+
+        \node (sp41) [below=1.25cm of p41, rectangle, draw=black!90, anchor=center] {31};
+
+        \node [left=0.2cm of sp11, anchor=east] {$y_{px}$ (sync)};
+
+
+        \draw [-stealth] (r23) -- (sp22);
+        \draw [-stealth] (r23) -- (sp31);
+
+        \draw [-stealth] (r34) -- (sp32);
+        \draw [-stealth] (r34) -- (sp41);
+
+
+
+    \end{tikzpicture}
+    \caption{Synchronization of result of \(Ax = y\) assuming \(x=\mathbb{1}\)}
+\end{figure}
 
 
 \subsection{Synchronizing non-overlapping output ranges}
-
 
 After synchronizing overlapping output ranges, non-overlapping ranges can be synchronized.
 Ownership rules established in previous section apply to non-overlapping ranges as well.
@@ -874,7 +1092,7 @@ it is owned by a node to the left. The actual distribution of results is perform
 offsets and sizes computed as explained previously.
 
 \newcommand{\pluseq}{\mathrel{+}=}
-\begin{algorithm}
+\begin{algorithm}[htp]
     \caption{Synchronizing partial results across processes}
     \begin{algorithmic}
         \Function{compute\_offsets}{}
