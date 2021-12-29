@@ -11,12 +11,17 @@ struct guard
     struct uninitialized_t
     {};
 
+    struct retain_t
+    {};
+
     Ty value{};
 
     template<typename... Args>
     explicit guard(Args&&... args) {
         petsc_try Creator(std::forward<Args>(args)..., &value);
     }
+
+    explicit guard(Ty val, retain_t /*unused*/) : value{val} {}
 
     explicit guard(uninitialized_t /*unused*/) {}
     guard(const guard& other) = delete;
@@ -26,6 +31,7 @@ struct guard
     guard& operator=(guard&& other) noexcept { std::swap(other.value, value); }
 
     static guard uninitialized() { return guard{uninitialized_t{}}; }
+    static guard retain(Ty val) { return guard{val, retain_t{}}; }
 
     ~guard() { release(); }
 

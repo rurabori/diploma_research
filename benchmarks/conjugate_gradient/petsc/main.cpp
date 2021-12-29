@@ -35,6 +35,8 @@
 #include "arguments.h"
 #include "petsc_error.h"
 #include "petsc_guard.h"
+#include "petscis.h"
+#include "petscistypes.h"
 #include "version.h"
 
 static constexpr const char* help = "Petsc baseline benchmark\n";
@@ -57,18 +59,44 @@ auto petsc_call(Args&&... args) -> Result {
     return result;
 }
 
+template<const auto& Fun, typename... Result, typename... Args>
+requires(sizeof...(Result) > 1) auto petsc_call(Args&&... args) -> std::tuple<Result...> {
+    auto results = std::tuple<Result...>{};
+    std::apply([&](auto&... partial_results) { petsc_try Fun(std::forward<Args>(args)..., &partial_results...); },
+               results);
+
+    return results;
+}
+
 auto load_partial(const arguments& args) {
     using mat_t = guard<Mat, MatCreateMPIAIJWithArrays, MatDestroy>;
     auto partial = dim::mpi::load_csr_partial(args.input_matrix.data(), args.matrix_name.data(), PETSC_COMM_WORLD);
 
-    return mat_t{PETSC_COMM_WORLD,
-                 static_cast<int>(partial.matrix_chunk.dimensions.rows),
-                 PETSC_DECIDE,
-                 static_cast<int>(partial.global_dimensions.rows),
-                 static_cast<int>(partial.global_dimensions.cols),
-                 reinterpret_cast<PetscInt*>(partial.matrix_chunk.row_start_offsets.data()),
-                 reinterpret_cast<PetscInt*>(partial.matrix_chunk.col_indices.data()),
-                 partial.matrix_chunk.values.data()};
+    using mat2_t = guard<Mat, MatCreate, MatDestroy>;
+
+    auto mat2 = mat2_t{PETSC_COMM_WORLD};
+    petsc_try MatSetType(mat2, MATMPIAIJ);
+    petsc_try MatSetSizes(mat2,                                                   //
+                          static_cast<int>(partial.matrix_chunk.dimensions.rows), //
+                          static_cast<int>(partial.global_dimensions.cols),
+                          static_cast<int>(partial.global_dimensions.rows),
+                          static_cast<int>(partial.global_dimensions.cols));
+
+    petsc_try MatMPIAIJSetPreallocationCSR(mat2, //
+                                           reinterpret_cast<PetscInt*>(partial.matrix_chunk.row_start_offsets.data()),
+                                           reinterpret_cast<PetscInt*>(partial.matrix_chunk.col_indices.data()),
+                                           partial.matrix_chunk.values.data());
+
+    return mat2;
+
+    // return mat_t{PETSC_COMM_WORLD,
+    //              static_cast<int>(partial.matrix_chunk.dimensions.rows),
+    //              static_cast<int>(partial.global_dimensions.cols),
+    //              static_cast<int>(partial.global_dimensions.rows),
+    //              static_cast<int>(partial.global_dimensions.cols),
+    //              reinterpret_cast<PetscInt*>(partial.matrix_chunk.row_start_offsets.data()),
+    //              reinterpret_cast<PetscInt*>(partial.matrix_chunk.col_indices.data()),
+    //              partial.matrix_chunk.values.data()};
 }
 
 auto vec_norm(Vec vec) -> PetscReal { return petsc_call<PetscReal, VecNorm>(vec, NORM_2); }
@@ -84,7 +112,7 @@ struct general_stats_t
     size_t local_elements;
     size_t node{dim::mpi::rank()};
     size_t node_count{dim::mpi::size()};
-    size_t thread_count{::omp_get_max_threads()};
+    size_t thread_count{static_cast<size_t>(::omp_get_max_threads())};
 };
 
 void to_json(nlohmann::json& j, const general_stats_t& stats) {
@@ -109,6 +137,7 @@ struct cg_stats_t
         second part_r{};
         second part_s{};
         second r_r{};
+        second s_dist{};
     } steps;
 };
 
@@ -121,7 +150,8 @@ void to_json(nlohmann::json& j, const cg_stats_t& stats) {
                          {"x += s * alpha", stats.steps.part_x.count()},
                          {"r -= temp * alpha", stats.steps.part_r.count()},
                          {"sk+1 = rk+1 + beta * sk;", stats.steps.part_s.count()},
-                         {"r*r", stats.steps.r_r.count()}}}};
+                         {"r*r", stats.steps.r_r.count()},
+                         {"distributing s", stats.steps.s_dist.count()}}}};
 }
 auto petsc_main(const arguments& args) -> void {
     using vec_t = guard<Vec, VecCreateMPI, VecDestroy>;
@@ -133,23 +163,42 @@ auto petsc_main(const arguments& args) -> void {
     auto local_sw = stopwatch{};
     auto A = load_partial(args);
     const auto io_time = local_sw.elapsed();
+    spdlog::info("loaded {} in {}", std::data(args.input_matrix), io_time);
+
+    const auto [local_row_count, local_column_count] = petsc_call<MatGetLocalSize, PetscInt, PetscInt>(A);
+    general_stats.local_rows = static_cast<size_t>(local_row_count);
+
+    const auto [global_row_count, global_column_count] = petsc_call<MatGetSize, PetscInt, PetscInt>(A);
+
+    // auto s = vec_t{PETSC_COMM_WORLD, local_row_count, global_column_count};
+    // auto As = vec_t{PETSC_COMM_WORLD, local_row_count, global_row_count};
 
     auto s = vec_t::uninitialized();
-    auto temp = vec_t::uninitialized();
-    petsc_try MatCreateVecs(A, s.value_ptr(), temp.value_ptr());
+    auto As = vec_t::uninitialized();
+
+    petsc_try MatCreateVecs(A, s.value_ptr(), As.value_ptr());
+    const auto s_size = petsc_call<PetscInt, VecGetLocalSize>(s);
+    const auto As_size = petsc_call<PetscInt, VecGetLocalSize>(As);
+    const auto s_glob_size = petsc_call<PetscInt, VecGetSize>(s);
+    const auto As_glob_size = petsc_call<PetscInt, VecGetSize>(As);
+
+    spdlog::info("mat:[loc: {}x{} glob: {}x{}] s: [{}, {}], As: [{}, {}]", local_row_count, local_column_count,
+                 global_row_count, global_column_count, s_size, s_glob_size, As_size, As_glob_size);
 
     // s = rhs
     petsc_try VecSet(s, 1.0);
 
     // r = s
-    auto size = petsc_call<PetscInt, VecGetSize>(s);
-    auto r = vec_t{PETSC_COMM_WORLD, PETSC_DECIDE, size};
-    petsc_try VecCopy(s, r);
+    auto r = vec_t::retain(petsc_call<Vec, VecDuplicate>(As));
+    petsc_try VecSet(r, 1.0);
 
-    auto x = vec_t{PETSC_COMM_WORLD, PETSC_DECIDE, size};
+    auto x = vec_t::retain(petsc_call<Vec, VecDuplicate>(As));
     petsc_try VecSet(x, 0.);
 
     const auto norm_b = vec_norm(s);
+
+    auto* const loc_index_set
+      = petsc_call<IS, ISCreateStride>(PETSC_COMM_WORLD, As_size, static_cast<PetscInt>(dim::mpi::rank()) * As_size, 1);
 
     auto r_r = vec_mul(r, r);
 
@@ -157,20 +206,25 @@ auto petsc_main(const arguments& args) -> void {
     cg_stats.num_iters = 100;
     cg_stats.total = section([&] {
         for (size_t iter = 0; iter < 100; ++iter) {
+            spdlog::info("running iteration {}", iter);
             if (const auto norm_r = std::sqrt(r_r); norm_r / norm_b <= 1.e-8)
                 break;
 
-            cg_stats.steps.spmv += section([&] { petsc_try MatMult(A, s, temp); });
+            cg_stats.steps.spmv += section([&] { petsc_try MatMult(A, s, As); });
 
             local_sw.reset();
-            const auto alpha = r_r / vec_mul(s, temp);
+            auto* sub = petsc_call<Vec, VecGetSubVector>(s, loc_index_set);
+            cg_stats.steps.s_dist += local_sw.elapsed();
+
+            local_sw.reset();
+            const auto alpha = r_r / vec_mul(sub, As);
             cg_stats.steps.alpha += local_sw.elapsed();
 
             // x += alpha * s;
-            cg_stats.steps.part_x += section([&] { petsc_try VecAXPY(x, alpha, s); });
+            cg_stats.steps.part_x += section([&] { petsc_try VecAXPY(x, alpha, sub); });
 
             // r -= alpha * temp;
-            cg_stats.steps.part_r += section([&] { petsc_try VecAXPY(r, -alpha, temp); });
+            cg_stats.steps.part_r += section([&] { petsc_try VecAXPY(r, -alpha, As); });
 
             local_sw.reset();
             const auto tmp = vec_mul(r, r);
@@ -178,7 +232,9 @@ auto petsc_main(const arguments& args) -> void {
             cg_stats.steps.r_r += local_sw.elapsed();
 
             // sk+1 = rk+1 + beta * sk;
-            cg_stats.steps.part_s += section([&] { petsc_try VecAYPX(s, beta, r); });
+            cg_stats.steps.part_s += section([&] { petsc_try VecAYPX(sub, beta, r); });
+
+            cg_stats.steps.s_dist += section([&] { petsc_try VecRestoreSubVector(s, loc_index_set, &sub); });
         }
     });
     const auto global_time = global_sw.elapsed();
