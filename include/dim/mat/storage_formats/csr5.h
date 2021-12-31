@@ -69,6 +69,31 @@ struct tile_descriptor_t
         col_storage present{1 << Omega};
     };
 
+    [[nodiscard]] auto generate_scansum_and_present() const noexcept -> scansum_and_present_t {
+        scansum_and_present_t retval;
+
+        iterate_columns([&](size_t col_idx, auto col) {
+            retval.segn_scan[col_idx] = static_cast<col_storage>(col.num_bits_set(!col_idx));
+            retval.present |= retval.segn_scan[col_idx] != 0 ? set_rbit<col_storage>(col_idx) : 0;
+        });
+
+        std::exclusive_scan(std::begin(retval.segn_scan), std::end(retval.segn_scan), std::begin(retval.segn_scan), 0);
+
+        return retval;
+    }
+
+    auto set_scansum_and_y_offsets() noexcept -> size_t {
+        const auto desc = generate_scansum_and_present();
+
+        iterate_columns([&](size_t col_idx, auto& col) {
+            col.y_offset = desc.segn_scan[col_idx];
+            col.scansum_offset
+              = (has_rbit_set(desc.present, col_idx) ? std::countr_zero(desc.present >> (col_idx + 1)) : 0);
+        });
+
+        return desc.segn_scan[Omega];
+    }
+
     static constexpr auto num_cols = Omega;
     static constexpr auto num_rows = Sigma;
     static constexpr auto block_size = Sigma * Omega;
@@ -115,31 +140,6 @@ struct tile_descriptor_t
         for (size_t col = 0; col < Omega; ++col) {
             body(col, columns[col]);
         }
-    }
-
-    [[nodiscard]] auto generate_scansum_and_present() const noexcept -> scansum_and_present_t {
-        scansum_and_present_t retval;
-
-        iterate_columns([&](size_t col_idx, auto col) {
-            retval.segn_scan[col_idx] = static_cast<col_storage>(col.num_bits_set(!col_idx));
-            retval.present |= retval.segn_scan[col_idx] != 0 ? set_rbit<col_storage>(col_idx) : 0;
-        });
-
-        std::exclusive_scan(std::begin(retval.segn_scan), std::end(retval.segn_scan), std::begin(retval.segn_scan), 0);
-
-        return retval;
-    }
-
-    auto set_scansum_and_y_offsets() noexcept -> size_t {
-        const auto desc = generate_scansum_and_present();
-
-        iterate_columns([&](size_t col_idx, auto& col) {
-            col.y_offset = desc.segn_scan[col_idx];
-            col.scansum_offset
-              = (has_rbit_set(desc.present, col_idx) ? std::countr_zero(desc.present >> (col_idx + 1)) : 0);
-        });
-
-        return desc.segn_scan[Omega];
     }
 
     [[nodiscard]] auto operator==(const tile_descriptor_t& other) const noexcept {
@@ -249,13 +249,14 @@ struct tile_ptr_t
     friend auto operator<=>(const tile_ptr_t&, const tile_ptr_t&) noexcept = default;
 };
 
-template<std::floating_point ValueType = double, size_t Sigma = 16, size_t Omega = 4,
-         std::signed_integral SignedType = int32_t, std::unsigned_integral UnsignedType = uint32_t,
+template<std::floating_point ValueType = double, //
+         size_t Sigma = 16,                      //
+         size_t Omega = 4,                       //
+         std::unsigned_integral UnsignedType = uint32_t,
          template<typename> typename StorageContainer = cache_aligned_vector>
+requires std::ranges::contiguous_range<StorageContainer<ValueType>>
 struct csr5
 {
-    // these could be template parameters, but since we're focusing on CPU only,
-    // they may be hardcoded.
     static constexpr size_t sigma = Sigma;
     static constexpr size_t omega = Omega;
 
@@ -396,7 +397,7 @@ struct csr5
             for (size_t tile_id = 0; tile_id < tile_ptr.size(); tile_id++) {
                 // compute partition boundaries by partition of size sigma * omega,
                 // clamp to [0, nnz]
-                const auto boundary = static_cast<SignedType>(std::min(tile_id * sigma * omega, nnz));
+                const auto boundary = static_cast<UnsignedType>(std::min(tile_id * sigma * omega, nnz));
 
                 tile_ptr[tile_id] = {static_cast<UnsignedType>(detail::upper_bound_idx(row_ptr_, boundary))};
             }
