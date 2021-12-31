@@ -206,8 +206,7 @@ This involves nonnegligible savings in storage.
     \caption{$A$ stored in CSR format}
 \end{table}
 
-\section{Compressed Sparse Row 5 (CSR5)}
-
+\section{Compressed Sparse Row 5 (CSR5)}\label{csr5Intro}
 \newcommand{\csre}[1]{\mintinline{C++}!#1!}
 
 To achieve near-optimal load balance for matrices with any sparsity structures,
@@ -418,74 +417,154 @@ support partial I/O, can't be compressed nor extended.
 
 
 
-
-
-\section{C++20 - TBD}
-
-
 \chapter{Implementation}
 
-\section{Storage format}
-
-A common issue of distributed SpMV is load balancing. Storing matrices in CSR5 format avoids this by
+The implementation will be reffered to as \csre{dim}.
+A common issue of parallel SpMV is load balancing. Storing matrices in CSR5 format avoids this by
 grouping data into tiles of fixed size. Furthermore the tiles are independent, allowing for high
-degree of paralelism.
+degree of paralelism and small critical sections. For this reason \csre{dim}, stores all matrices in
+CSR5 format and implements sparse vector multiplication algorithm introduced in~\cite{liu2015csr5}.
+
+\section{CSR5}
+
+Since the implementation of CSR5 in \csre{dim} utilizes AVX2 instructions, some preconditions have to be met.
+Namely alignment of data passed to the AVX2 intrinsics. Most AVX2 instructions either require data to be
+aligned on a 32-byte adress or they have singnificantly worse performance if it isn't.
+
+To facilitate this, C++ offers a customization point in its own contiguous data container \csre{std::vector}.
+By specifying an allocator, which returns allocated adresses with a specified alignment as the second
+template argument, the implementation can retain the interface of vector and satisfy preconditions of
+AVX2 instructions. Any usage of \csre{vector} in this thesis in code examples will refer to a \csre{std::vector}
+with a custom aligned allocator.
 
 \subsection{In memory layout}
 
-The three arrays present in CSR \csre{row_ptr}, \csre{col_idx} and \csre{vals} as well as \csre{tile_ptr}
-stored in a sequential container (\csre{std::vector} with a custom cache alligned allocator),
-while being in-place transformed.
+As described in~\ref{csr5Intro}, CSR5 storage format, retains the original three arrays of CSR, with
+\textbf{column index} and \textbf{values} being in-place transposed. This forms the first part of
+CSR5 structure in dim.
 
-\begin{figure}[!h]
+The CSR5 structure is templated on floating point type it should use to represent values,
+as well as on unsigned type used to represent indices. It also uses concepts, a feature introduced in
+C++20, to ensure the passed in types satisfy these constraints. With plain \csre{typename},
+the UnsignedType could be an \csre{int} or \csre{FloatingType} a \csre{std::string} and the compiler
+would only produce an error if a substitution failed. It is also templated on \csre{Sigma} and \csre{Omega},
+the two tuning parameters of CSR5, passed in as non-type template parameters. The defaults are
+\csre{FloatingType = double}, \csre{Sigma = 16}, \csre{Omega = 4} and \csre{UnsignedType = uint32_t}.
+This limits the size of matrix to be \(2^{32}\times2^{32}\) but can be easily changed to \csre{uint64_t} or
+another type if storage for a bigger matrix is required.
+
+\begin{figure}[htp]
     \begin{minted}{C++}
-    struct csr5_t {
-        // same as CSR
-        uint32_t             num_cols;
+    template<std::floating_point FloatingType = double,
+             size_t Sigma = 16,
+             size_t Omega = 4,
+             std::unsigned_integral UnsignedType = uint32_t>
+    struct csr5 {
+        // same as CSR.
+        UnsignedType         num_cols;
         vector<FloatingType> vals;
-        vector<uint32_t>     col_idx;
-        vector<uint32_t>     row_ptr;
-        // CSR5
-        vector<uint32_t>     tile_ptr;
-        vector<descriptor_t> tile_desc; // shown later.
-        vector<uint32_t>     empty_offset_ptr;
-        vector<uint32_t>     empty_offset;
+        vector<UnsignedType> col_idx;
+        vector<UnsignedType> row_ptr;
+        // explained in following section.
+        csr5_info            csr5_info;
     };
     \end{minted}
     \caption{Pseudocode for structure holding CSR5 matrix}
 \end{figure}
 
+\section{CSR5 info}
 
-\subsubsection{Tile descriptor}
+\csre{csr5_info} structure contains CSR5 specific information, introduced in~\ref{csr5Intro}.
+Namely, \textbf{tile pointer}, \textbf{tile descriptor} and optionally \textbf{empty offset pointer} and
+\textbf{empty offset} arrays. Each of these will be explained in a separate section.
 
-Previous research about CSR5 \cite{liu2015csr5} concluded, that for modern CPUs with AVX2 extensions, the optimal CSR5 tuning parameters
-are $\sigma = 16$ and $\omega = 4$. Leveraging bit fields, data for each column of tile descriptor may be
-stored as:
+\subsection{Tile pointer}
 
-\begin{minted}{C++}
-    struct descriptor_column_t {
-        uint32_t y_offset: 7;
-        uint32_t scansum_offset: 3;
-        uint32_t bit_flag: 16;
+Tile pointer array contains the index of the first element' row. It works similarly to a CSR
+\textbf{row pointer}, to get the range of rows covered by a tile, it can be queried for \csre{tile_ptr[tid]}
+and \csre{tile_ptr[tid + 1]} for the first and last rows respectively (range is open from the top).
+
+The most significant bit of the tile pointer is also used as a flag, which is set if a tile is `dirty`.
+A tile is dirty if it contains any empty rows. This flag needs to be stripped when the pointer is used to
+index into \textbf{row pointer} array. To make the interface less error-prone, the pointer is wrapped
+in a structure with \csre{is_dirty} and \csre{idx} methods to force the call-site to explicitly specify
+which usage of the pointer it requires.
+
+\begin{figure}[htp]
+    \begin{minted}{C++}
+    struct tile_ptr {
+        bool is_dirty();
+        UnsignedType raw(); 
+        UnsignedType idx(); 
     };
+    \end{minted}
+    \caption{Tile pointer pseudo-interface}
+\end{figure}
 
-    struct descriptor_t {
-        descriptor_column_t columns[4];
-    };
-\end{minted}
 
-Using Non Type Template Parameters, the bit field widths as well as needed underlying type for column
-descriptor may be computed at compilation time, allowing for fine-tuning while giving compiler enough
-information to optimize properly. This means only 4B additional data per column or 32B per tile.
 
-\subsubsection{Empty offset}
+\subsection{Tile descriptor}
 
-With \csre{empty_offset} being dependent on number of sections in a tile (and being completely absent
-in tiles which don't contain empty rows), it would be inefficient to
+Amids the new additions to C++20 are bit-manipulation functions in \csre{<bit>} header.
+One of the new functions is \csre{std::bit_width} which takes \(N\) and returns \(M\) such that values
+upto \(N\) can be stored in \(M\) bits. This function can be used in conjunction with bit-fields
+and non-type template parameters to pack descriptors very efficiently while retaining readability when using
+them. Since \csre{y_offset} may be at most \(\sigma * \omega\) (the number of new sections is at most the same
+as the number of elements in a tile) and \csre{scansum_offset} may be at most \(\omega - 1\) (as it is the number
+of empty consecutive columns to the right of current column), the descriptor column and the descriptor
+itself can be defined as:
+
+\begin{figure}[htp]
+
+    \begin{minted}{C++}
+template<size_t Sigma, size_t Omega>
+struct descriptor_column {
+    StorageT y_offset: bit_width(Sigma * Omega);
+    StorageT scansum_offset: bit_width(Omega);
+    StorageT bit_flag: Sigma;
+};
+
+template<size_t Sigma, size_t Omega>
+struct descriptor {
+    descriptor_column<Sigma, Omega> columns[Omega];
+};
+    \end{minted}
+    \caption{Tile descriptor pseudo-code.}
+\end{figure}
+
+As CSR5 tile descriptors contain bit flag maps, \csre{std::popcount} can be used to obtain number of set bits,
+denoting number of sections started in a column.
+This allows the compiler to optimize the call to the instruction of same name if the target ISA supports it.
+
+Previous research about CSR5~\cite{liu2015csr5} concluded, that for modern CPUs with AVX2 extensions, the optimal CSR5 tuning parameters
+are \(\sigma = 16\) and \(\omega = 4\).
+
+
+\subsection{Empty offset}
+
+With \textbf{empty offset} being dependent on number of sections in a tile (and being completely absent
+in tiles which \textbf{don't contain empty rows}), it would be inefficient to
 store it in the descriptor itself. To avoid too many allocations, two supporting arrays are added.
-An \csre{empty_offset_ptr} of size $num\_tiles + 1$, which contains offsets for each tile into the
+An \csre{empty_offset_ptr} of size \csre{num_tiles + 1}, which contains offsets for each tile into the
 second array, \csre{empty_offset} at which their \csre{empty_offset} array begins.
-Thus for each tile, it's empty offset is defined as \csre{empty_offset[empty_offset_ptr[i]:empty_offset_ptr[i+1]]}.
+Thus for each tile, it's empty offset array is defined as
+\csre{empty_offset[empty_offset_ptr[i]:empty_offset_ptr[i+1]]}.
+
+The \csre{csr5_info} structure combines these four arrays.
+
+
+\begin{figure}[htp]
+
+    \begin{minted}{C++}
+struct csr5_info {
+    vector<tile_ptr>        tile_ptr;
+    vector<tile_descriptor> tile_desc;
+    vector<UnsignedType>    empty_offset_ptr;
+    vector<UnsignedType>    empty_offset;
+};
+    \end{minted}
+    \caption{\csre{csr5_info} pseudo-code.}
+\end{figure}
 
 
 \section{Selecting on disk storage format}
