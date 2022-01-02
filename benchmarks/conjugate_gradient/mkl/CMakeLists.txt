@@ -15,5 +15,3 @@ brr_add_executable(cg_mkl)
 
 target_link_libraries(cg_mkl PRIVATE MKL::MKL dim::io dim::simple_main
                                      magic_enum::magic_enum)
-
-install(TARGETS cg_mkl RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

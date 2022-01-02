@@ -15,5 +15,3 @@ target_link_libraries(
           nlohmann_json::nlohmann_json)
 
 target_compile_definitions(cg_petsc PRIVATE HDF5_DISABLE_VERSION_CHECK=1)
-
-install(TARGETS cg_petsc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
