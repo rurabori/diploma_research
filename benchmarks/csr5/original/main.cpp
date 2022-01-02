@@ -38,12 +38,18 @@ auto main_impl(const arguments_t& args) {
 
     auto Y = dim::mat::cache_aligned_vector<double>(csr.dimensions.cols, 0);
 
+    for (size_t i = 0; i < 5; ++i)
+        handle.spmv(0., Y.data());
+
     auto total_time = dim::bench::second{0};
 
-    for (size_t i = 0; i < *args.num_runs; ++i)
-        total_time += dim::bench::section([&] { handle.spmv(0., Y.data()); });
-
-    spdlog::info("spmv took {}", total_time.count() / *args.num_runs);
+    for (size_t i = 0; i < *args.num_runs; ++i) {
+        spdlog::info("running iteration {}", i);
+        const auto it_time = dim::bench::section([&] { handle.spmv(0., Y.data()); });
+        total_time += it_time;
+        spdlog::info("iteration {} took {}", i, it_time);
+    }
+    spdlog::info("spmv took {} on average", total_time / *args.num_runs);
 
     handle.destroy();
 

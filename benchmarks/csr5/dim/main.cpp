@@ -57,12 +57,18 @@ int main_impl(const arguments_t& arguments) {
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
     auto calibrator = matrix.allocate_calibrator();
 
-    auto run_times = std::vector<decltype(sw.elapsed())>(*arguments.num_runs);
+    // do some iterations to warm-up cache.
+    for (size_t i = 0; i < 5; ++i)
+        matrix.spmv({.x = x, .y = Y, .calibrator = calibrator});
 
     auto total_time = dim::bench::second{0};
 
-    for (size_t i = 0; i < *arguments.num_runs; ++i)
-        total_time += dim::bench::section([&] { matrix.spmv({.x = x, .y = Y, .calibrator = calibrator}); });
+    for (size_t i = 0; i < *arguments.num_runs; ++i) {
+        spdlog::info("running iteration {}", i);
+        const auto it_time = dim::bench::section([&] { matrix.spmv({.x = x, .y = Y, .calibrator = calibrator}); });
+        total_time += it_time;
+        spdlog::info("iteration {} took {}", i, it_time);
+    }
 
     spdlog::info("CSR5 SpMV took {} on average", total_time / *arguments.num_runs);
 
