@@ -1,4 +1,3 @@
-option(enable_cuda_backend "Enable cuda backend." OFF)
 option(enable_petsc_benchmark "Enable petsc benchmark." OFF)
 option(enable_mkl_benchmark "Enable mkl benchmark." OFF)
 option(system_scientific_libs
