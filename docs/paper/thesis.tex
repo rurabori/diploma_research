@@ -32,7 +32,7 @@
 
 \usepackage{tikz}
 \usetikzlibrary{positioning,fit,calc}
-
+\usetikzlibrary{patterns,snakes}
 
 \usepackage{minted}
 \usepackage{amsthm,amssymb,amsfonts}
@@ -57,18 +57,26 @@
 % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % 
 
 \department{Department of Theoretical Computer Science}
-\title{Distrubuted Sparse Matrix-Vector Multiplication}
+\title{Distributed Sparse Matrix-Vector Multiplication}
 \authorGN{Boris} %author's given name/names
 \authorFN{Rúra} %author's surname
 \author{Boris Rúra} %author's name without academic degrees
 \authorWithDegrees{Bc. Boris Rúra} %author's name with academic degrees
 \supervisor{doc. Ing. Ivan Šimeček, Ph.D.}
-\acknowledgements{TODO: make thanks}
-\abstractEN{Summarize the contents and contribution of your work in a few sentences in English language.}
-\abstractCS{V n{\v e}kolika v{\v e}t{\' a}ch shr{\v n}te obsah a p{\v r}{\' i}nos t{\' e}to pr{\' a}ce v {\v c}esk{\' e}m jazyce.}
+\acknowledgements{The access to the computational infrastructure of the OP VVV funded project CZ.02.1.01/0.0/0.0/16\_019/0000765 ``Research Center for Informatics'' is also gratefully acknowledged.}
+\abstractEN{The aim of this thesis is to research possibilities of distributing sparse matrix-vector multiplication among multiple processes using MPI and CSR5 storage format.
+The result of this research is a C++ library \texttt{dim}, which provides the building blocks for distributed 
+SpMV using CSR5.
+The potential speedup of distributed SpMV is then benchmarked on a conjugate gradient algorithm implementation against 
+a single-process CSR5 based implementation as well as PETSc based multi-process implementation.}
+\abstractCS{Cílem tehle práce bylo prozkoumat možnosti distribuovaného násobení řídké matice vektorem nekolika 
+procesy, s použitím MPI a CSR5. Výsledkem tohto výzkumu je C++ knižnice \texttt{dim}, která poskytuje potřebné 
+stavební . Potencionálni zrychlení 
+distribuovaného násobení řídké matice vektorem pak bylo meřeno na implementaci metody konjugovaných gradientů,
+a porovnávano s jedno-procesovou implementací založenou na CSR5 i distribuovanou implementací pomocí PETSc.}
 \placeForDeclarationOfAuthenticity{Prague}
-\keywordsCS{Replace with comma-separated list of keywords in Czech.}
-\keywordsEN{Replace with comma-separated list of keywords in English.}
+\keywordsCS{násobení řídké matice vektorem, C++, OpenMP, MPI, metoda konjugovaných gradientů, CSR5, HDF5}
+\keywordsEN{sparse matrix-vector multiplication, C++, OpenMP, MPI, conjugate gradient method, CSR5, HDF5}
 \declarationOfAuthenticityOption{1} %select as appropriate, according to the desired license (integer 1-6)
 % \website{http://site.example/thesis} %optional thesis URL
 
@@ -280,7 +288,7 @@ directives or compiler provided set of intrinsics.
 \section{Sparse matrix exchange formats}
 
 
-\subsection{Matrix Market Exchange Format}
+\subsection{Matrix Market Exchange Format}\label{theory:MMEF}
 
 Native exchange format of Matrix Market. Has two flavours, Array Format for dense matrices,
 Coordinate format for sparse matrices. \cite{mmef}
@@ -343,7 +351,7 @@ and the corresponding value. Indices are 1 based. Entries not explicitly provide
 to be zero, except for those known by symmetry.
 
 
-\section{HDF5}
+\section{HDF5}\label{theory:HDF5}
 
 HDF5 is a data model, library, and file format for storing and managing data.
 It supports an unlimited variety of datatypes, and is designed for flexible and
@@ -554,7 +562,6 @@ The \csre{csr5_info} structure combines these four arrays.
 
 
 \begin{figure}[htp]
-
     \begin{minted}{C++}
 struct csr5_info {
     vector<tile_ptr>        tile_ptr;
@@ -567,27 +574,122 @@ struct csr5_info {
 \end{figure}
 
 
+\section{Sparse matrix vector multiplication}\label{csr5:spmv}
+
+\csre{dim} performs parallel sparse matrix vector multiplication with the matrix stored in CSR5 format
+as described in~\cite{liu2015csr5}.
+
+
+
+Using \(N\) threads, each thread gets a contiguous chunk of tiles of the same size (except possibly the
+last thread). Tiles within the context of a thread are then processed sequentially.
+
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}
+        % tiles
+
+        \coordinate (tileArr) at (0, 0);
+
+        % threads
+        \filldraw[blue!20] ($ (tileArr) + (0, 0) $) rectangle ($ (tileArr) + (2, 0.5) $);
+        \filldraw[green!20] ($ (tileArr) + (2, 0) $) rectangle ($ (tileArr) + (4, 0.5) $);
+        \filldraw[red!20] ($ (tileArr) + (4, 0) $) rectangle ($ (tileArr) + (6, 0.5) $);
+        \filldraw[yellow!20] ($ (tileArr) + (6, 0) $) rectangle ($ (tileArr) + (8, 0.5) $);
+
+        \draw[step=0.5cm,gray,very thin] ($ (tileArr) + (0, 0) $) grid ($ (tileArr) + (8, 0.5)$);
+
+        \foreach \x in {0,...,3}
+            {
+                \coordinate (LLC\x) at ($(tileArr.west) + (\x * 2, 0)$);
+                \draw [
+                    thick,
+                    decoration={
+                            brace,
+                            mirror,
+                            raise=0.1cm
+                        },
+                    decorate
+                ] ($(LLC\x) + (0.1, 0)$) -- ($ (LLC\x) + (2 - 0.1, 0) $)
+                node[pos=0.5,below=10pt,black]{$t_\x$};
+                \foreach \i in {0,...,3}
+                \node at ($(LLC\x) + (\i * 0.5 + 0.25, 0.25)$) {$i_\i$};
+            }
+
+        \node[left=of tileArr, anchor=east] {Tiles:};
+    \end{tikzpicture}
+    \caption{Processing tiles using 4 threads}\label{csr5:thr_dist}
+\end{figure}
+
+To describe the tile processing, the notion of \textbf{sub-segments} within a tile column needs
+to be established.
+~\cite{liu2015csr5} defines three types of sub-segments. A green sub-segment is a segment which contains
+all of the elements of a single row, that is, it starts with a set bit in \csre{bit_flag} and ends with
+another set-bit (denoting start of a new row) in \csre{bit_flag}. A blue sub-segment is unsealed from
+the bottom (column does not end with a set bit in \csre{bit_flag}).
+Red sub-segments are unsealed from the top (column does not start with a set bit in \csre{bit_flag}).
+If a tile column has no set bits, it is also marked as a red segment.
+Green sub-segments require no further synchronization and their sum can be written to result vector \(y\)
+directly by combining \csre{tile_ptr} and \csre{y_offset} information. Red and blue sub-segments must
+further add their partial sums since they do not form a complete segment.
+
+
+Each tile having 4 columns (\(\omega{}\)) and 16 rows (\(\sigma{}\)), the
+thread will perform \(\sigma{}\) iterations,
+processing \(\omega{}\) non-zero elements in each iteration using SIMD instructions, in other words,
+each column is assigned a SIMD-lane and processed in parallel. This is the reason
+for \(\omega{} = 4\) as AVX2 instructions can work on 4 double precision floating point numbers at once
+as well as the reason for data being in-place transposed.
+
+
+
+
+
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}
+        % matrix
+        \draw[step=0.5cm,gray,very thin] (0, 0) grid (2, 2);
+        \path (1, -0.5) -- (1, -1) node [black, font=\Huge, midway, sloped] {$\dots$};
+
+    \end{tikzpicture}
+    \caption{Processing a single tile}
+\end{figure}
+
+This minimizes the critical sections, as the tiles within the chunk do not have to be
+synchronized since they are processed sequentially in the context of a thread. Only a single element of
+\(y\) may be overlapping between neighboring chunks of tiles which only happens if the first tile of the
+chunk starts with a red sub-section. To synchronize these elements, each thread
+stores its first output element, in a `calibrator'. After the parallel part of algorithm is over, each
+threads calibrator is added to the result to perform final synchronization.
+
+
 \section{Selecting on disk storage format}
 
+The matrices for which parallelized (and distributed) matrix-vector multiplication has the biggest benefit,
+are large. This section compares Matrix Market Exchange Format~\cite{mmef} introduced in \ref{theory:MMEF}
+and HDF5 backed format
+introduced by Matlab 6.0 for storing sparse matrices, comparing both on-disk size and throughput
+measured by number of elements loaded in a second.
 
 \subsection{Matrix market storage format}
 
 Matrix market exchange format is designed to be easy to parse. It provides a library to parse
-the header and matrix dimensions. \cite{mmC}
+the header and matrix dimensions~\cite{mmC}.
 
-The numerical entries, need to be parsed manually.
-Most implementations use variations of \texttt{scanf}.
+The numerical entries, need to be parsed manually, for which most implementations use variations of \texttt{scanf}.
 Initial implementation in dim used \texttt{scanf} as well. This however proved to be a bottleneck as
-the average throughput was only 4515017 elements/s.  After profiling, it beacame obvious that parsing the string representation
-was the issue as 97.89\% of time spent was in \texttt{scanf} itself.
+the average throughput was only 4515017 elements/s. Profiling has shown that parsing the string representation
+was the the most computationally intensive step as 97.89\% of time spent was in \texttt{scanf} itself.
 To improve the loading times, in an effort to
-simplify (and speed up) the process of benchmarking, an implementation using
-\mintinline{C++}{scnlib} \footnote{\mintinline{C++}{scnlib} is a modern C++ alternative to scanf.}
-was deployed. With an average throughput of 6068194 elements/s it provided about 1.34x speedup but it was still inadequate.
+shorten the iteration times the process of benchmarking, an implementation using
+\mintinline{C++}{scnlib}\footnote{\mintinline{C++}{scnlib} is a modern C++ alternative to scanf.}
+was created. With an average throughput of 6068194 elements/s it resulted in 1.34x speedup, which was
+still a major development bottleneck.
 
 \begin{figure}[!h]
     \centering
-    \includegraphics[scale=0.5]{static/MMEF_bench.png}
+    \includegraphics[scale=0.5]{static/mmef_loading.pdf}
     \caption{Loading times of MMEF}
 \end{figure}
 
@@ -599,8 +701,9 @@ was deployed. With an average throughput of 6068194 elements/s it provided about
 \newcommand{\hdts}[1]{\textcolor{hdtsc}{#1}}
 \newcommand{\hdat}[1]{\textcolor{hdatc}{#1}}
 
-HDF5 is supported by MATLAB, as well as PETSc. Sparse matrices are stored in CSR format.
-Each matrix is represented as a single group containing 3 datasets:
+Matrices stored in binary format using HDF5 introduced in~\ref{theory:HDF5} are supported by MATLAB,
+as well as PETSc\footnote{PETSc has to be configured with HDF5 support when it is built}.
+They are stored in CSR format, represented as a single HDF5 group containing 3 datasets:
 \begin{itemize}
     \item \hdts{data} - values of elements.
     \item \hdts{aj} - column index.
@@ -639,20 +742,14 @@ of the stored matrix.
     \caption{Layout of a sparse matrix stored as a HDF5 group}
 \end{figure}
 
-Storing in this format yielded a throughput of 110005843 elements/s which is 24.36x speedup over \texttt{scanf}
-based implementation of reading matrices stored in Matrix Market Echange Format and 18.12x speedup over \texttt{scnlib}
-implementation.
+Storing the matrices in this format yielded a throughput of 110005843 elements/s which is 24.36x speedup
+over \texttt{scanf} based implementation of reading matrices stored in Matrix Market Exchange Format
+and 18.12x speedup over \texttt{scnlib} implementation.
 
 \begin{figure}[!h]
     \centering
-    \begin{minipage}{.5\textwidth}
-        \centering
-        \includegraphics[scale=0.45]{static/matrix_loading.png}
-    \end{minipage}%
-    \begin{minipage}{.5\textwidth}
-        \centering
-        \includegraphics[scale=0.45]{static/storage_sizes.png}
-    \end{minipage}
+    \includegraphics[scale=0.5]{static/mmef_vs_h5.pdf}
+    \caption{Load times of HDF5 and MMEF storage formats.}
 \end{figure}
 
 
@@ -660,36 +757,26 @@ Since, MMEF uses coordinate format to store sparse matrices, it may ommit elemen
 from their symmetrical counterparts. This can be used as size optimization. Matrices 2, 3 and 4 in the above graph are symmetrical,
 thus their on-disk size can be smaller with MMEF than it is with HDF5.
 
-HDF5 format supports dataset compression by LZMA. Setting chunk size to 4096 and compression level to 5 for each of the 3 datasets,
-it is possible to achieve considerable storage savings (the biggest matrix is around 7.8x smaller stored as compressed HDF5 compared to MMEF)
-while maintaning better loading performance, with average throughput being 27074837 elements/s, about 4x slower than HDF5 with no compression,
+\begin{figure}[!h]
+    \centering
+    \includegraphics[scale=0.5]{static/mmef_vs_h5_stor.pdf}
+    \caption{On-disk size of HDF5 and MMEF storage formats.}
+\end{figure}
+
+However, HDF5 format supports dataset compression by LZMA. Setting chunk size to 4096 and compression level to 5 for each of the 3 datasets,
+it is possible to achieve considerable storage savings (the biggest matrix is 7.8x smaller stored as compressed HDF5 compared to MMEF)
+while maintaining better loading performance, with average throughput being 27074837 elements/s, about 4x slower than HDF5 with no compression,
 but still 4 and 6 times faster than scnlib and scanf implementations respectively.
 
+\section{On disk storage for CSR5 matrices}\label{csr5:onDisk}
 
-
-
-\chapter{On disk storage for CSR5 matrices}
-
-HDF5 supports loading only a part of dataset as a hyperslab, making it possible to load only the data
-required by a tile to be loaded.
-
-
-
-
-\section{On disk layout}
-
+With HDF5 proving to be the faster alternative to textual MMEF format, it is used for storing sparse
+matrices in CSR5 format as well.
 
 Each of the sequential data members \hdts{row\_ptr}, \hdts{col\_idx}, \hdts{vals}, \hdts{tile\_ptr},
 \hdts{empty\_offset}, \hdts{empty\_offset\_ptr}, are stored as one dimensional datasets of same name
-and same datatype. \hdat{num\_cols} is stored as an attribute.
-
-\hdts{tile\_desc} is stored as an one dimensional dataset, with datatype being
-an array of 4 little endian unsigned 32-bit integers. In essence storing the data to HDF5 file as
-they appear in memory. This does put a soft requirement on the CLI used to transform a CSR matrix to
-CSR5 matrix and the code executing the SpMV being compiled by the same version of a compiler, as
-bit field in-memory layout is implementation defined, but allows faster loading. Furthermore both
-Clang and GCC implement this in the same way so the requirement is only a soft one, as compatibility can
-be easily tested.
+and same datatype\footnote{\csre{H5T_STD_U32LE} for all the index arrays and \csre{H5T_IEEE_F64LE} for values}.
+\hdat{num\_cols} is stored as an attribute.
 
 \begin{figure}[!h]
     \begin{tcolorbox}[title=/A, colback=gray!30!white]
@@ -721,53 +808,77 @@ be easily tested.
     \caption{Layout of a sparse matrix stored as a HDF5 group}
 \end{figure}
 
+\hdts{tile\_desc} is stored as an one dimensional dataset, with datatype being
+an array of 4 little endian unsigned 32-bit integers. In essence storing the data to HDF5 file as
+they appear in memory. This does put a soft requirement on the code storing the CSR5 matrix to a file
+and the code loading it compiled by the same version of a compiler, as
+bit field in-memory layout is implementation defined, but allows faster loading. Furthermore both
+Clang and GCC implement this in the same way so the requirement is only a soft one, as compatibility can
+be easily tested.
 
 
-\section{Loading the matrices}
 
+\chapter{Distributed Sparse Matrix Vector Multiplication}
+
+Using the principles described in Section~\ref{csr5:spmv}, sparse matrix vector multiplication can be
+distributed across multiple processes. The tiles are first divided among processes as they would be
+among threads in a single process implementation (see Figure~\ref{csr5:thr_dist}). Then, these chunks
+assigned to processes are further subdivided among the threads of each process. Furthermore, same
+synchronization principles apply, thus only processes which have first tile starting with red-subsegment
+(as defined in~\ref{csr5:spmv}) need to synchronize with the process to the
+left\footnote{In the sense of MPI topology.}.
+
+Section~\ref{dspmv:load} outlines the algorithm used to load the chunks for each process using HDF5 and
+MPI-IO. Then, the synchronization algorithm for edge elements of result vector as well as an algorithm for
+distributing the result vector amongst the processes is introduced in \ref{dspmv:sync}.
+
+
+
+
+
+\section{Loading the matrices}\label{dspmv:load}
 
 Since CSR5 partitions the non-zero elements of a matrix into tiles of
-size $\sigma * \omega$, each node can load only data relevant for tiles
+size \(\sigma * \omega\), each node can load only data relevant for tiles
 assigned to it. This is enabled by two features of HDF5, first of which
 is reading hyperslabs. A hyperslab is a subset of a HDF5 dataset, so
 nodes do not have to read whole datasets.
 
 Second feature enabling this, is HDF5s ability to utilize MPI-IO, allowing concurrent
-reads from every node rather than reading the matrix in main node
-and distributing it amongst the rest of the nodes. This imposes a minor limitation
+reads from every process rather than reading the matrix in main process
+and distributing it amongst the rest of the processes. This imposes a minor limitation
 on how the matrix can be stored, or rather how the dataset needs to be structured.
-Since MPI-IO was introduced in MPI revision 2.0 \cite{mpi20} in 1997, its API takes
-size to be read as an integer argument, thus limiting the maximum amount of data read
-in a single call to 2GiB. The dataset thus needs to be chunked
+Since MPI-IO was introduced in MPI revision 2.0~\cite{mpi20} in 1997, its API takes
+size of data to be read as an integer argument, thus limiting the maximum amount of data read
+in a single call to 2GiB. To avoid exceeding this limit, dataset needs to be chunked
 \footnote{experimentally, chunks of 1000000 elements or ~8MiB of double precision floating
-    point numbers performed best}, else HDF5 tries to read it at once and MPI-IO fails.
+    point numbers performed best}, else HDF5 tries to read all of it at once and MPI-IO fails.
 
 
-To load part of a CSR5 matrix first the number of tiles needs to be obtained. This can be
-done by querying size of \csre{tile_desc} dataset which contains descriptor for each tile.
-The number of tiles is then divided by number of nodes, meaning every node gets equal
-number of tiles (bar the last node which can have less) which in turns means equal number
+First step of loading a CSR5 matrix is obtaining the number of tiles of the matrix. This can be
+done by querying the dimensions of \csre{tile_desc} dataset which contains descriptor for each tile.
+The number of tiles is then divided by number of processes, meaning every process gets equal
+number of tiles (bar the last process which can have less) which in turns means equal number
 of non-zero elements.
 
 
-
 \begin{algorithm}
-    \caption{Computing partition size for each node}
+    \caption{Computing partition size for each process}
     \begin{algorithmic}
-        \Function{calculate\_partition}{$tile\_count$, $node\_id$, $node\_count$}
-        \State $partition\_size \gets \lceil\frac{tile\_count}{node\_count}\rceil$
-        \State $first \gets partition\_size * node\_id$
-        \State $count \gets min(partition\_size, tile\_count - first)$
+        \Function{calculate\_partition}{$\var{tile\_count}$, $\var{proc\_id}$, $\var{proc\_count}$}
+        \State $\var{partition\_size} \gets \lceil\frac{\var{tile\_count}}{\var{proc\_count}}\rceil$
+        \State $\var{first} \gets \var{partition\_size} * \var{proc\_id}$
+        \State $\var{count} \gets min(\var{partition\_size}, \var{tile\_count} - \var{first})$
 
-        \Return $(first, count)$
+        \Return $(\var{first}, \var{count})$
         \EndFunction
     \end{algorithmic}
 \end{algorithm}
 
 Then, tile descriptors from \csre{tile_desc} dataset, tile pointers from \csre{tile_ptr}
 dataset and empty offsets pointers from \csre{tile_desc_offset_ptr} can be loaded.
-Sizes of slabs are $\#tiles_{node}$, $\#tiles_{node} + 1$ and $\#tiles_{node} + 1$
-respectively, as $*\_ptr$ datasets use $n+1^{st}$ element to denote end of values
+Sizes of slabs are $\#tiles_{proc}$, $\#tiles_{proc} + 1$ and $\#tiles_{proc} + 1$
+respectively, as \csre{*_ptr} datasets use $n+1^{st}$ element to denote end of values
 belonging to $n^{th}$ element. Lastly empty offsets from \csre{tile_desc_offset}
 are loaded. This forms complete information about CSR5 tiles, and as such, it is
 stored in a separate structure named \csre{csr5_info}. This information is useful
@@ -777,11 +888,11 @@ of matrix and its parent tile can be made just with this information.
 \begin{algorithm}
     \caption{Loading CSR5 info}
     \begin{algorithmic}
-        \Function{load\_csr5\_info}{$datasets$, $first$, $count$}
-        \State $tile\_desc \gets datasets["tile\_desc"][first:first + count]$
-        \State $tile\_ptr \gets datasets["tile\_ptr"][first:first + count + 1]$
-        \State $empty\_off\_ptr \gets datasets["tile\_desc\_offset\_ptr"][first:first + count + 1]$
-        \State $empty\_off \gets datasets["tile\_desc\_offset"][empty\_off\_ptr[0]:empty\_off\_ptr[-1]]$
+        \Function{load\_csr5\_info}{$\var{datasets}$, $\var{first}$, $\var{count}$}
+        \State $\var{tile\_desc} \gets \var{datasets["tile\_desc"][first:first + count]}$
+        \State $\var{tile\_ptr} \gets \var{datasets["tile\_ptr"][first:first + count + 1]}$
+        \State $\var{empty\_off\_ptr} \gets \var{datasets["empty\_offset\_ptr"][first:first+count+1]}$
+        \State $\var{empty\_off} \gets \var{datasets["empty\_offset"][empty\_off\_ptr[0]:empty\_off\_ptr[-1]]}$
         \EndFunction
     \end{algorithmic}
 \end{algorithm}
@@ -790,11 +901,11 @@ of matrix and its parent tile can be made just with this information.
 
 Lastly, slab of \csre{row_ptr} is loaded, starting at \csre{tile_ptr[0]} and
 ending at last output row of chunk of this matrix. This varies, if it is the last
-node, the last output row is simply last row of the matrix. For every other tile,
+process, the last output row is simply last row of the matrix. For every other tile,
 \csre{y_index} in last column + number of bits set in the bit flag of last column
 (equal to number of started rows) gives relative offset, which, when added to
-tile\_ptr of the tile will result in absolute offset in y where next row would be.
-This model maps nicely onto C++ iterator model, where end denotes
+\csre{tile_ptr} of the tile will result in absolute offset in y where next row would be.
+This model maps onto C++ iterator model, where \csre{end} denotes
 element one past the end of the range. With this information, \csre{row_ptr} can be
 loaded. Since, \csre{row_ptr} has the same meaning as in CSR, hyperslabs for
 values from \csre{vals} dataset, and column indices from \csre{col_idx} dataset
@@ -805,48 +916,38 @@ are both starting at \csre{row_ptr[0]} and ending at \csre{row_ptr[-1]}.
     \caption{Loading CSR data}
     \begin{algorithmic}
         \Function{last\_out\_idx}{}
-        \State \(lid \gets "last tile id"\)
-        \State \(last\_desc \gets tile\_desc[lid]\)
-        \State $secs\_starting \gets popcount(last\_desc[lid].bit\_flag)$
-        \State $relative\_offset \gets last\_desc[lid].y\_index + secs\_starting$
+        \State \(\var{lid} \gets \text{`last tile id'}\)
+        \State \(\var{last\_desc} \gets \var{tile\_desc[lid]}\)
+        \State \(\var{secs\_starting} \gets popcount(\var{last\_desc[lid].bit\_flag})\)
+        \State \(\var{rel\_off} \gets \var{last\_desc[lid].y\_index + secs\_starting}\)
 
-        \If{$dirty(last\_desc)$}
-        \State $empty\_start \gets empty\_off\_ptr[lid]$
-        \State $relative\_offset \gets empty\_off[empty\_start + relative\_offset]$
+        \If{\(dirty(\var{last\_desc})\)}
+        \State \(\var{empty\_start} \gets \var{empty\_off\_ptr[lid]}\)
+        \State \(\var{rel\_off} \gets \var{empty\_off[empty\_start + rel\_off]}\)
         \EndIf
 
-        \Return $tile\_ptr[lid] + relative\_offset$
+        \Return \(\var{tile\_ptr[lid] + relative\_offset}\)
         \EndFunction
 
         \Function{load\_csr\_data}{$datasets$, $first$, $count$}
-        \State $fr_{id} \gets tile\_ptr[0]$
-        \State $lr_{id} \gets last\_out\_idx()$
-        \State $row\_ptr \gets datasets["row\_ptr"][fr_{id}:lr_{id}]$
-        \State $values \gets datasets["vals"][row\_ptr[0]: row\_ptr[-1]]$
-        \State $col\_idx \gets datasets["col\_idx"][row\_ptr[0]: row\_ptr[-1]]$
+        \State \(\var{fr\_id} \gets \var{tile\_ptr[0]}\)
+        \State \(\var{lr\_id} \gets last\_out\_idx()\)
+        \State \(\var{row\_ptr} \gets \var{datasets["row\_ptr"][fr\_id:lr\_id]}\)
+        \State \(\var{values} \gets \var{datasets["vals"][row\_ptr[0]: row\_ptr[-1]]}\)
+        \State \(\var{col\_idx} \gets \var{datasets["col\_idx"][row\_ptr[0]: row\_ptr[-1]]}\)
         \EndFunction
     \end{algorithmic}
 \end{algorithm}
 
-\chapter{Distributed Sparse Matrix Vector Multiplication}
+\section{Synchronization}\label{dspmv:sync}
 
-Each node now has a chunk of a matrix loaded. Let $A$ denote the original matrix
-and $A_{i}$ the chunk loaded by $i^{th}$ node. Then $A = A_{0} + ... + A{n}$. Since
-matrix multiplication by vector from right is associative, $Ax = A_{0}x + ... + A{n}x = y$
-In other words, the result vector can be obtained by adding result vectors of all nodes.
+As explained in~\ref{csr5:spmv} a tile may share at most one output element with its neighbor,
+so a process has to synchronize at most two elements in its output range in \(y\). The synchronization
+mechanism is explained in Section~\ref{dspmv:sync}. If all processes need the result vector,
+it can be distributed as explained by Section~\ref{dspmv:dist}.
 
-For computing sub-results on each node, a highly parallel SpMV algorithm introduced in
-\cite{liu2015csr5} is used.
-
-\section{Synchronization}
-
-Furthermore, a tile may share at most one output element with its right neighbour, so
-the addition is performed only for a limited number of elements, for the rest it is
-a simple copy.
-
-
-To illustrate, let $A$ be a $4x4$ square matrix with 8 non-zero elements, multiplied by a vector
-$x$, while SPmV is distributed across four processes labeled p1-p4 and let $\sigma = 2$ and $\omega = 1$.
+To illustrate, let \(A\) be a \(4\times4\) square matrix with 8 non-zero elements, multiplied by a vector
+\(x\), while SPmV is distributed across four processes labeled p1-p4 and let \(\sigma = 2\) and \(\omega = 1\).
 Thus, each process gets one CSR5 tile containing 2 non-zero elements.
 
 \begin{figure}[htp]
@@ -896,7 +997,7 @@ Thus, each process gets one CSR5 tile containing 2 non-zero elements.
 
 
 
-\subsection{Synchronizing overlapping output ranges}
+\subsection{Synchronizing overlapping output ranges}\label{dspmv:sync}
 
 Let \textbf{output index} be an index into result vector $y$ of sparse matrix vector
 multiplication $Ax = y$ and \textbf{output range} be a pair of output indices, denoting
@@ -1144,9 +1245,9 @@ to synchronize the edge elements in every participating process.
         \node (sp22) [below=1.25cm of p22, rectangle, draw=black!90, anchor=center] {9};
 
         \node (sp31) [below=1.25cm of p31, rectangle, draw=black!90, anchor=center] {9};
-        \node (sp32) [right=0cm of sp31, rectangle, draw=black!90, anchor=west] {31};
+        \node (sp32) [right=0cm of sp31, rectangle, draw=black!90, anchor=west] {21};
 
-        \node (sp41) [below=1.25cm of p41, rectangle, draw=black!90, anchor=center] {31};
+        \node (sp41) [below=1.25cm of p41, rectangle, draw=black!90, anchor=center] {21};
 
         \node [left=0.2cm of sp11, anchor=east] {$y_{px}$ (sync)};
 
@@ -1164,18 +1265,62 @@ to synchronize the edge elements in every participating process.
 \end{figure}
 
 
-\subsection{Synchronizing non-overlapping output ranges}
+\subsection{Distributing the result}\label{dspmv:dist}
 
-After synchronizing overlapping output ranges, non-overlapping ranges can be synchronized.
-Ownership rules established in previous section apply to non-overlapping ranges as well.
-First node writing an element "owns" the elements and is the only one broadcasting it to
-other nodes.
+After synchronizing overlapping output ranges, the result can be distributed to every process.
+Ownership rules established in previous section apply when distributing the result vector.
+First process writing an element owns the element and is the only one broadcasting it to
+other processes.
 
-To synchronize all elements, first output ranges, must be exchanged. From these ranges,
-an array of offsets into the complete result vector are computed, with each node
-either outputing its whole output range, or skipping the first element in the range if
-it is owned by a node to the left. The actual distribution of results is performed by calling \csre{MPI_Allgatherv}, with
-offsets and sizes computed as explained previously.
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}[proc/.style={circle, minimum width=5mm, scale=0.8}]
+        \node (p1) [proc, style={draw=blue!90}] {p1};
+        \node (p2) [right=of p1, proc, style={draw=red!90}] {p2};
+        \node (p3) [right=of p2, proc, style={draw=green!90}] {p3};
+        \node (p4) [right=of p3, proc, style={draw=yellow!90}] {p4};
+
+        \node (p11) [below=0.5cm of p1, rectangle, draw=black!90, anchor=center] {3};
+
+        \node (p21) [below=0.5cm of p2, rectangle, draw=black!90, anchor=east] {3};
+        \node (p22) [right=0cm of p21.east, rectangle, draw=black!90] {9};
+
+        \node (p31) [below=0.5cm of p3, rectangle, draw=gray!90,anchor=east] {9};
+        \node (p32) [right=0cm of p31.east, rectangle, draw=black!90] {21};
+
+        \node (p41) [below=0.5cm of p4, rectangle, draw=gray!90, anchor=center] {21};
+
+        \draw [dotted] (-1, -1.6) -- (7, -1.6);
+        \node (st) [scale=0.5] at (6.3, -1.5) {\csre{MPI_Allgatherv}};
+
+        \node [left=0.2cm of p11, anchor=east] {$y_{px}$ (sync)};
+
+
+        \coordinate (res) at ($(p2)!0.5!(p3) + (0, -2.5)$);
+
+        \node (sp1) [rectangle, draw=blue!90, anchor=center] at ($(res) + (-0.75, 0.25) $) {3};
+        \draw [-stealth] (p11) -- (sp1);
+
+        \node (sp2) [right=0cm of sp1.east, rectangle, draw=red!90, anchor=west] {3};
+        \draw [-stealth] (p21) -- (sp2);
+
+        \node (sp3) [right=0cm of sp2.east, rectangle, draw=red!90, anchor=west] {9};
+        \draw [-stealth] (p22) -- (sp3);
+
+        \node (sp4) [right=0cm of sp3.east, rectangle, draw=green!90, anchor=west] {21};
+        \draw [-stealth] (p32) -- (sp4);
+
+        \node [left=0.2cm of sp11, anchor=east] {$y$ (sync)};
+    \end{tikzpicture}
+    \caption{Distribution of result of \(Ax = y\) assuming \(x=\mathbb{1}\)}
+\end{figure}
+
+To synchronize all elements, first output ranges, must be exchanged (which is done for the edge
+element synchronization anyway). From these ranges,
+an array of offsets into the complete result vector are computed, with each process
+either broadcasting its whole output range, or skipping the first element in the range if
+it is owned by a process to the left. The actual distribution of results is performed by
+calling \csre{MPI_Allgatherv}, with offsets and sizes computed as explained previously.
 
 \newcommand{\pluseq}{\mathrel{+}=}
 \begin{algorithm}[htp]
@@ -1210,88 +1355,12 @@ offsets and sizes computed as explained previously.
     \end{algorithmic}
 \end{algorithm}
 
-\chapter{Conjugate gradient method}
-
-% TODO: citations.
-Conjugate gradient method is an algorithm for numerical solution of systems of linear
-equations. In its iterative form, the algorithm is:
-
-\begin{algorithm}
-    \caption{Iterative conjugate gradient}
-    \begin{algorithmic}
-        \Function{conjugate\_gradient}{$\var{A}$, $\var{b}$, $\var{x}$}
-        \State $\var{r} \gets \var{b - A * x}$
-        \State $\var{s} \gets \var{r}$
-        \State $\var{r\_r} \gets \var{r} * \var{r}$
-
-        \For{$\var{i} = 0; \var{i} < \var{max\_iters}; \var{++i}$}
-        \State $\var{As} \gets \var{A} * \var{s}$
-        \State $\var{alpha} \gets \frac{\var{r\_r}}{\var{s'}*\var{As}} $
-        \State $\var{x} \gets \var{x} + \var{alpha} * \var{s}$
-        \State $\var{r} \gets \var{r} - \var{alpha} * \var{As}$
-        \State $\var{r\_r\_new} \gets \var{r'} * \var{r}$
-
-        \If{$\var{sqrt(r\_r\_new)} < \var{threshold}$}
-        \State $\textbf{break}$
-        \EndIf
-
-        \State $\var{beta} \gets \frac{\var{r\_r\_new}}{\var{r\_r}}$
-        \State $\var{r\_r} \gets \var{r\_r\_new}$
-        \State $\var{s} \gets \var{r} + \var{beta} * \var{s}$
-
-        \EndFor
-
-        \EndFunction
-    \end{algorithmic}
-\end{algorithm}
-
-\section{Distributed conjugate gradient implementation}
-
-Each process has a full copy of \csre{s}.
-
-$\var{As} \gets \var{A} * \var{s}$, each process can perform SpMV on its local part of
-\csre{A}. This will result, in each process having part of \csre{As}, with some overlapping
-output elements having only part of it's value which needs to be synchronized.
-
-$\var{alpha} \gets \frac{\var{r\_r}}{\var{s} * \var{As}}$. Since each process only has part of
-\csre{As} and full \csre{s}, it can do its part of the $\var{s} * \var{As}$.
-Dot product of two vectors is computed as $x * y = \sum x_i * y_i$, so $\var{s} * \var{As}$
-can be rewritten as $a * As = \sum_{p=0}^{np} \sum_{i=os_p}^{oe_p} s_i * As_{i-os_p}$ where
-$np$ is number of processes, and $os_p$ and $oe_p$ denote start and end of output for process
-$p$ respectively.The outer sum can be computed using \csre{MPI_Allreduce},
-summing the results of inner sum for each process.
-
-For the elements that need to be synchronized (multiple processes are computing their sub-values),
-the resulting element is a sum of all of the subresults thus $s * As = \sum s_i * As_i$ term for $i$
-which is computed by multiple processes can be rewriten as $s_i * (As_{i_{p1}} + ... + As_{i_{pn}})$.
-As multiplication in $R$ is distributive, this can be rewritten as $s_i * As_{i_{p1}} + ... + s_i * As_{i_{pn}}$
-so there is no need to synchronize $As_i$ as result will be synchonized when partial results for
-each process are summed.
-
-$\var{x} \gets \var{x} + \var{alpha} * \var{s}$ each process only has the part of \csre{x},
-coinciding with the output ranges into \csre{As} it owns. Thus thus each process only
-modifies said part of \csre{x}.
-
-$\var{r} \gets \var{r} - \var{alpha} * \var{As}$ Similarly to previous step, each process
-only modifies the part of residual vector \csre{r}. Synchronization of overlapping
-output elements for \csre{As} must be done before this step, as process which owns the
-element uses it to modify \var{r} in this step.
-
-$\var{r\_r\_new} \gets \var{r'} * \var{r}$ Same as in alpha computation, the dot product
-can be divided into sub sums, which can then be summed across all processes, using
-\csre{MPI_Allreduce}.
-
-$\var{s} \gets \var{r} + \var{beta} * \var{s}$ each process computes only part of new
-\csre{s}, corresponding to its output range in \csre{As}. The resulting \csre{s} is
-then distributed to all processes using same algorithm as described in section
-about synchronization of distributed SpMV results using \csre{MPI_Allgatherv}.
-This distribution step is the heaviest as far as MPI communication goes.
-
 
 \chapter{Benchmarks}
 
 To measure real world performance of distributed sparse matrix vector multiplication
-three implementations of numerical solvers using conjugate gradient method were produced.
+three implementations of numerical solvers using conjugate gradient method, briefly explained in
+Appendix~\ref{app:cg}, were produced.
 Single and multi process implementations using csr5 as SpMV algorithm and a PETSc
 multi process implementation.
 
@@ -1312,7 +1381,7 @@ Three square matrices were selected for benchmarking.
     \textbf{name}      & \textbf{n} & \textbf{non zeroes} & \textbf{CSR5 on-disk size} [GiB] \\
     \hline
     \hline
-    \textbf{nlpkkt240} & 27993600x  & 774472352           & 9.1                              \\
+    \textbf{nlpkkt240} & 27993600   & 774472352           & 9.1                              \\
     \hline
     \textbf{GAP-web}   & 50636151   & 1930292948          & 22.6                             \\
     \hline
@@ -1325,21 +1394,22 @@ Three square matrices were selected for benchmarking.
 
 \textbf{Compiler}: \texttt{GCC 10.3} \\
 \textbf{Optimization level}: \texttt{-O3} \\
-\textbf{Microarchitecture}: \texttt{native (znver3)} \\
+\textbf{Microarchitecture}: \texttt{native (znver2)} \\
 
 
 \subsection{Hardware}
 
-The code was ran on RCI cluster, using AMD nodes.\\
+The benchmarks were ran on RCI cluster, using AMD nodes.\\
 \textbf{CPU}: \texttt{2 x AMD EPYC 7543 (64 cores/128 threads 2.8GHz)} \\
 \textbf{RAM}: \texttt{1TB}\\
-\textbf{Storage}: \texttt{8TB NVMe}
+\textbf{Storage}: \texttt{8TB NVMe} \\
+\textbf{Network}: \texttt{200GbE InfiniBand EDR for MPI communication}
 
 
 \section{Single process implementation}
 
 Single process implementation uses CSR5 format for storing the sparse matrix and the
-SpMV algorithm  described in \cite{liu2015csr5} for the \csre{A*s} step. It was ran
+SpMV algorithm  described in Section~\ref{csr5:spmv} for the \csre{A*s} step. It was ran
 with 16, 32, 64 and 128 CPUs available for each input matrix.
 
 \begin{figure}[htp]
@@ -1381,7 +1451,6 @@ By using HDF5 to store matrices in binary format and utilizing fast NVMe storage
 on RCI nodes the impact of IO on total run time can be minimized. However even after doing so,
 for \csre{GAP-web} matrix, loading the matrix takes up 26\% of total benchmark runtime.
 
-\pagebreak
 
 \section{Distributed conjugate gradient implementation}
 
@@ -1402,7 +1471,7 @@ can be compared directly.
 \subsection{IO}
 
 RCI cluster provides BeeGFS parallel filesystem and by utilizing the algorithm described in
-Section 4.2, the IO throughput can be improved on considerably. Using best-performing \csre{8-1-16}
+Section~\ref{dspmv:load}, the IO throughput can be improved on considerably. Using best-performing \csre{8-1-16}
 layout results, throughput has improved by a factor of 2.5, 5.6 and 6.9 for nlpkkt240, gap-web
 and gap-kron respectively.
 
@@ -1494,13 +1563,244 @@ ranges from 2.4 and 2.57x for iteration and spmv steps respectively upto 8.5 and
 \setsecnumdepth{all}
 \appendix
 
+
+\chapter{Conjugate gradient method}\label{app:cg}
+
+% TODO: citations.
+Conjugate gradient method is an algorithm for numerical solution of systems of linear
+equations. In its iterative form, the algorithm is:
+
+\begin{algorithm}
+    \caption{Iterative conjugate gradient}
+    \begin{algorithmic}
+        \Function{conjugate\_gradient}{$\var{A}$, $\var{b}$, $\var{x}$}
+        \State $\var{r} \gets \var{b - A * x}$
+        \State $\var{s} \gets \var{r}$
+        \State $\var{r\_r} \gets \var{r} * \var{r}$
+
+        \For{$\var{i} = 0; \var{i} < \var{max\_iters}; \var{++i}$}
+        \State $\var{As} \gets \var{A} * \var{s}$
+        \State $\var{alpha} \gets \frac{\var{r\_r}}{\var{s'}*\var{As}} $
+        \State $\var{x} \gets \var{x} + \var{alpha} * \var{s}$
+        \State $\var{r} \gets \var{r} - \var{alpha} * \var{As}$
+        \State $\var{r\_r\_new} \gets \var{r'} * \var{r}$
+
+        \If{$\var{sqrt(r\_r\_new)} < \var{threshold}$}
+        \State $\textbf{break}$
+        \EndIf
+
+        \State $\var{beta} \gets \frac{\var{r\_r\_new}}{\var{r\_r}}$
+        \State $\var{r\_r} \gets \var{r\_r\_new}$
+        \State $\var{s} \gets \var{r} + \var{beta} * \var{s}$
+
+        \EndFor
+
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
+
+\section{Distributed conjugate gradient implementation}
+
+Each process has a full copy of \csre{s}.
+
+$\var{As} \gets \var{A} * \var{s}$, each process can perform SpMV on its local part of
+\csre{A}. This will result, in each process having part of \csre{As}, with some overlapping
+output elements having only part of it's value which needs to be synchronized.
+
+$\var{alpha} \gets \frac{\var{r\_r}}{\var{s} * \var{As}}$. Since each process only has part of
+\csre{As} and full \csre{s}, it can do its part of the $\var{s} * \var{As}$.
+Dot product of two vectors is computed as $x * y = \sum x_i * y_i$, so $\var{s} * \var{As}$
+can be rewritten as $a * As = \sum_{p=0}^{np} \sum_{i=os_p}^{oe_p} s_i * As_{i-os_p}$ where
+$np$ is number of processes, and $os_p$ and $oe_p$ denote start and end of output for process
+$p$ respectively.The outer sum can be computed using \csre{MPI_Allreduce},
+summing the results of inner sum for each process.
+
+For the elements that need to be synchronized (multiple processes are computing their sub-values),
+the resulting element is a sum of all of the subresults thus $s * As = \sum s_i * As_i$ term for $i$
+which is computed by multiple processes can be rewriten as $s_i * (As_{i_{p1}} + ... + As_{i_{pn}})$.
+As multiplication in $R$ is distributive, this can be rewritten as $s_i * As_{i_{p1}} + ... + s_i * As_{i_{pn}}$
+so there is no need to synchronize $As_i$ as result will be synchonized when partial results for
+each process are summed.
+
+$\var{x} \gets \var{x} + \var{alpha} * \var{s}$ each process only has the part of \csre{x},
+coinciding with the output ranges into \csre{As} it owns. Thus thus each process only
+modifies said part of \csre{x}.
+
+$\var{r} \gets \var{r} - \var{alpha} * \var{As}$ Similarly to previous step, each process
+only modifies the part of residual vector \csre{r}. Synchronization of overlapping
+output elements for \csre{As} must be done before this step, as process which owns the
+element uses it to modify \var{r} in this step.
+
+$\var{r\_r\_new} \gets \var{r'} * \var{r}$ Same as in alpha computation, the dot product
+can be divided into sub sums, which can then be summed across all processes, using
+\csre{MPI_Allreduce}.
+
+$\var{s} \gets \var{r} + \var{beta} * \var{s}$ each process computes only part of new
+\csre{s}, corresponding to its output range in \csre{As}. The resulting \csre{s} is
+then distributed to all processes using same algorithm as described in section
+about synchronization of distributed SpMV results using \csre{MPI_Allgatherv}.
+This distribution step is the heaviest as far as MPI communication goes.
+
+\chapter{Building dim}
+
+This chapters describes the process of obtaining dependencies, configuring and building \texttt{dim} as well
+as optional benchmarks.
+
+\section{Dependencies}\label{bdim:deps}
+
+\csre{dim} uses \csre{cmake} as its meta build-system. Only recent versions of CMake (3.20-3.22) were tested.
+
+The code uses C++20 features and as such, needs a C++20 capable compiler. Tested compilers
+are:
+
+\begin{itemize}
+    \item GCC 10.3.0 (available on RCI)
+    \item GCC 11.1.0
+    \item Clang 12.1.0 (available on RCI)
+    \item Clang 13.0.1
+\end{itemize}
+\csre{dim} is also built by GitHub Actions CI by clang 13 as well as linted by clang-tidy on each commit.
+
+\csre{conan} is used for package management. \csre{conan} is implemented in Python and can be
+obtained from \csre{pip}. The project will invoke \csre{conan} automatically, when \csre{cmake} configure step
+is running, so it should be transparent to the user. If the code is built locally (meaning not on RCI cluster),
+some packages hosted on authors private Artifactory instance are needed. To add the remote the following commands
+have to be executed.
+
+\begin{minted}[]{bash}
+    # the remote requires revisions to 
+    # be enabled in local conan installation
+    conan config set general.revisions_enabled=1
+    # this hosts the PETSc package recipe as well
+    # as some prebuilt libraries.
+    conan remote add rurabori-conan \
+        https://rurabori.jfrog.io/artifactory/api/conan/rurabori-conan
+    cmake . -B build # cmake arguments as usual ...
+\end{minted}
+
+When building on the RCI cluster, it may be beneficcial
+to use the provided libraries optimized for the nodes they will be running on. To enable this,
+pass \mintinline{bash}{-Dsystem_scientific_libs="ON"} to \csre{cmake} when configuring. There is a script
+at \csre{scripts/rci/slurm_cmake} which will automatically load modules needed for compilation and offload
+the configuration/compilation step to a computational node.
+
+\section{Building the binaries}
+
+The project provides only two configuration options immediately relevant to this thesis. The
+first one is \csre{enable_petsc_benchmark} which is disabled by default. If it is enabled,
+the PETSc implementation of distributed conjugate gradient will be built and the project
+will require PETSc as dependency. The second option is \csre{system_scientific_libs} which
+was explained in~\ref{bdim:deps}. Both of these options can be enabled/disabled by passing
+\csre{-D<option>="ON/OFF"} to \csre{cmake} during configuration phase.
+
+A typical RCI configuration might look like this:
+\begin{minted}[]{bash}
+    cd <project_directory>
+    cmake . -B build \
+            -Dsystem_scientific_libs="ON" \
+            -Denable_petsc_benchmark="ON" \
+            -DENABLE_TESTING="OFF" \
+            -G "Unix Makefiles" \
+            -DCMAKE_BUILD_TYPE=Release
+    cmake --build build
+\end{minted}
+
+The resulting binaries will be in the build directory, in subfolders matching the structure of
+the repository i.e. \csre{dim_cli} which is defined in folder \csre{apps/dim_cli} will be found
+in \csre{build/apps/dim_cli} folder. Alternatively the project can be installed as a SLURM module
+after it is built by running:
+
+\begin{minted}[]{bash}
+    cmake --install build \
+          --prefix <install_dir>/dim
+    MODULEPATH="$MODULEPATH:<install_dir>"
+    # from here on, dim should behave as any other module
+    ml dim
+    dim_cli --version
+\end{minted}
+
+\section{Available executables}
+
+\csre{dim} build produces multiple executables. Benchmarks which were used to produce data for this thesis as
+well as \csre{dim_cli}, a command-line utility with multiple subcommands for downloading/converting and
+working with sparse matrices in general. Only the CLI will be explained as the benchmarks map well to
+graphs in this thesis so they should be pretty self-explanatory.
+
+\subsection{dim\_cli}
+
+\csre{dim_cli} is a command-line utility which provides four subcommands
+\footnote{dim\_cli supports \csre{-h/--help} for the top-level executable as well as for each subcommand for more detailed argument listing.}:
+\begin{itemize}
+    \item \csre{store_matrix}
+    \item \csre{compare_results}
+    \item \csre{download}
+    \item \csre{generate_heatmap}
+\end{itemize}
+
+\csre{store_matrix} subcommand takes a path to matrix in MMEF or Matlab compatible HDF5 format, and stores
+the matrix in CSR or CSR5 format (provided to the \csre{-f} flag) into a HDF5 file. The command also
+requires a configuration file, which describes properties for the HDF5 groups in which the data will be
+stored. A sample config is stored in \csre{resources/config.yaml} and installed into \csre{share} directory
+when \csre{dim} is installed as a SLURM module.
+
+\begin{minted}{bash}
+    # convert MMEF to CSR5.
+    dim_cli store_matrix matrix.mtx \
+                         -f csr5 \
+                         -c resources/config.yaml
+    # will produce matrix.csr5.h5
+\end{minted}
+
+\csre{compare_results} takes a path to HDF5 file (or two files), with result vectors and compares them.
+This is useful mainly for checking the results are correct and stable across implementations.
+
+\begin{minted}{bash}
+    # compare two result vectors.
+    dim_cli compare_results res.h5 -l "/Y1" -r "/Y2"
+\end{minted}
+
+\csre{download} subcommand retrieves a matrix from an URL provided as an argument and unpacks it while
+downloading, saving some time as the used matrices are quite large.
+
+\begin{minted}{bash}
+    # downlaod and unpack matrix from <URL> into 
+    # resources/matrices directory.
+    dim_cli download <URL> -d resources/matrices
+\end{minted}
+
+\csre{generate_heatmap} expects a path to matrix in CSR5 format introduced in Section~\ref{csr5:onDisk}.
+It will produce a black and white PNG image, with the brightness reflecting the number of non-zero element
+of the segment of matrix the pixel represents.
+
+\begin{minted}{bash}
+    dim_cli generate_heatmap mat.csr5.h5
+    # mat.png will be produced
+\end{minted}
+
+\begin{figure}[htp]
+    \begin{minipage}{0.5\textwidth}
+        \includegraphics[trim=0 2500 2500 0, clip, scale=0.1]{static/e40r5000.png}
+    \end{minipage}
+    \begin{minipage}{0.5\textwidth}
+        \includegraphics[trim=0 2500 2500 0, clip, scale=0.1]{static/e40r5000.dist.png}
+    \end{minipage}
+    \caption{Zoomed-in example of a generated heat/distribution maps.}
+\end{figure}
+
+However, this command will behave a bit differently when process count \csre{-p} is specified. It will not
+reflect the density structure as precisely as the black and white output, but it will instead color the pixels
+with a different color for each process. Resolution can also be specified by providing \csre{-r <width> <height>}
+if finer structure needs to be captured (or the matrix is large).
+
+
+
 \chapter{Acronyms}
 % \printglossaries
 \begin{description}
     \item[CSR5] Compressed Sparse Row 5
-    \item[GUI] Graphical user interface
+    \item[CLI] Command Line Interface
     \item[$n_{nz}$] Number of non-zero elements in a sparse matrix.
-    \item[XML] Extensible markup language
+    \item[HDF5] Hierarchical Data Format v5
 \end{description}
 
 
