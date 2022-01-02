@@ -26,4 +26,4 @@ target_link_libraries(
           opencv::opencv)
 
 install(TARGETS dim_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES ${CMAKE_HOME_DIRECTORY}/resources/config.yaml TYPE SYSCONF)
+install(FILES ${CMAKE_HOME_DIRECTORY}/resources/config.yaml TYPE DATA)
