@@ -5,6 +5,18 @@ dim is a library providing parallel SpMV primitives
 ]])
 whatis("dim is a library providing parallel SpMV primitives")
 conflict("dim")
-load("PETSc/3.15.1-foss-2021a")
-load("HDF5/1.10.7-gompi-2021a")
+
+if not ( isloaded("PETSc/3.15.1-foss-2021a") ) then
+    load("PETSc/3.15.1-foss-2021a")
+end
+
+
+if not ( isloaded("PETSc/3.15.1-foss-2021a") ) then
+    load("PETSc/3.15.1-foss-2021a")
+end
+
+if not ( isloaded("HDF5/1.10.7-gompi-2021a") ) then
+    load("HDF5/1.10.7-gompi-2021a")
+end
+
 prepend_path("PATH","@CMAKE_INSTALL_PREFIX@/bin")

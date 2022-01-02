@@ -2,4 +2,10 @@
 
 . /home/rurabori/code/diploma_research/.venv/bin/activate
 
+ml foss/2021a
+ml GCC/10.3.0
+ml CMake/3.20
+ml PETSc/3.15.1-foss-2021a
+ml HDF5/1.10.7-gompi-2021a
+
 srun -p amdfast --cpus-per-task=16 cmake "$@"
