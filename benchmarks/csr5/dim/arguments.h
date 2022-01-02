@@ -18,7 +18,7 @@ struct arguments_t
 
     path input_file;
 
-    std::optional<size_t> num_runs{1};
+    std::optional<size_t> num_runs{100};
     std::optional<std::string> matrix_group{"A"};
     std::optional<path> output_file;
     std::optional<std::string> vector_dataset{"Y"};

@@ -1,21 +1,17 @@
-#include <H5Fpublic.h>
-#include <H5Tpublic.h>
+#include <dim/bench/timed_section.h>
 #include <dim/io/format.h>
 #include <dim/io/h5.h>
+#include <dim/simple_main.h>
 
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
-#include <spdlog/stopwatch.h>
-
-#include <stdexcept>
-
-#include "arguments.h"
-#include "dim/io/h5/file.h"
-#include <dim/simple_main.h>
 
 #include <fmt/chrono.h>
 #include <fmt/ranges.h>
 
+#include <stdexcept>
+
+#include "arguments.h"
 #include "version.h"
 
 namespace h5 = dim::io::h5;
@@ -51,9 +47,9 @@ auto output_result(const arguments_t arguments, std::span<double> result) {
 int main_impl(const arguments_t& arguments) {
     spdlog::set_default_logger(spdlog::stdout_color_mt("csr5_single_node"));
 
-    spdlog::stopwatch sw;
+    dim::bench::stopwatch sw;
     auto matrix = load_csr5(arguments.input_file, *arguments.matrix_group);
-    spdlog::info("CSR5 loading took {}s", sw);
+    spdlog::info("CSR5 loading took {}s", sw.elapsed());
 
     auto dimensions = matrix.dimensions;
 
@@ -63,13 +59,12 @@ int main_impl(const arguments_t& arguments) {
 
     auto run_times = std::vector<decltype(sw.elapsed())>(*arguments.num_runs);
 
-    for (auto& run : run_times) {
-        sw.reset();
-        matrix.spmv({.x = x, .y = Y, .calibrator = calibrator});
-        run = sw.elapsed();
-    }
+    auto total_time = dim::bench::second{0};
 
-    spdlog::info("CSR5 SpMV took {}", run_times);
+    for (size_t i = 0; i < *arguments.num_runs; ++i)
+        total_time += dim::bench::section([&] { matrix.spmv({.x = x, .y = Y, .calibrator = calibrator}); });
+
+    spdlog::info("CSR5 SpMV took {} on average", total_time / *arguments.num_runs);
 
     if (arguments.output_file)
         output_result(arguments, Y);
