@@ -1,7 +1,5 @@
 add_subdirectory(csr5)
 add_subdirectory(microbenchmarks)
-add_subdirectory(mmef)
-add_subdirectory(matlab_compatible_hdf5)
 add_subdirectory(mpi_csr5)
 add_subdirectory(conjugate_gradient)
 add_subdirectory(io)
