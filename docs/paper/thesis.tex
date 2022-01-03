@@ -1550,7 +1550,7 @@ Section~\ref{tech:petsc} was created.
 \csre{PETSc} offers,
 multiple storage formats for sparse matrices such as compressed sparse row, block compressed
 sparse row etc. The default for distributed sparse matrices, which is compressed sparse row
-(PETSc \csre{MatType = MATMPIAIJ}) was used for benchmarking.
+(PETSc \csre{MatType = MATMPIAIJ}~\cite{petsc-user-ref}) was used for benchmarking.
 
 Furthermore, since \csre{PETSc} is a general purpose library, some tradeoffs had to be made
 in the benchmarking code. Even though \csre{PETSc} has its own conjugate gradient implementation
@@ -1659,12 +1659,12 @@ CPU-only implementation of SpMV and thus not suitable for GPU or CPU/GPU heterog
 
 \chapter{Conjugate gradient method}\label{app:cg}
 
-% TODO: citations.
-Conjugate gradient method is an algorithm for numerical solution of systems of linear
-equations. In its iterative form, the algorithm is:
+The Conjugate Gradient algorithm is one of the best known iterative methods which can be used, to solve large
+Symmetric Positive Definite linear systems~\cite{saad03:IMS}. The algorithm in its iterative form is outlined
+in Alogithm~\ref{app:cg:algo}.
 
 \begin{algorithm}
-    \caption{Iterative conjugate gradient}
+    \caption{Iterative conjugate gradient}\label{app:cg:algo}
     \begin{algorithmic}
         \Function{conjugate\_gradient}{$\var{A}$, $\var{b}$, $\var{x}$}
         \State $\var{r} \gets \var{b - A * x}$
@@ -1694,7 +1694,8 @@ equations. In its iterative form, the algorithm is:
 
 \section{Distributed conjugate gradient implementation}
 
-Each process has a full copy of \csre{s}.
+To distribute Conjugate Gradient, each process first obtains a full copy of \csre{s}.
+Then the steps of the algorithm above are performed as follows.
 
 $\var{As} \gets \var{A} * \var{s}$, each process can perform SpMV on its local part of
 \csre{A}. This will result, in each process having part of \csre{As}, with some overlapping
@@ -1733,6 +1734,10 @@ $\var{s} \gets \var{r} + \var{beta} * \var{s}$ each process computes only part o
 then distributed to all processes using same algorithm as described in section
 about synchronization of distributed SpMV results using \csre{MPI_Allgatherv}.
 This distribution step is the heaviest as far as MPI communication goes.
+
+Note that this algorithm may be further optimized as described in~\cite{distCGwRedSync}, but
+since it is only used as test-bed for benchmarking implementation in \csre{dim} these are not
+implemented.
 
 \chapter{Building dim}
 
