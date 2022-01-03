@@ -42,7 +42,7 @@
 \usepackage{multicol}
 
 \usepackage{microtype}
-
+\usepackage{bbm}
 \usepackage{regexpatch}
 \makeatletter
 % Change the `-` delimiter to an active character
@@ -1322,7 +1322,7 @@ to synchronize the edge elements in every participating process.
 
 
     \end{tikzpicture}
-    \caption{Synchronization of result of \(Ax = y\) assuming \(x=\mathbb{1}\)}
+    \caption{Synchronization of result of \(Ax = y\) assuming \(x=\mathbbm{1}\)}
 \end{figure}
 
 
@@ -1373,7 +1373,7 @@ other processes.
 
         \node [left=0.2cm of sp11, anchor=east] {$y$ (sync)};
     \end{tikzpicture}
-    \caption{Distribution of result of \(Ax = y\) assuming \(x=\mathbb{1}\)}
+    \caption{Distribution of result of \(Ax = y\) assuming \(x=\mathbbm{1}\)}
 \end{figure}
 
 To synchronize all elements, first output ranges, must be exchanged (which is done for the edge
@@ -1427,7 +1427,7 @@ Single and multi process implementations using \csre{dim} and a PETSc multi proc
 \section{Specification}
 
 Each implementation will load matrix $A$ and perform 100 iterations of conjugate
-gradient method, trying to find $x$ satisfying $Ax=\mathbb{1}$.
+gradient method, trying to find $x$ satisfying $Ax=\mathbbm{1}$.
 
 Each step of conjugate gradient iteration is kept track of, and the total time
 for each step is output in a JSON file.
