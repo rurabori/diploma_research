@@ -688,7 +688,6 @@ public:
                 const bool first_all_direct = tile_id == tid * parallel_data.chunk_size && fast_direct;
 
                 // set the 0th bit of the descriptor to 1.
-                // NOLINTNEXTLINE - clang doesn't support bit_cast yet.
                 vec.bit_flag = _mm_or_si128(vec.bit_flag, _mm_set_epi32(0, 0, 0, 1));
 
                 // load bits for next 4 reductions.
