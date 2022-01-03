@@ -101,6 +101,8 @@ a porovnávano s jednoprocesovou implementací založenou na CSR5 i distribuovan
         \textbf{Source:} #2%
     }%
 }
+\newcommand{\csre}[1]{\mintinline{C++}!#1!}
+
 
 
 \algnewcommand{\algorithmicand}{\textbf{ and }}
@@ -148,136 +150,6 @@ The goals of this thesis are to:
 
 \setsecnumdepth{all}
 
-\chapter{Sparse matrix storage formats}
-
-Section~\ref{smsf:spm} of this chapter introduces sparse matrices. Sections~\ref{smsf:coo} and~\ref{smsf:csr}
-provide a quick overview of the two most used storage formats for sparse matrices in Coordinate format (COO)
-and Compressed Sparse Row (CSR). Compressed Sparse Row 5 introduced in \cite{liu2015csr5} is then outlined
-in Section~\ref{csr5Intro}.
-
-
-\section{Sparse matrices}\label{smsf:spm}
-
-A matrix is a rectangular array of numbers. The numbers in the array
-are called the entries in the matrix~\cite{anton14}. Matrix entries are usually addressed
-by the column and row in the rectangle they occupy.
-
-In numerical analysis and scientific computing, a sparse matrix or sparse array
-is a matrix in which most of the elements are zero. There is no strict definition
-regarding the proportion of zero-value elements for a matrix to qualify as sparse
-but a common criterion is that the number of non-zero elements is roughly equal
-to the number of rows or columns. By contrast, if most of the elements are non-zero,
-the matrix is considered dense.
-The number of zero-valued elements divided by the total number of elements (e.g., m × n for an m × n matrix) is sometimes referred to as the sparsity of the matrix.
-\cite{efficientSDMM} The number of non zero elements of a sparse matrix is usually denoted
-as $n_{nz}$ number of columns as $n$ and number of rows as $m$.
-
-To better illustrate the storage formats, let us define sparse matrix $A$.
-\begin{equation*}
-    A =
-    \begin{pmatrix}
-        1 & 0 & 2 & 0 \\
-        0 & 3 & 0 & 0 \\
-        4 & 0 & 5 & 0 \\
-        6 & 0 & 0 & 7
-    \end{pmatrix}
-\end{equation*}
-
-\section{Coordinate (COO)}\label{smsf:coo}
-
-Coordinate storage format, commonly referred to as COO, is the simplest of the three formats presented in this
-chapter. The matrix is stored in a  structure consisting of three arrays of length $n_{nz}$\cite{saad03:IMS}:
-
-% TODO: this may be nicer if formated with minted or something similar.
-\begin{enumerate}
-    \itemsep=0em
-    \item[vals] a real array containing all the real (or complex) values of the nonzero elements of A in any order.
-    \item[row\_idx] an integer array containing their row indices.
-    \item[col\_idx] a second integer array containing their column indices.
-\end{enumerate}
-
-\begin{table}[h!]
-    \centering
-    \begin{tabular}{ |l||c|c|c|c|c|c|c| }
-        \hline
-        vals     & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
-        \hline
-        row\_idx & 0 & 0 & 1 & 2 & 2 & 3 & 3 \\
-        \hline
-        col\_idx & 0 & 2 & 1 & 0 & 2 & 0 & 3 \\
-        \hline
-    \end{tabular}
-    \caption{$A$ stored in COO format}
-\end{table}
-
-
-\section{Compressed Sparse Row (CSR)}\label{smsf:csr}
-
-Compressed Sparse Row is probably the most popular format for storing general sparse matrices.
-\cite{saad03:IMS} Similarly to the coordinate format, it too consists of three arrays.
-
-% TODO: better lstinline.
-\begin{enumerate}
-    \itemsep=0em
-    \item[vals] a real array of size $n_{nz}$ containing all the real (or complex) values of the nonzero elements of $A$
-        stored in row major order.
-    \item[col\_idx] a second integer array of size $n_{nz}$ containing their column indices.
-    \item[row\_ptr] an integer array of size $m + 1$ containing offsets into \lstinline{vals} and
-        \lstinline!col_idx!, at which each row of the matrix begins.
-\end{enumerate}
-
-This involves nonnegligible savings in storage.
-
-\begin{table}[h!]
-    \centering
-    \begin{tabular}{ |l||c|c|c|c|c|c|c| }
-        \hline
-        vals     & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
-        \hline
-        col\_idx & 0 & 2 & 1 & 0 & 2 & 0 & 3 \\
-        \hline
-    \end{tabular} \\
-    \begin{tabular}{ |l||c|c|c|c|c| }
-        \hline
-        row\_ptr & 0 & 2 & 3 & 5 & 6 \\
-        \hline
-    \end{tabular}
-    \caption{$A$ stored in CSR format}
-\end{table}
-
-\section{Compressed Sparse Row 5 (CSR5)}\label{csr5Intro}
-\newcommand{\csre}[1]{\mintinline{C++}!#1!}
-
-To achieve near-optimal load balance for matrices with any sparsity structures,
-all nonzero entries are partitioned to multiple 2D tiles of the same size.
-The CSR5 format has two tuning parameters: \(\omega{}\) and \(\sigma{}\), where \(\omega{}\)
-is a tile’s width and \(\sigma{}\) is its height~\cite{liu2015csr5}.
-
-Further, extra information is needed to efficiently compute SpMV\@.
-For each tile, a tile pointer \csre{tile_ptr} and a tile descriptor \csre{tile_desc} are introduced.
-Meanwhile, the three arrays, i.e., row pointer \csre{row_ptr}, column index \csre{col_idx} and value val,
-of the classic CSR format are directly integrated. The only difference is that the \csre{col_idx} data and the \csre{vals}
-data in each complete tile are in-place transposed (i.e., from row-major order to column-major order) for coalesced memory access from contiguous SIMD lanes.
-
-
-\textbf{Each column of a tile has three characteristics}:
-\begin{itemize}
-    \item \csre{y_offset} - relative offset into the Y for a column of tile (equal to number of rows that started in previous columns).
-    \item \csre{scansum_offset} - number of consecutive empty columns to the right of current column.
-    \item \csre{bit_flag} - of size $\sigma$ where $i-th$ bit is set if $i-th$ value of this column is the first non-0 entry of its row
-          or it is the $0th$ bit of $0th$ column.
-          %TODO: this could be explained a bit better. 
-\end{itemize}
-
-The tile further may have an \csre{empty_offset} array of size \(\mathcal{O}(\omega * \sigma)\), if it contains empty rows,
-because \csre{y_offset} will be incorrect for such tile. Thus the correct offsets into Y  for each segment of such
-a tile are stored in in \csre{empty_offset}. The actual size of this array is number of segments in a tile (the number of bits set to 1 in \csre{bit_flag}).
-
-\begin{figure}[htp]
-    \centering
-    \includegraphics[scale=0.7]{static/A_csr5.pdf}
-    \caption{Matrix A stored in CSR5 format (Source:~\cite{liu2015csr5}).}
-\end{figure}
 
 
 
@@ -481,6 +353,137 @@ and data elements participating in I/O. Thus an application can select subsets o
 Attributes may optionally be associated with objects. An attribute consists of a name-value pair.
 They are similar to datasets in that they too, have a datatype and dataspace. However they do not
 support partial I/O, can't be compressed nor extended.
+
+
+\chapter{Sparse matrix storage formats}
+
+Section~\ref{smsf:spm} of this chapter introduces sparse matrices. Sections~\ref{smsf:coo} and~\ref{smsf:csr}
+provide a quick overview of the two most used storage formats for sparse matrices in Coordinate format (COO)
+and Compressed Sparse Row (CSR). Compressed Sparse Row 5 introduced in \cite{liu2015csr5} is then outlined
+in Section~\ref{csr5Intro}.
+
+
+\section{Sparse matrices}\label{smsf:spm}
+
+A matrix is a rectangular array of numbers. The numbers in the array
+are called the entries in the matrix~\cite{anton14}. Matrix entries are usually addressed
+by the column and row in the rectangle they occupy.
+
+In numerical analysis and scientific computing, a sparse matrix or sparse array
+is a matrix in which most of the elements are zero. There is no strict definition
+regarding the proportion of zero-value elements for a matrix to qualify as sparse
+but a common criterion is that the number of non-zero elements is roughly equal
+to the number of rows or columns. By contrast, if most of the elements are non-zero,
+the matrix is considered dense.
+The number of zero-valued elements divided by the total number of elements (e.g., m × n for an m × n matrix) is sometimes referred to as the sparsity of the matrix.
+\cite{efficientSDMM} The number of non zero elements of a sparse matrix is usually denoted
+as $n_{nz}$ number of columns as $n$ and number of rows as $m$.
+
+To better illustrate the storage formats, let us define sparse matrix $A$.
+\begin{equation*}
+    A =
+    \begin{pmatrix}
+        1 & 0 & 2 & 0 \\
+        0 & 3 & 0 & 0 \\
+        4 & 0 & 5 & 0 \\
+        6 & 0 & 0 & 7
+    \end{pmatrix}
+\end{equation*}
+
+\section{Coordinate (COO)}\label{smsf:coo}
+
+Coordinate storage format, commonly referred to as COO, is the simplest of the three formats presented in this
+chapter. The matrix is stored in a  structure consisting of three arrays of length $n_{nz}$\cite{saad03:IMS}:
+
+% TODO: this may be nicer if formated with minted or something similar.
+\begin{enumerate}
+    \itemsep=0em
+    \item[vals] a real array containing all the real (or complex) values of the nonzero elements of A in any order.
+    \item[row\_idx] an integer array containing their row indices.
+    \item[col\_idx] a second integer array containing their column indices.
+\end{enumerate}
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{ |l||c|c|c|c|c|c|c| }
+        \hline
+        vals     & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+        \hline
+        row\_idx & 0 & 0 & 1 & 2 & 2 & 3 & 3 \\
+        \hline
+        col\_idx & 0 & 2 & 1 & 0 & 2 & 0 & 3 \\
+        \hline
+    \end{tabular}
+    \caption{$A$ stored in COO format}
+\end{table}
+
+
+\section{Compressed Sparse Row (CSR)}\label{smsf:csr}
+
+Compressed Sparse Row is probably the most popular format for storing general sparse matrices.
+\cite{saad03:IMS} Similarly to the coordinate format, it too consists of three arrays.
+
+% TODO: better lstinline.
+\begin{enumerate}
+    \itemsep=0em
+    \item[vals] a real array of size $n_{nz}$ containing all the real (or complex) values of the nonzero elements of $A$
+        stored in row major order.
+    \item[col\_idx] a second integer array of size $n_{nz}$ containing their column indices.
+    \item[row\_ptr] an integer array of size $m + 1$ containing offsets into \lstinline{vals} and
+        \lstinline!col_idx!, at which each row of the matrix begins.
+\end{enumerate}
+
+This involves nonnegligible savings in storage.
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{ |l||c|c|c|c|c|c|c| }
+        \hline
+        vals     & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+        \hline
+        col\_idx & 0 & 2 & 1 & 0 & 2 & 0 & 3 \\
+        \hline
+    \end{tabular} \\
+    \begin{tabular}{ |l||c|c|c|c|c| }
+        \hline
+        row\_ptr & 0 & 2 & 3 & 5 & 6 \\
+        \hline
+    \end{tabular}
+    \caption{$A$ stored in CSR format}
+\end{table}
+
+\section{Compressed Sparse Row 5 (CSR5)}\label{csr5Intro}
+
+To achieve near-optimal load balance for matrices with any sparsity structures,
+all nonzero entries are partitioned to multiple 2D tiles of the same size.
+The CSR5 format has two tuning parameters: \(\omega{}\) and \(\sigma{}\), where \(\omega{}\)
+is a tile’s width and \(\sigma{}\) is its height~\cite{liu2015csr5}.
+
+Further, extra information is needed to efficiently compute SpMV\@.
+For each tile, a tile pointer \csre{tile_ptr} and a tile descriptor \csre{tile_desc} are introduced.
+Meanwhile, the three arrays, i.e., row pointer \csre{row_ptr}, column index \csre{col_idx} and value val,
+of the classic CSR format are directly integrated. The only difference is that the \csre{col_idx} data and the \csre{vals}
+data in each complete tile are in-place transposed (i.e., from row-major order to column-major order) for coalesced memory access from contiguous SIMD lanes.
+
+
+\textbf{Each column of a tile has three characteristics}:
+\begin{itemize}
+    \item \csre{y_offset} - relative offset into the Y for a column of tile (equal to number of rows that started in previous columns).
+    \item \csre{scansum_offset} - number of consecutive empty columns to the right of current column.
+    \item \csre{bit_flag} - of size $\sigma$ where $i-th$ bit is set if $i-th$ value of this column is the first non-0 entry of its row
+          or it is the $0th$ bit of $0th$ column.
+          %TODO: this could be explained a bit better. 
+\end{itemize}
+
+The tile further may have an \csre{empty_offset} array of size \(\mathcal{O}(\omega * \sigma)\), if it contains empty rows,
+because \csre{y_offset} will be incorrect for such tile. Thus the correct offsets into Y  for each segment of such
+a tile are stored in in \csre{empty_offset}. The actual size of this array is number of segments in a tile (the number of bits set to 1 in \csre{bit_flag}).
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.7]{static/A_csr5.pdf}
+    \caption{Matrix A stored in CSR5 format (Source:~\cite{liu2015csr5}).}
+\end{figure}
 
 
 
