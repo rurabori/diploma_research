@@ -126,7 +126,7 @@ While matrix-vector multiplication is a simple multiplication task, it is non-tr
 properly for every sparsity structure matrix when parallelized.
 
 The Conjugate Gradient algorithm is one of the best known iterative methods which can be used, to solve large
-Symmetric Positive Definite linear systems. With sparse matrix-vector multiplication being the most
+symmetric positive definite linear systems. With sparse matrix-vector multiplication being the most
 computationally intensive step of a Conjugate Gradient iteration, parallelizing the kernel and distributing
 the computation across multiple nodes can result in significantly shorter iteration times.
 
@@ -648,8 +648,6 @@ struct csr5_info {
 
 \csre{dim} performs parallel sparse matrix vector multiplication with the matrix stored in CSR5 format
 as described in~\cite{liu2015csr5}.
-
-
 
 Using \(N\) threads, each thread gets a contiguous chunk of tiles of the same size (except possibly the
 last thread). Tiles within the context of a thread are then processed sequentially.
@@ -1659,8 +1657,8 @@ CPU-only implementation of SpMV and thus not suitable for GPU or CPU/GPU heterog
 
 \chapter{Conjugate gradient method}\label{app:cg}
 
-The Conjugate Gradient algorithm is one of the best known iterative methods which can be used, to solve large
-Symmetric Positive Definite linear systems~\cite{saad03:IMS}. The algorithm in its iterative form is outlined
+The Conjugate Gradient algorithm (abbr. CG) is one of the best known iterative methods which can be used, to solve large
+symmetric positive definite linear systems~\cite{saad03:IMS}. The algorithm in its iterative form is outlined
 in Alogithm~\ref{app:cg:algo}.
 
 \begin{algorithm}
