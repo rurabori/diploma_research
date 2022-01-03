@@ -377,9 +377,9 @@ to the number of rows or columns. By contrast, if most of the elements are non-z
 the matrix is considered dense.
 The number of zero-valued elements divided by the total number of elements (e.g., m × n for an m × n matrix) is sometimes referred to as the sparsity of the matrix.
 \cite{efficientSDMM} The number of non zero elements of a sparse matrix is usually denoted
-as $n_{nz}$ number of columns as $n$ and number of rows as $m$.
+as \(n_{nz}\) number of columns as \(n\) and number of rows as \(m\).
 
-To better illustrate the storage formats, let us define sparse matrix $A$.
+To better illustrate the storage formats, let us define sparse matrix \(A\).
 \begin{equation*}
     A =
     \begin{pmatrix}
@@ -1438,14 +1438,14 @@ Three square matrices were selected for benchmarking.
 
 \begin{tabular}{|c|c|c|c|}
     \hline
-    \textbf{name}      & \textbf{n} & \textbf{non zeroes} & \textbf{CSR5 on-disk size} [GiB] \\
+    \textbf{name}      & \textbf{n} & $n_{nz}$   & \textbf{CSR5 on-disk size} [GiB] \\
     \hline
     \hline
-    \textbf{nlpkkt240} & 27993600   & 774472352           & 9.1                              \\
+    \textbf{nlpkkt240} & 27993600   & 774472352  & 9.1                              \\
     \hline
-    \textbf{GAP-web}   & 50636151   & 1930292948          & 22.6                             \\
+    \textbf{GAP-web}   & 50636151   & 1930292948 & 22.6                             \\
     \hline
-    \textbf{GAP-kron}  & 134217726  & 4223264644          & 49.6                             \\
+    \textbf{GAP-kron}  & 134217726  & 4223264644 & 49.6                             \\
     \hline
 \end{tabular}
 
