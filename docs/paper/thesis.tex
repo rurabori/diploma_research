@@ -31,6 +31,9 @@
 \usepackage{algpseudocode}
 \usepackage{float}
 
+\usepackage{siunitx}
+\sisetup{round-precision=3,round-mode=figures,scientific-notation=true}
+
 \usepackage{tikz}
 \usetikzlibrary{positioning,fit,calc}
 \usetikzlibrary{patterns,snakes}
@@ -158,7 +161,7 @@ The goals of this thesis are to:
 % TODO
 This chapter introduces the technologies used in implementation of this thesis. Section~\ref{tech:omp} introduces
 OpenMP API, used to parallelize the computation. SIMD parallel
-processing as well as SSE/AVX instructions sets are defined in Section~\ref{tech:simd}. 
+processing as well as SSE/AVX instructions sets are defined in Section~\ref{tech:simd}.
 Section~\ref{tech:mpi} introduces MPI, a Message Passing
 Interface, used for inter-process communication in the distributed SpMV implementation.  Lastly
 Section~\ref{theory:MMEF} introduces Matrix Marked Exchange Format for storing sparse and dense matrices,
@@ -742,15 +745,14 @@ measured by number of elements loaded in a second.
 
 Matrix market exchange format is designed to be easy to parse. It provides a library to parse
 the header and matrix dimensions~\cite{mmC}.
-
 The numerical entries, need to be parsed manually, for which most implemen\-tations use variations of \texttt{scanf}.
 Initial implementation in dim used \texttt{scanf} as well. This however proved to be a bottleneck as
-the average throughput was only 4515017 elements/s. Profiling has shown that parsing the string representation
+the average throughput was only \num{4515017} elements/s. Profiling has shown that parsing the string representation
 was the the most computationally intensive step as 97.89\% of time spent was in \texttt{scanf} itself.
 To improve the loading times, in an effort to
 shorten the iteration times the process of benchmarking, an implementation using
 \mintinline{C++}{scnlib}\footnote{\mintinline{C++}{scnlib} is a modern C++ alternative to scanf.}
-was created. With an average throughput of 6068194 elements/s it resulted in 1.34x speedup, which was
+was created. With an average throughput of \num{6068194} elements/s it resulted in 1.34x speedup, which was
 still a major development bottleneck.
 
 \begin{figure}[!h]
@@ -808,7 +810,7 @@ of the stored matrix.
     \caption{Layout of a sparse matrix stored as a HDF5 group}
 \end{figure}
 
-Storing the matrices in this format yielded a throughput of 110005843 elements/s which is 24.36x speedup
+Storing the matrices in this format yielded a throughput of \num{110005843} elements/s which is 24.36x speedup
 over \texttt{scanf} based implementation of reading matrices stored in Matrix Market Exchange Format
 and 18.12x speedup over \texttt{scnlib} implementation.
 
@@ -819,7 +821,7 @@ and 18.12x speedup over \texttt{scnlib} implementation.
 \end{figure}
 
 
-Since, MMEF uses coordinate format to store sparse matrices, it may ommit elements from symmetrical matrices which can be inferred
+Since, MMEF uses coordinate format to store sparse matrices, it may omit elements from symmetrical matrices which can be inferred
 from their symmetrical counterparts. This can be used as size optimization. Matrices 2, 3 and 4 in the above graph are symmetrical,
 thus their on-disk size can be smaller with MMEF than it is with HDF5.
 
@@ -831,7 +833,7 @@ thus their on-disk size can be smaller with MMEF than it is with HDF5.
 
 However, HDF5 format supports dataset compression by LZMA. Setting chunk size to 4096 and compression level to 5 for each of the 3 datasets,
 it is possible to achieve considerable storage savings (the biggest matrix is 7.8x smaller stored as compressed HDF5 compared to MMEF)
-while maintaining better loading performance, with average throughput being 27074837 elements/s, about 4x slower than HDF5 with no compression,
+while maintaining better loading performance, with average throughput being \num{27074837} elements/s, about 4x slower than HDF5 with no compression,
 but still 4 and 6 times faster than scnlib and scanf implementations respectively.
 
 \section{On disk storage for CSR5 matrices}\label{csr5:onDisk}
