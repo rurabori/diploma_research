@@ -475,7 +475,7 @@ data in each complete tile are in-place transposed (i.e., from row-major order t
           %TODO: this could be explained a bit better. 
 \end{itemize}
 
-The tile further may have an \csre{empty_offset} array of size \(\mathcal{O}(\omega * \sigma)\), if it contains empty rows,
+The tile further may have an \csre{empty_offset} array of size \(\mathcal{O}(\omega \cdot \sigma)\), if it contains empty rows,
 because \csre{y_offset} will be incorrect for such tile. Thus the correct offsets into Y  for each segment of such
 a tile are stored in in \csre{empty_offset}. The actual size of this array is number of segments in a tile (the number of bits set to 1 in \csre{bit_flag}).
 
@@ -590,7 +590,7 @@ Amid the new additions to C++20 are bit-manipulation functions in \csre{<bit>} h
 One of the new functions is \csre{std::bit_width} which takes \(N\) and returns \(M\) such that values
 upto \(N\) can be stored in \(M\) bits. This function can be used in conjunction with bit-fields
 and non-type template parameters to pack descriptors very efficiently while retaining readability when using
-them. Since \csre{y_offset} may be at most \(\sigma * \omega\) (the number of new sections is at most the same
+them. Since \csre{y_offset} may be at most \(\sigma \cdot \omega\) (the number of new sections is at most the same
 as the number of elements in a tile) and \csre{scansum_offset} may be at most \(\omega - 1\) (as it is the number
 of empty consecutive columns to the right of current column), the descriptor column and the descriptor
 itself can be defined as shown in Figure~\ref{csr5:tileDesc}.
@@ -902,7 +902,7 @@ distributing the result vector amongst the processes is introduced in~\ref{dspmv
 \section{Loading the matrices}\label{dspmv:load}
 
 Since CSR5 partitions the non-zero elements of a matrix into tiles of
-size \(\sigma * \omega\), each node can load only data relevant for tiles
+size \(\sigma \cdot \omega\), each node can load only data relevant for tiles
 assigned to it. This is enabled by two features of HDF5, first of which
 is reading hyperslabs. A hyperslab is a subset of a HDF5 dataset, so
 nodes do not have to read whole datasets.
@@ -930,7 +930,7 @@ of non-zero elements.
     \begin{algorithmic}
         \Function{calculate\_partition}{$\var{tile\_count}$, $\var{proc\_id}$, $\var{proc\_count}$}
         \State $\var{partition\_size} \gets \lceil\frac{\var{tile\_count}}{\var{proc\_count}}\rceil$
-        \State $\var{first} \gets \var{partition\_size} * \var{proc\_id}$
+        \State \(\var{first} \gets \var{partition\_size} \cdot \var{proc\_id}\)
         \State $\var{count} \gets min(\var{partition\_size}, \var{tile\_count} - \var{first})$
 
         \Return $(\var{first}, \var{count})$
@@ -1469,7 +1469,7 @@ The benchmarks were ran on RCI cluster, using AMD nodes.\\
 \section{Single process implementation}
 
 Single process implementation uses CSR5 format for storing the sparse matrix and the
-SpMV algorithm  described in Section~\ref{csr5:spmv} for the \csre{A*s} step. It was ran
+SpMV algorithm  described in Section~\ref{csr5:spmv} for the \(A \cdot s\) step. It was ran
 with 16, 32, 64 and 128 CPUs available for each input matrix.
 
 \begin{figure}[htp]
@@ -1479,7 +1479,7 @@ with 16, 32, 64 and 128 CPUs available for each input matrix.
 \end{figure}
 
 Benchmark results show, that the sparse matrix vector multiplication
-$A * s$ is the most computationaly intensive step as it takes 68.5, 77.5 and 95.4\% of
+\(As\) is the most computationaly intensive step as it takes 68.5, 77.5 and 95.4\% of
 total iteration time for nlpkkt240, gap-web and gap-kron matrices respectively when
 the single process implementation is running on 16 threads.
 
@@ -1580,7 +1580,7 @@ have local size (size of vector part physically present in process) and global s
 For vector-vector operations such as \csre{axpy} or dot product, PETSc requires the participating vectors to
 have same local size. Since each process may require any element from
 \csre{s}\footnote{Because any element in a row of sparse matrix can be non-zero.} it must have whole \csre{s}
-in its memory. To obtain a sub-vector of \csre{s}, suitable for distributed \csre{s*As} a process must call
+in its memory. To obtain a sub-vector of \csre{s}, suitable for distributed \csre{sAs} a process must call
 \csre{VecGetSubVector} and then restore said sub-vector in \csre{s} by calling \csre{VecRestoreSubVector}.
 
 However, \csre{VecGetSubVector} may allocate new memory to store the sub-vector in, releasing said memory
@@ -1603,7 +1603,7 @@ ranges from 2.4 and 2.57x for iteration and spmv steps respectively upto 8.5 and
         \toprule
                         & \multicolumn{2}{c}{\textbf{nlpkkt240}} & \multicolumn{2}{c}{\textbf{gap-web}} & \multicolumn{2}{c}{\textbf{gap-kron}}                           \\
         \cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
-        \textbf{layout} & iteration                              & A*s                                  & iteration                             & A*s  & iteration & A*s  \\
+        \textbf{layout} & iteration                              & As                                   & iteration                             & As   & iteration & As   \\
         \midrule
         \csre{2-1-64}   & 3.72                                   & 4.81                                 & 2.75                                  & 4.69 & 3.4       & 3.83 \\
         \csre{4-1-32}   & 3.14                                   & 5.04                                 & 6.27                                  & 9.04 & 2.43      & 2.57 \\
@@ -1668,16 +1668,16 @@ in Alogithm~\ref{app:cg:algo}.
     \caption{Iterative conjugate gradient}\label{app:cg:algo}
     \begin{algorithmic}
         \Function{conjugate\_gradient}{$\var{A}$, $\var{b}$, $\var{x}$}
-        \State $\var{r} \gets \var{b - A * x}$
+        \State $\var{r} \gets \var{b - Ax}$
         \State $\var{s} \gets \var{r}$
-        \State $\var{r\_r} \gets \var{r} * \var{r}$
+        \State $\var{r\_r} \gets \var{r} \cdot \var{r}$
 
         \For{$\var{i} = 0; \var{i} < \var{max\_iters}; \var{++i}$}
-        \State $\var{As} \gets \var{A} * \var{s}$
-        \State $\var{alpha} \gets \frac{\var{r\_r}}{\var{s'}*\var{As}} $
-        \State $\var{x} \gets \var{x} + \var{alpha} * \var{s}$
-        \State $\var{r} \gets \var{r} - \var{alpha} * \var{As}$
-        \State $\var{r\_r\_new} \gets \var{r'} * \var{r}$
+        \State $\var{As} \gets \var{A} \cdot \var{s}$
+        \State $\var{alpha} \gets \frac{\var{r\_r}}{\var{s'} \cdot \var{As}} $
+        \State $\var{x} \gets \var{x} + \var{alpha} \cdot \var{s}$
+        \State $\var{r} \gets \var{r} - \var{alpha} \cdot \var{As}$
+        \State $\var{r\_r\_new} \gets \var{r'} \cdot \var{r}$
 
         \If{$\var{sqrt(r\_r\_new)} < \var{threshold}$}
         \State $\textbf{break}$
@@ -1685,7 +1685,7 @@ in Alogithm~\ref{app:cg:algo}.
 
         \State $\var{beta} \gets \frac{\var{r\_r\_new}}{\var{r\_r}}$
         \State $\var{r\_r} \gets \var{r\_r\_new}$
-        \State $\var{s} \gets \var{r} + \var{beta} * \var{s}$
+        \State $\var{s} \gets \var{r} + \var{beta} \cdot \var{s}$
 
         \EndFor
 
@@ -1698,39 +1698,39 @@ in Alogithm~\ref{app:cg:algo}.
 To distribute Conjugate Gradient, each process first obtains a full copy of \csre{s}.
 Then the steps of the algorithm above are performed as follows.
 
-$\var{As} \gets \var{A} * \var{s}$, each process can perform SpMV on its local part of
+$\var{As} \gets \var{A} \cdot \var{s}$, each process can perform SpMV on its local part of
 \csre{A}. This will result, in each process having part of \csre{As}, with some overlapping
 output elements having only part of it's value which needs to be synchronized.
 
-$\var{alpha} \gets \frac{\var{r\_r}}{\var{s} * \var{As}}$. Since each process only has part of
-\csre{As} and full \csre{s}, it can do its part of the $\var{s} * \var{As}$.
-Dot product of two vectors is computed as $x * y = \sum x_i * y_i$, so $\var{s} * \var{As}$
-can be rewritten as $a * As = \sum_{p=0}^{np} \sum_{i=os_p}^{oe_p} s_i * As_{i-os_p}$ where
+$\var{alpha} \gets \frac{\var{r\_r}}{\var{s} \cdot \var{As}}$. Since each process only has part of
+\csre{As} and full \csre{s}, it can do its part of the $\var{s} \cdot \var{As}$.
+Dot product of two vectors is computed as $x \cdot y = \sum x_i \cdot y_i$, so $\var{s} \cdot \var{As}$
+can be rewritten as $a \cdot As = \sum_{p=0}^{np} \sum_{i=os_p}^{oe_p} s_i \cdot As_{i-os_p}$ where
 $np$ is number of processes, and $os_p$ and $oe_p$ denote start and end of output for process
 $p$ respectively.The outer sum can be computed using \csre{MPI_Allreduce},
 summing the results of inner sum for each process.
 
 For the elements that need to be synchronized (multiple processes are computing their sub-values),
-the resulting element is a sum of all of the subresults thus $s * As = \sum s_i * As_i$ term for $i$
-which is computed by multiple processes can be rewriten as $s_i * (As_{i_{p1}} + ... + As_{i_{pn}})$.
-As multiplication in $R$ is distributive, this can be rewritten as $s_i * As_{i_{p1}} + ... + s_i * As_{i_{pn}}$
+the resulting element is a sum of all of the subresults thus $s \cdot As = \sum s_i \cdot As_i$ term for $i$
+which is computed by multiple processes can be rewriten as $s_i \cdot (As_{i_{p1}} + ... + As_{i_{pn}})$.
+As multiplication in $R$ is distributive, this can be rewritten as $s_i \cdot As_{i_{p1}} + ... + s_i \cdot As_{i_{pn}}$
 so there is no need to synchronize $As_i$ as result will be synchonized when partial results for
 each process are summed.
 
-$\var{x} \gets \var{x} + \var{alpha} * \var{s}$ each process only has the part of \csre{x},
+$\var{x} \gets \var{x} + \var{alpha} \cdot \var{s}$ each process only has the part of \csre{x},
 coinciding with the output ranges into \csre{As} it owns. Thus thus each process only
 modifies said part of \csre{x}.
 
-$\var{r} \gets \var{r} - \var{alpha} * \var{As}$ Similarly to previous step, each process
+$\var{r} \gets \var{r} - \var{alpha} \cdot \var{As}$ Similarly to previous step, each process
 only modifies the part of residual vector \csre{r}. Synchronization of overlapping
 output elements for \csre{As} must be done before this step, as process which owns the
 element uses it to modify \var{r} in this step.
 
-$\var{r\_r\_new} \gets \var{r'} * \var{r}$ Same as in alpha computation, the dot product
+$\var{r\_r\_new} \gets \var{r'} \cdot \var{r}$ Same as in alpha computation, the dot product
 can be divided into sub sums, which can then be summed across all processes, using
 \csre{MPI_Allreduce}.
 
-$\var{s} \gets \var{r} + \var{beta} * \var{s}$ each process computes only part of new
+$\var{s} \gets \var{r} + \var{beta} \cdot \var{s}$ each process computes only part of new
 \csre{s}, corresponding to its output range in \csre{As}. The resulting \csre{s} is
 then distributed to all processes using same algorithm as described in section
 about synchronization of distributed SpMV results using \csre{MPI_Allgatherv}.
