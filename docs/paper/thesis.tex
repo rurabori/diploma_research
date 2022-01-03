@@ -105,8 +105,7 @@ a porovnávano s jednoprocesovou implementací založenou na CSR5 i distribuovan
     }%
 }
 \newcommand{\csre}[1]{\mintinline{C++}!#1!}
-
-
+\newcommand{\pluseq}{\mathrel{+}=}
 
 \algnewcommand{\algorithmicand}{\textbf{ and }}
 \algnewcommand{\algorithmicor}{\textbf{ or }}
@@ -423,6 +422,31 @@ chapter. The matrix is stored in a  structure consisting of three arrays of leng
     \caption{$A$ stored in COO format}
 \end{table}
 
+As shown in Algorithm~\ref{coo:spmv}, to perform SpMV with a matrix stored in COO format, it is necessary
+to iterate over all non-zero elements, extracting their value, column index and row index from the
+relevant arrays in the COO structure. Then performing the multiplication \(\var{value * x[col]}\) and
+finally add the sub-result to \(\var{y[row]}\). This algorithm is not well suited for parallelization,
+as all the additions to the result vector \(\var{y}\) would have to be performed atomically. It may also
+degrade single-thread performance as order of non-zero elements is not specified, meaning accesses to $\var{x}$
+as well as $\var{y}$ are random and thus may not have the best cache locality.
+
+\begin{algorithm}
+    \caption{SpMV for matrix stored in COO format}\label{coo:spmv}
+    \begin{algorithmic}
+        \Function{spmv}{$\var{A}$, $\var{x}$}
+        \State $\var{y} \gets \text{result vector}$
+
+        \For{\var{i = 0; i < nnz; ++i}}
+        \State $\var{value} \gets \var{A.vals}$
+        \State $\var{col} \gets \var{A.col\_idx[i]}$
+        \State $\var{row} \gets \var{A.row\_idx[i]}$
+        \State $\var{y[row]} \pluseq \var{value * x[col]}$
+        \EndFor
+
+        \Return $\var{y}$
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
 
 \section{Compressed Sparse Row (CSR)}\label{smsf:csr}
 
@@ -458,6 +482,33 @@ This involves nonnegligible savings in storage.
     \caption{$A$ stored in CSR format}
 \end{table}
 
+SpMV with matrix in CSR format lends itself to parallelization better than the COO format. Since
+the non-zero elements are grouped by their rows, the outer loop of Algorithm~\ref{csr:spmv}
+can be parallelized with no synchronization necessary (no overlapping outputs in \(\var{y}\)).
+The issue with parallelized version of this algorithm is load-balancing as some rows may have
+disproportionately more non-zero elements than others.
+
+\begin{algorithm}
+    \caption{SpMV for matrix stored in CSR format}\label{csr:spmv}
+    \begin{algorithmic}
+        \Function{spmv}{$\var{A}$, $\var{x}$}
+        \State $\var{y} \gets \text{result vector}$
+        \For{\var{row = 0; row < m; ++row}}
+        \State $\var{start} \gets \var{A.row\_ptr[row]}$
+        \State $\var{stop} \gets \var{A.row\_ptr[row + 1]}$
+        \State $\var{row\_result} \gets 0$
+        \For{\var{i = start; i < stop; ++i}}
+        \State $\var{col} \gets \var{A.col\_idx[i]}$
+        \State $\var{value} \gets \var{A.vals[i]}$
+        \State $\var{row\_result} \pluseq \var{value * x[col]}$
+        \EndFor
+        \State $\var{y[row]} \gets \var{row\_result}$
+        \EndFor
+        \Return $\var{y}$
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
+
 \section{Compressed Sparse Row 5 (CSR5)}\label{csr5Intro}
 
 To achieve near-optimal load balance for matrices with any sparsity structures,
@@ -491,6 +542,8 @@ a tile are stored in in \csre{empty_offset}. The actual size of this array is nu
     \caption{Matrix A stored in CSR5 format (Source:~\cite{liu2015csr5}).}
 \end{figure}
 
+The algorithm for performing parallel SpMV using matrices stored in CSR5 format is outlined in
+Section~\ref{csr5:spmv}.
 
 
 \chapter{Implementation}
@@ -655,11 +708,11 @@ struct csr5_info {
 
 \section{Sparse matrix vector multiplication}\label{csr5:spmv}
 
-\csre{dim} performs parallel sparse matrix vector multiplication with the matrix stored in CSR5 format
-as described in~\cite{liu2015csr5}.
 
-Using \(N\) threads, each thread gets a contiguous chunk of tiles of the same size (except possibly the
-last thread). Tiles within the context of a thread are then processed sequentially.
+\csre{dim} uses CSR5 storage format, described in Section~\ref{csr5Intro}, for sparse matrices. This format was purposefully
+designed to achieve better performance when performing parallel SpMV\@. This section provides an overview
+of this parallel SpMV algorithm (introduced in~\cite{liu2015csr5}) for CSR5 when performed on a multi-threaded
+CPU which supports AVX2 extensions.
 
 \begin{figure}[htp]
     \centering
@@ -698,6 +751,11 @@ last thread). Tiles within the context of a thread are then processed sequential
     \caption{Processing tiles using 4 threads}\label{csr5:thr_dist}
 \end{figure}
 
+Using \(N\) threads, each thread gets a contiguous chunk of tiles of the same size (except possibly the
+last thread). Tiles within the context of a thread are then processed sequentially as shown in 
+Figure~\ref{csr5:thr_dist}.
+
+
 To describe the tile processing, the notion of \textbf{sub-segments} within a tile column needs
 to be established.
 ~\cite{liu2015csr5} defines three types of sub-segments. A green sub-segment is a segment which contains
@@ -713,7 +771,7 @@ further add their partial sums since they do not form a complete segment.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.7]{static/A_secs.pdf}
+    \includegraphics[scale=1]{static/A_secs.pdf}
     \caption{Synchronization of sub-segments within a tile (Source:~\cite{liu2015csr5}).}
 \end{figure}
 
@@ -757,7 +815,7 @@ still a major development bottleneck.
 
 \begin{figure}[!h]
     \centering
-    \includegraphics[scale=0.5]{static/mmef_loading.pdf}
+    \includegraphics[scale=0.7]{static/mmef_loading.pdf}
     \caption{Loading times of MMEF}
 \end{figure}
 
@@ -814,27 +872,28 @@ Storing the matrices in this format yielded a throughput of \num{110005843} elem
 over \texttt{scanf} based implementation of reading matrices stored in Matrix Market Exchange Format
 and 18.12x speedup over \texttt{scnlib} implementation.
 
-\begin{figure}[!h]
+\begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.5]{static/mmef_vs_h5.pdf}
-    \caption{Load times of HDF5 and MMEF storage formats.}
+    \includegraphics[scale=0.65]{static/mmef_vs_h5.pdf}
+    \caption{Load times of HDF5 and MMEF storage formats.}\label{impl:stor:speed}
 \end{figure}
 
 
-Since, MMEF uses coordinate format to store sparse matrices, it may omit elements from symmetrical matrices which can be inferred
-from their symmetrical counterparts. This can be used as size optimization. Matrices 2, 3 and 4 in the above graph are symmetrical,
-thus their on-disk size can be smaller with MMEF than it is with HDF5.
+Since MMEF uses coordinate format to store sparse matrices, it may omit elements from symmetrical matrices which can be inferred
+from their symmetrical counterparts. This can be used as size optimization. Matrices 2, 3 and 4 in Figure~\ref{impl:stor:size}
+are symmetrical, thus their on-disk size can be smaller with MMEF than it is with HDF5.
 
-\begin{figure}[!h]
+\begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.5]{static/mmef_vs_h5_stor.pdf}
-    \caption{On-disk size of HDF5 and MMEF storage formats.}
+    \includegraphics[scale=0.7]{static/mmef_vs_h5_stor.pdf}
+    \caption{On-disk size of HDF5 and MMEF storage formats.}\label{impl:stor:size}
 \end{figure}
 
 However, HDF5 format supports dataset compression by LZMA. Setting chunk size to 4096 and compression level to 5 for each of the 3 datasets,
 it is possible to achieve considerable storage savings (the biggest matrix is 7.8x smaller stored as compressed HDF5 compared to MMEF)
 while maintaining better loading performance, with average throughput being \num{27074837} elements/s, about 4x slower than HDF5 with no compression,
 but still 4 and 6 times faster than scnlib and scanf implementations respectively.
+
 
 \section{On disk storage for CSR5 matrices}\label{csr5:onDisk}
 
@@ -1388,7 +1447,6 @@ either broadcasting its whole output range, or skipping the first element in the
 it is owned by a process to the left. The actual distribution of results is performed by
 calling \csre{MPI_Allgatherv}, with offsets and sizes computed as explained previously.
 
-\newcommand{\pluseq}{\mathrel{+}=}
 \begin{algorithm}[htp]
     \caption{Synchronizing partial results across processes}
     \begin{algorithmic}
@@ -1508,7 +1566,7 @@ configuration with 128CPUs available.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.5]{static/io_sp.pdf}
+    \includegraphics[scale=0.6]{static/io_sp.pdf}
     \caption{Time spent doing IO vs conjugate gradient (128 CPUs used)}
 \end{figure}
 
@@ -1529,7 +1587,7 @@ can be compared directly.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.35]{static/mpi.pdf}
+    \includegraphics[scale=0.45]{static/mpi.pdf}
     \caption{Average iteration times of single and multi process implementations}
 \end{figure}
 
@@ -1542,7 +1600,7 @@ and gap-kron respectively.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.5]{static/io_mp.pdf}
+    \includegraphics[scale=0.58]{static/io_mp.pdf}
     \caption{Time spent doing IO vs conjugate gradient (8-1-16 layout)}
 \end{figure}
 
@@ -1575,7 +1633,7 @@ so this approach yields good load distribution across all processes.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.35]{static/petsc_mpi.pdf}
+    \includegraphics[scale=0.45]{static/petsc_mpi.pdf}
     \caption{PETSc implementation benchmark results}
 \end{figure}
 
@@ -1595,7 +1653,7 @@ the two implementations.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.35]{static/petsc_vs_dim.pdf}
+    \includegraphics[scale=0.4]{static/petsc_vs_dim.pdf}
     \caption{PETSc and dim implementation benchmark results}
 \end{figure}
 
@@ -1910,6 +1968,7 @@ if finer structure needs to be captured (or the matrix is large).
     \item[dim]  The library implemented during result for this thesis
     \item[PETSc] Portable, Extensible Toolkit for Scientific computation
     \item[CG] conjugate gradient method
+    \item[SpMV] Sparse Matrix-Vector multiplication
 \end{description}
 
 
