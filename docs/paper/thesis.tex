@@ -127,9 +127,9 @@ as well as some machine learning algorithms, such as support vector machine.
 While matrix-vector multiplication is a simple multiplication task, it is non-trivial to load balance
 properly for every sparsity structure matrix when parallelized.
 
-The Conjugate Gradient algorithm is one of the best known iterative methods which can be used, to solve large
+The conjugate gradient algorithm is one of the best known iterative methods which can be used, to solve large
 symmetric positive definite linear systems. With sparse matrix-vector multiplication being the most
-computationally intensive step of a Conjugate Gradient iteration, parallelizing the kernel and distributing
+computationally intensive step of a conjugate gradient iteration, parallelizing the kernel and distributing
 the computation across multiple nodes can result in significantly shorter iteration times.
 
 The goals of this thesis are to:
@@ -1636,16 +1636,16 @@ multiplication inside each process. Leveraging the MPI-IO capabilities of HDF5 l
 relevant parts of the matrix to minimize the time spent performing I/O operations. An algorithm for
 synchronizing and distributing the partial results was then outlined and implemented.
 
-This distributed solution was then benchmarked using Conjugate Gradient Method implementation against the
+This distributed solution was then benchmarked using conjugate gradient Method implementation against the
 single-process solution. These benchmarks clearly show, that distributing the sparse matrix-vector multiplication
 for large sparse matrices can lead to significant speed-up even though the result needs to be synchronized
 and distributed amongst all processes each iteration.
 
-To compare the performance of this solution against a battle tested implementation, Conjugate Gradient Method
+To compare the performance of this solution against a battle tested implementation, conjugate gradient Method
 was also implemented using PETSc toolkit and then benchmarked. Comparing the average per-iteration times,
 suggests that approach implemented in \csre{dim} leads to non-negligible speed ups.
 
-Future directions include researching algorithms other than Conjugate Gradient in which SpMV is the
+Future directions include researching algorithms other than conjugate gradient in which SpMV is the
 most computationally intensive task and the viability of distributing it. The on-disk storage format
 introduced by this thesis may also benefit from more generalization, as it is currently quite specific to
 CPU-only implementation of SpMV and thus not suitable for GPU or CPU/GPU heterogenous implementations.
@@ -1660,7 +1660,7 @@ CPU-only implementation of SpMV and thus not suitable for GPU or CPU/GPU heterog
 
 \chapter{Conjugate gradient method}\label{app:cg}
 
-The Conjugate Gradient algorithm (abbr. CG) is one of the best known iterative methods which can be used, to solve large
+The conjugate gradient algorithm (abbr. CG) is one of the best known iterative methods which can be used, to solve large
 symmetric positive definite linear systems~\cite{saad03:IMS}. The algorithm in its iterative form is outlined
 in Alogithm~\ref{app:cg:algo}.
 
@@ -1695,7 +1695,7 @@ in Alogithm~\ref{app:cg:algo}.
 
 \section{Distributed conjugate gradient implementation}
 
-To distribute Conjugate Gradient, each process first obtains a full copy of \csre{s}.
+To distribute conjugate gradient, each process first obtains a full copy of \csre{s}.
 Then the steps of the algorithm above are performed as follows.
 
 $\var{As} \gets \var{A} \cdot \var{s}$, each process can perform SpMV on its local part of
@@ -1904,7 +1904,7 @@ if finer structure needs to be captured (or the matrix is large).
     \item[HDF5] Hierarchical Data Format v5
     \item[dim]  The library implemented during result for this thesis
     \item[PETSc] Portable, Extensible Toolkit for Scientific computation
-    \item[CG] Conjugate Gradient method
+    \item[CG] conjugate gradient method
 \end{description}
 
 
