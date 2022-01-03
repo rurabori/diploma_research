@@ -29,6 +29,7 @@
 \usepackage{minted}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{float}
 
 \usepackage{tikz}
 \usetikzlibrary{positioning,fit,calc}
@@ -40,6 +41,7 @@
 \usepackage[most]{tcolorbox}
 \usepackage{multicol}
 
+\usepackage{microtype}
 
 \usepackage{regexpatch}
 \makeatletter
@@ -69,11 +71,11 @@ The result of this research is a C++ library \texttt{dim}, which provides the bu
 SpMV using CSR5.
 The potential speedup of distributed SpMV is then benchmarked on a conjugate gradient algorithm implementation against 
 a single-process CSR5 based implementation as well as PETSc based multi-process implementation.}
-\abstractCS{Cílem tehle práce bylo prozkoumat možnosti distribuovaného násobení řídké matice vektorem nekolika 
-procesy, s použitím MPI a CSR5. Výsledkem tohto výzkumu je C++ knižnice \texttt{dim}, která poskytuje potřebné 
-stavební . Potencionálni zrychlení 
-distribuovaného násobení řídké matice vektorem pak bylo meřeno na implementaci metody konjugovaných gradientů,
-a porovnávano s jedno-procesovou implementací založenou na CSR5 i distribuovanou implementací pomocí PETSc.}
+\abstractCS{Cílem práce bylo prozkoumat možnosti distribuovaného násobení řídké matice vektorem několika
+procesy s použitím MPI a CSR5. Výsledkem tohto výzkumu je C++ knihovna \texttt{dim}, která poskytuje potřebné 
+stavební bloky pro distribuované násobení řídkých matic vektorem za pomoci formátu CSR5. Potencionálni zrychlení 
+distribuovaného násobení řídké matice vektorem pak bylo meřeno na implementaci metody konjugovaných gradientů
+a porovnávano s jednoprocesovou implementací založenou na CSR5 i distribuovanou implementací pomocí PETSc.}
 \placeForDeclarationOfAuthenticity{Prague}
 \keywordsCS{násobení řídké matice vektorem, C++, OpenMP, MPI, metoda konjugovaných gradientů, CSR5, HDF5}
 \keywordsEN{sparse matrix-vector multiplication, C++, OpenMP, MPI, conjugate gradient method, CSR5, HDF5}
@@ -117,16 +119,47 @@ a porovnávano s jedno-procesovou implementací založenou na CSR5 i distribuova
 \setsecnumdepth{part}
 \chapter{Introduction}
 
+Sparse matrix-vector multiplication is a fundamental computational kernel used for many
+scientific computations, such as graph algorithms, numerical analysis, conjugate gradients
+as well as some machine learning algorithms, such as support vector machine.
+While matrix-vector multiplication is a simple multiplication task, it is non-trivial to load balance
+properly for every sparsity structure matrix when parallelized.
+
+The Conjugate Gradient algorithm is one of the best known iterative methods which can be used, to solve large
+Symmetric Positive Definite linear systems. With sparse matrix-vector multiplication being the most
+computationally intensive step of a Conjugate Gradient iteration, parallelizing the kernel and distributing
+the computation across multiple nodes can result in significantly shorter iteration times.
+
+The goals of this thesis are to:
+
+\begin{enumerate}
+    \item Review existing sparse matrix storage formats.
+    \item Review existing approaches to parallel SpMV\@.
+    \item Implement the parallel SpMV algorithm introduced in~\cite{liu2015csr5}.
+    \item Introduce efficient on-disk storage format for sparse-matrix format outlined
+          in~\cite{liu2015csr5} suitable for distributed version.
+    \item Implement a distributed version of parallel SpMV using the parallel implementation
+          and storage format introduced in this thesis.
+    \item Measure and review the viability of distributing SpMV\@.
+    \item Benchmark the distributed implementation against PETSc suite.
+\end{enumerate}
+
+
+
 \setsecnumdepth{all}
 
 \chapter{Sparse matrix storage formats}
 
-% TODO: chapter summary
+Section~\ref{smsf:spm} of this chapter introduces sparse matrices. Sections~\ref{smsf:coo} and~\ref{smsf:csr}
+provide a quick overview of the two most used storage formats for sparse matrices in Coordinate format (COO)
+and Compressed Sparse Row (CSR). Compressed Sparse Row 5 introduced in \cite{liu2015csr5} is then outlined
+in Section~\ref{csr5Intro}.
 
-\section{Sparse matrices}
+
+\section{Sparse matrices}\label{smsf:spm}
 
 A matrix is a rectangular array of numbers. The numbers in the array
-are called the entries in the matrix. \cite{anton14} Matrix entries are usually addressed
+are called the entries in the matrix~\cite{anton14}. Matrix entries are usually addressed
 by the column and row in the rectangle they occupy.
 
 In numerical analysis and scientific computing, a sparse matrix or sparse array
@@ -150,10 +183,10 @@ To better illustrate the storage formats, let us define sparse matrix $A$.
     \end{pmatrix}
 \end{equation*}
 
-\section{Coordinate (COO)}
+\section{Coordinate (COO)}\label{smsf:coo}
 
-Coordinate storage format, commonly referred to as COO.
-The data structure consists of three arrays of length $n_{nz}$\cite{saad03:IMS}:
+Coordinate storage format, commonly referred to as COO, is the simplest of the three formats presented in this
+chapter. The matrix is stored in a  structure consisting of three arrays of length $n_{nz}$\cite{saad03:IMS}:
 
 % TODO: this may be nicer if formated with minted or something similar.
 \begin{enumerate}
@@ -162,8 +195,6 @@ The data structure consists of three arrays of length $n_{nz}$\cite{saad03:IMS}:
     \item[row\_idx] an integer array containing their row indices.
     \item[col\_idx] a second integer array containing their column indices.
 \end{enumerate}
-
-Thus $A$ would be stored as:
 
 \begin{table}[h!]
     \centering
@@ -180,7 +211,7 @@ Thus $A$ would be stored as:
 \end{table}
 
 
-\section{Compressed Sparse Row (CSR)}
+\section{Compressed Sparse Row (CSR)}\label{smsf:csr}
 
 Compressed Sparse Row is probably the most popular format for storing general sparse matrices.
 \cite{saad03:IMS} Similarly to the coordinate format, it too consists of three arrays.
@@ -219,14 +250,15 @@ This involves nonnegligible savings in storage.
 
 To achieve near-optimal load balance for matrices with any sparsity structures,
 all nonzero entries are partitioned to multiple 2D tiles of the same size.
-The CSR5 format has two tuning parameters: $\omega$ and $\sigma$, where $\omega$
-is a tile’s width and $\sigma$ is its height. \cite{liu2015csr5}
+The CSR5 format has two tuning parameters: \(\omega{}\) and \(\sigma{}\), where \(\omega{}\)
+is a tile’s width and \(\sigma{}\) is its height~\cite{liu2015csr5}.
 
-Further, extra information is needed to efficiently compute
-SpMV. For each tile, a tile pointer \csre{tile_ptr} and a tile descriptor \csre{tile_desc} are introduced.
+Further, extra information is needed to efficiently compute SpMV\@.
+For each tile, a tile pointer \csre{tile_ptr} and a tile descriptor \csre{tile_desc} are introduced.
 Meanwhile, the three arrays, i.e., row pointer \csre{row_ptr}, column index \csre{col_idx} and value val,
 of the classic CSR format are directly integrated. The only difference is that the \csre{col_idx} data and the \csre{vals}
 data in each complete tile are in-place transposed (i.e., from row-major order to column-major order) for coalesced memory access from contiguous SIMD lanes.
+
 
 \textbf{Each column of a tile has three characteristics}:
 \begin{itemize}
@@ -237,36 +269,56 @@ data in each complete tile are in-place transposed (i.e., from row-major order t
           %TODO: this could be explained a bit better. 
 \end{itemize}
 
-The tile further may have an \csre{empty_offset} array of size $\mathcal{O}(\omega * \sigma)$, if it contains empty rows,
-because \csre{y_offset} will be incorrect for such tile. Thus we store correct offsets into Y for each segment of such
-a tile in \csre{empty_offset}. The actual size of this array is number of segments in a tile (the number of bits set to 1 in \csre{bit_flag}).
+The tile further may have an \csre{empty_offset} array of size \(\mathcal{O}(\omega * \sigma)\), if it contains empty rows,
+because \csre{y_offset} will be incorrect for such tile. Thus the correct offsets into Y  for each segment of such
+a tile are stored in in \csre{empty_offset}. The actual size of this array is number of segments in a tile (the number of bits set to 1 in \csre{bit_flag}).
 
-% TODO: remake this, don't use picture.
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.35]{static/csr5_do_not_use_remake.png}
-    \caption{Matrix A stored in CSR5 format}
+    \includegraphics[scale=0.7]{static/A_csr5.pdf}
+    \caption{Matrix A stored in CSR5 format (Source:~\cite{liu2015csr5}).}
 \end{figure}
 
-\chapter{Theory}
+
+
+\chapter{Overview of used technologies}\label{tech}
 
 % TODO
+This chapter introduces the technologies used in implementation of this thesis. Section~\ref{tech:omp} introduces
+OpenMP API, used to parallelize the computation. Section~\ref{tech:mpi} introduces MPI, a Message Passing
+Interface, used for inter-process communication in the distributed SpMV implementation. SIMD parallel
+processing as well as SSE/AVX instructions sets are defined in Section~\ref{tech:simd}. Lastly
+Section~\ref{theory:MMEF} introduces Matrix Marked Exchange Format for storing sparse and dense matrices,
+and Section~\ref{theory:HDF5} introduces Hierarchical Data Format v5, used for efficient sparse matrix
+on-disk storage as described in Section~\ref{csr5:onDisk}.
 
-\section{OpenMP}
+\section{OpenMP}\label{tech:omp}
 
 OpenMP API is defined by a collection of compiler directives, library routines, and environment variables.
 It provides a model for parallel programming that is portable across architectures
-from different vendors. Compilers from numerous vendors support the OpenMP API. \cite{openmp18}
+from different vendors. Compilers from numerous vendors support the OpenMP API\cite{openmp18}.
+
+\begin{figure}[htp]
+    \begin{minted}{C++}
+    #pragma omp parallel for
+    for (int i = 0; i < num_iters; ++i)
+        // performed in parallel
+    \end{minted}
+    \caption{Loop parallelized using OpenMP directives.}
+\end{figure}
 
 
-\section{MPI}
+\section{MPI}\label{tech:mpi}
 
 MPI (Message-Passing Interface) is a message-passing library interface specification.
 All parts of this definition are significant. MPI addresses primarily the message-passing parallel
 programming model, in which data is moved from the address space of one process to
-that of another process through cooperative operations on each process. Extensions to the
+that of another process through cooperative operations on each process.
+
+Extensions to the
 “classical” message-passing model are provided in collective operations, remote-memory
-access operations, dynamic process creation, and parallel I/O. MPI is a specification, not
+access operations, dynamic process creation, and parallel I/O which is used to speed-up loading
+sparse matrices from disk as described in Section~\ref{dspmv:load}. MPI is a specification, not
 an implementation; there are multiple implementations of MPI. This specification is for a
 library interface; MPI is not a language, and all MPI operations are expressed as functions,
 subroutines, or methods, according to the appropriate language bindings which, for C and
@@ -274,28 +326,36 @@ Fortran, are part of the MPI standard.
 \cite{mpi40}
 
 
-\section{SIMD}
+\section{SIMD}\label{tech:simd}
 
 As defined in Flynn's taxonomy, Single Instruction Multiple Data (or SIMD) is a type of parallel
 processing, where a single instruction is applied to multiple data streams.
 
-Modern CPUs provide Streaming SIMD Extensions (or SSE) Instruction Set Extensions, as well as
-Advanced Vector Extensions (or AVX). These can be leveraged in C++ by using OpenMP pragma
-directives or compiler provided set of intrinsics.
+Modern CPUs provide Streaming SIMD Extensions (or SSE) Instruction Set Extensions which work on 16 byte
+registers, as well as Advanced Vector Extensions (or AVX) which work with 32 byte registers.
+These can be leveraged in C++ by using OpenMP pragma directives or compiler provided set of intrinsics.
+
+\section{PETSc}\label{tech:petsc}
+
+Portable, Extensible Toolkit for Scientific computation (PETSc) is a suite of data structures and routines
+for scalable solution of scientific applications modeled by partial differential equations.
+It supports MPI, and GPUs through CUDA, HIP or OpenCL, as well as hybrid MPI-GPU parallelism~\cite{petsc-web-page}.
+
+PETSc contains three main algebraic objects \csre{Mat} for matrices, \csre{Vec} for vectors and \csre{IS}
+for index sets indexing into the previous two. While it also contains many other components, only \csre{Mat}
+and \csre{Vec} are immediately relevant to this thesis.
 
 
+\section{Matrix Market Exchange Format}\label{theory:MMEF}
 
-\section{Sparse matrix exchange formats}
-
-
-\subsection{Matrix Market Exchange Format}\label{theory:MMEF}
-
-Native exchange format of Matrix Market. Has two flavours, Array Format for dense matrices,
-Coordinate format for sparse matrices. \cite{mmef}
+Matrix Market Exchange Format is a textual format, used as native format in Matrix Market\footnote{
+    Matrix Market is a repository of sparse matrices which can be found at https://math.nist.gov/MatrixMarket/
+}.
+It has two flavours, Array format for dense matrices, Coordinate format for sparse matrices~\cite{mmef}.
 
 % TODO: citations
 
-\subsubsection{General Format Specification}
+\subsection{General Format Specification}
 
 All Matrix Market echange format files contain three sections, which must appear in order:
 
@@ -315,15 +375,14 @@ All Matrix Market echange format files contain three sections, which must appear
           each data entry should occupy a single line.
 \end{enumerate}
 
-\subsubsection{Coordinate Format for Sparse Matrices}
+\subsection{Coordinate Format for Sparse Matrices}
 
 Header format for sparse matrices:
 \begin{lstlisting}
-%%MatrixMarket matirx coordinate <field> <symmetry>
+%%MatrixMarket matrix coordinate <field> <symmetry>
 \end{lstlisting}
 
-% TODO: citation
-Where\footnote{For further explanation see the specification.}:
+Where:
 \begin{itemize}
     \item \textbf{field} determines the type and number of values listed for each entry
           and is one of: Real, Complex, Integer or Pattern.
@@ -331,7 +390,7 @@ Where\footnote{For further explanation see the specification.}:
           and is one of: General, Symmetric, Skew-Symmetric or Hermitian.
 \end{itemize}
 
-While data specification is:
+While data is specified as:
 \begin{lstlisting}
     M N L
     I J A(I, J)
@@ -373,7 +432,7 @@ Each group can contain other groups or be linked to objects in other files.
 \begin{figure}[!h]
     \centering
     \includegraphics[scale=0.3]{static/group.png}
-    % TODO: attribute the picture to HDF5 manual.
+    \caption{HDF5 Group (Source:~\cite{hdf5})}
 \end{figure}
 
 Working with groups and their members is similar to working with files and directories in UNIX.
@@ -388,7 +447,7 @@ attributes.
 \begin{figure}[H]
     \centering
     \includegraphics[scale=0.3]{static/dataset.png}
-    % TODO: attribute the picture to HDF5 manual.
+    \caption{HDF5 Dataset (Source:~\cite{hdf5})}
 \end{figure}
 
 \subsubsection{Datatype}
@@ -412,7 +471,7 @@ and data elements participating in I/O. Thus an application can select subsets o
 \begin{figure}[H]
     \centering
     \includegraphics[scale=0.3]{static/dataspace.png}
-    % TODO: add source
+    \caption{HDF5 Dataspace (Source:~\cite{hdf5})}
 \end{figure}
 
 
@@ -427,13 +486,24 @@ support partial I/O, can't be compressed nor extended.
 
 \chapter{Implementation}
 
-The implementation will be reffered to as \csre{dim}.
+This chapter introduces \csre{dim}. \csre{dim} is a library/toolkit which is the result of the research done for this
+thesis. \csre{dim} is implemented in C++20 using OpenMP and MPI introduced in Sections~\ref{tech:omp} and
+~\ref{tech:mpi} respectively.
+
+While the implementation supports COO and CSR as storage formats for sparse matrices, the main storage
+format used is CSR5 described in Section~\ref{impl:csr5}. The SpMV algorithm for matrices stored in CSR5
+format, introduced in~\cite{liu2015csr5} is further described in Section~\ref{csr5:spmv}.
+
+Lastly, an efficient on-disk storage format used by MATLAB for CSR matrices, storing the matrices in
+binary format using HDF5 is described in Section~\ref{impl:matlabComp} and its extension to support
+matrices stored in CSR5 is outlined in Section~\ref{csr5:onDisk}.
+
+\section{CSR5}\label{impl:csr5}
+
 A common issue of parallel SpMV is load balancing. Storing matrices in CSR5 format avoids this by
 grouping data into tiles of fixed size. Furthermore the tiles are independent, allowing for high
-degree of paralelism and small critical sections. For this reason \csre{dim}, stores all matrices in
+degree of parallelism and small critical sections. For this reason \csre{dim}, stores all matrices in
 CSR5 format and implements sparse vector multiplication algorithm introduced in~\cite{liu2015csr5}.
-
-\section{CSR5}
 
 Since the implementation of CSR5 in \csre{dim} utilizes AVX2 instructions, some preconditions have to be met.
 Namely alignment of data passed to the AVX2 intrinsics. Most AVX2 instructions either require data to be
@@ -477,7 +547,7 @@ another type if storage for a bigger matrix is required.
         csr5_info            csr5_info;
     };
     \end{minted}
-    \caption{Pseudocode for structure holding CSR5 matrix}
+    \caption{Pseudo-code for structure holding CSR5 matrix}
 \end{figure}
 
 \section{CSR5 info}
@@ -488,8 +558,8 @@ Namely, \textbf{tile pointer}, \textbf{tile descriptor} and optionally \textbf{e
 
 \subsection{Tile pointer}
 
-Tile pointer array contains the index of the first element' row. It works similarly to a CSR
-\textbf{row pointer}, to get the range of rows covered by a tile, it can be queried for \csre{tile_ptr[tid]}
+Tile pointer array contains the index of the first elements row. It works similarly to a CSR
+\textbf{row pointer}. To get the range of rows covered by a tile, it can be queried for \csre{tile_ptr[tid]}
 and \csre{tile_ptr[tid + 1]} for the first and last rows respectively (range is open from the top).
 
 The most significant bit of the tile pointer is also used as a flag, which is set if a tile is `dirty`.
@@ -513,14 +583,14 @@ which usage of the pointer it requires.
 
 \subsection{Tile descriptor}
 
-Amids the new additions to C++20 are bit-manipulation functions in \csre{<bit>} header.
+Amid the new additions to C++20 are bit-manipulation functions in \csre{<bit>} header.
 One of the new functions is \csre{std::bit_width} which takes \(N\) and returns \(M\) such that values
 upto \(N\) can be stored in \(M\) bits. This function can be used in conjunction with bit-fields
 and non-type template parameters to pack descriptors very efficiently while retaining readability when using
 them. Since \csre{y_offset} may be at most \(\sigma * \omega\) (the number of new sections is at most the same
 as the number of elements in a tile) and \csre{scansum_offset} may be at most \(\omega - 1\) (as it is the number
 of empty consecutive columns to the right of current column), the descriptor column and the descriptor
-itself can be defined as:
+itself can be defined as shown in Figure~\ref{csr5:tileDesc}.
 
 \begin{figure}[htp]
 
@@ -537,7 +607,7 @@ struct descriptor {
     descriptor_column<Sigma, Omega> columns[Omega];
 };
     \end{minted}
-    \caption{Tile descriptor pseudo-code.}
+    \caption{Tile descriptor pseudo-code.}\label{csr5:tileDesc}
 \end{figure}
 
 As CSR5 tile descriptors contain bit flag maps, \csre{std::popcount} can be used to obtain number of set bits,
@@ -634,6 +704,12 @@ directly by combining \csre{tile_ptr} and \csre{y_offset} information. Red and b
 further add their partial sums since they do not form a complete segment.
 
 
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.7]{static/A_secs.pdf}
+    \caption{Synchronization of sub-segments within a tile (Source:~\cite{liu2015csr5}).}
+\end{figure}
+
 Each tile having 4 columns (\(\omega{}\)) and 16 rows (\(\sigma{}\)), the
 thread will perform \(\sigma{}\) iterations,
 processing \(\omega{}\) non-zero elements in each iteration using SIMD instructions, in other words,
@@ -641,20 +717,6 @@ each column is assigned a SIMD-lane and processed in parallel. This is the reaso
 for \(\omega{} = 4\) as AVX2 instructions can work on 4 double precision floating point numbers at once
 as well as the reason for data being in-place transposed.
 
-
-
-
-
-\begin{figure}[htp]
-    \centering
-    \begin{tikzpicture}
-        % matrix
-        \draw[step=0.5cm,gray,very thin] (0, 0) grid (2, 2);
-        \path (1, -0.5) -- (1, -1) node [black, font=\Huge, midway, sloped] {$\dots$};
-
-    \end{tikzpicture}
-    \caption{Processing a single tile}
-\end{figure}
 
 This minimizes the critical sections, as the tiles within the chunk do not have to be
 synchronized since they are processed sequentially in the context of a thread. Only a single element of
@@ -664,12 +726,12 @@ stores its first output element, in a `calibrator'. After the parallel part of a
 threads calibrator is added to the result to perform final synchronization.
 
 
-\section{Selecting on disk storage format}
+\section{Selecting on disk storage format}\label{impl:matlabComp}
 
 The matrices for which parallelized (and distributed) matrix-vector multiplication has the biggest benefit,
-are large. This section compares Matrix Market Exchange Format~\cite{mmef} introduced in \ref{theory:MMEF}
-and HDF5 backed format
-introduced by Matlab 6.0 for storing sparse matrices, comparing both on-disk size and throughput
+have large on-disk size. This section compares Matrix Market Exchange Format~\cite{mmef} introduced in
+Section~\ref{theory:MMEF} and HDF5 backed format
+introduced by Matlab 7.3 for storing sparse matrices, comparing both on-disk size and throughput
 measured by number of elements loaded in a second.
 
 \subsection{Matrix market storage format}
@@ -677,7 +739,7 @@ measured by number of elements loaded in a second.
 Matrix market exchange format is designed to be easy to parse. It provides a library to parse
 the header and matrix dimensions~\cite{mmC}.
 
-The numerical entries, need to be parsed manually, for which most implementations use variations of \texttt{scanf}.
+The numerical entries, need to be parsed manually, for which most implemen\-tations use variations of \texttt{scanf}.
 Initial implementation in dim used \texttt{scanf} as well. This however proved to be a bottleneck as
 the average throughput was only 4515017 elements/s. Profiling has shown that parsing the string representation
 was the the most computationally intensive step as 97.89\% of time spent was in \texttt{scanf} itself.
@@ -830,7 +892,7 @@ left\footnote{In the sense of MPI topology.}.
 
 Section~\ref{dspmv:load} outlines the algorithm used to load the chunks for each process using HDF5 and
 MPI-IO. Then, the synchronization algorithm for edge elements of result vector as well as an algorithm for
-distributing the result vector amongst the processes is introduced in \ref{dspmv:sync}.
+distributing the result vector amongst the processes is introduced in~\ref{dspmv:sync}.
 
 
 
@@ -889,15 +951,13 @@ of matrix and its parent tile can be made just with this information.
     \caption{Loading CSR5 info}
     \begin{algorithmic}
         \Function{load\_csr5\_info}{$\var{datasets}$, $\var{first}$, $\var{count}$}
-        \State $\var{tile\_desc} \gets \var{datasets["tile\_desc"][first:first + count]}$
-        \State $\var{tile\_ptr} \gets \var{datasets["tile\_ptr"][first:first + count + 1]}$
-        \State $\var{empty\_off\_ptr} \gets \var{datasets["empty\_offset\_ptr"][first:first+count+1]}$
-        \State $\var{empty\_off} \gets \var{datasets["empty\_offset"][empty\_off\_ptr[0]:empty\_off\_ptr[-1]]}$
+        \State $\var{tile\_desc} \gets \var{datasets["tile\_desc"][first:count]}$
+        \State $\var{tile\_ptr} \gets \var{datasets["tile\_ptr"][first:count+1]}$
+        \State $\var{empty\_off\_ptr} \gets \var{datasets["empty\_offset\_ptr"][first:count+1]}$
+        \State $\var{empty\_off} \gets \var{datasets["empty\_offset"][e\_ptr[0]:e\_ptr[-1]]}$
         \EndFunction
     \end{algorithmic}
 \end{algorithm}
-
-\pagebreak
 
 Lastly, slab of \csre{row_ptr} is loaded, starting at \csre{tile_ptr[0]} and
 ending at last output row of chunk of this matrix. This varies, if it is the last
@@ -943,7 +1003,7 @@ are both starting at \csre{row_ptr[0]} and ending at \csre{row_ptr[-1]}.
 
 As explained in~\ref{csr5:spmv} a tile may share at most one output element with its neighbor,
 so a process has to synchronize at most two elements in its output range in \(y\). The synchronization
-mechanism is explained in Section~\ref{dspmv:sync}. If all processes need the result vector,
+mechanism is explained in Section~\ref{dspmv:sync}. If all processes need the whole result vector,
 it can be distributed as explained by Section~\ref{dspmv:dist}.
 
 To illustrate, let \(A\) be a \(4\times4\) square matrix with 8 non-zero elements, multiplied by a vector
@@ -997,7 +1057,7 @@ Thus, each process gets one CSR5 tile containing 2 non-zero elements.
 
 
 
-\subsection{Synchronizing overlapping output ranges}\label{dspmv:sync}
+\subsection{Synchronizing overlapping output ranges}\label{dspmv:syncOver}
 
 Let \textbf{output index} be an index into result vector $y$ of sparse matrix vector
 multiplication $Ax = y$ and \textbf{output range} be a pair of output indices, denoting
@@ -1361,8 +1421,7 @@ calling \csre{MPI_Allgatherv}, with offsets and sizes computed as explained prev
 To measure real world performance of distributed sparse matrix vector multiplication
 three implementations of numerical solvers using conjugate gradient method, briefly explained in
 Appendix~\ref{app:cg}, were produced.
-Single and multi process implementations using csr5 as SpMV algorithm and a PETSc
-multi process implementation.
+Single and multi process implementations using \csre{dim} and a PETSc multi process implementation.
 
 \section{Specification}
 
@@ -1485,7 +1544,8 @@ and gap-kron respectively.
 
 To compare the distributed sparse matrix vector multiplication implemented by \csre{dim}
 to a state of the art BLAS library, an
-implementation of conjugate gradient solver using \csre{PETSc} (v3.15.1) was created.
+implementation of conjugate gradient solver using \csre{PETSc} (v3.15.1) introduced in
+Section~\ref{tech:petsc} was created.
 
 \csre{PETSc} offers,
 multiple storage formats for sparse matrices such as compressed sparse row, block compressed
@@ -1555,6 +1615,39 @@ ranges from 2.4 and 2.57x for iteration and spmv steps respectively upto 8.5 and
 
 \setsecnumdepth{part}
 \chapter{Conclusion}
+
+The aim of this thesis was to research and evaluate the viability of distributing sparse matrix-vector multiplication
+among multiple computational nodes using MPI\@. To that end, coordinate (COO) and compressed sparse row (CSR) formats
+were reviewed as well as Compressed Sparse Row 5 format introduced in~\cite{liu2015csr5}.
+
+On-disk storage formats for sparse matrices were reviewed, namely Matrix Market Exchange Format
+and a HDF5 backed format used by MATLAB v7.3. From these formats a storage scheme for CSR5 was devised
+using HDF5 as underlying format, nullifying the need for conversion from CSR to CSR5 each time a matrix
+is loaded.
+
+The parallel SpMV algorithm outlined in~\cite{liu2015csr5} was implemented using C++20. Routines for
+loading and storing sparse matrices as well as converting between sparse matrix formats were
+also implemented. These were packaged into a library/toolkit named \csre{dim}.
+
+The building blocks from \csre{dim} were then used to build distributed SpMV\@. Using MPI, SpMV was
+distributed among multiple processes, with the CSR5 SpMV re-implementation used to perform partial
+multiplication inside each process. Leveraging the MPI-IO capabilities of HDF5 library~\cite{hdf5} to load only
+relevant parts of the matrix to minimize the time spent performing I/O operations. An algorithm for
+synchronizing and distributing the partial results was then outlined and implemented.
+
+This distributed solution was then benchmarked using Conjugate Gradient Method implementation against the
+single-process solution. These benchmarks clearly show, that distributing the sparse matrix-vector multiplication
+for large sparse matrices can lead to significant speed-up even though the result needs to be synchronized
+and distributed amongst all processes each iteration.
+
+To compare the performance of this solution against a battle tested implementation, Conjugate Gradient Method
+was also implemented using PETSc toolkit and then benchmarked. Comparing the average per-iteration times,
+suggests that approach implemented in \csre{dim} leads to non-negligible speed ups.
+
+Future directions include researching algorithms other than Conjugate Gradient in which SpMV is the
+most computationally intensive task and the viability of distributing it. The on-disk storage format
+introduced by this thesis may also benefit from more generalization, as it is currently quite specific to
+CPU-only implementation of SpMV and thus not suitable for GPU or CPU/GPU heterogenous implementations.
 
 
 \bibliographystyle{iso690}
@@ -1797,10 +1890,14 @@ if finer structure needs to be captured (or the matrix is large).
 \chapter{Acronyms}
 % \printglossaries
 \begin{description}
-    \item[CSR5] Compressed Sparse Row 5
+    \item[COO] Coordinate Format
+    \item[CSR] Compressed Sparse Row Format
+    \item[CSR5] Compressed Sparse Row 5 Format
     \item[CLI] Command Line Interface
-    \item[$n_{nz}$] Number of non-zero elements in a sparse matrix.
+    \item[$n_{nz}$] Number of non-zero elements in a sparse matrix
     \item[HDF5] Hierarchical Data Format v5
+    \item[dim]  The library implemented during result for this thesis
+    \item[PETSc] Portable, Extensible Toolkit for Scientific computation
 \end{description}
 
 
@@ -1813,9 +1910,7 @@ if finer structure needs to be captured (or the matrix is large).
     .1 src\DTcomment{the directory of source codes}.
     .2 wbdcm\DTcomment{implementation sources}.
     .2 thesis\DTcomment{the directory of \LaTeX{} source codes of the thesis}.
-    .1 text\DTcomment{the thesis text directory}.
-    .2 thesis.pdf\DTcomment{the thesis text in PDF format}.
-    .2 thesis.ps\DTcomment{the thesis text in PS format}.
+    .1 thesis.pdf\DTcomment{the thesis text in PDF format}.
 }
 
 \end{document}
