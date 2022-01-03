@@ -157,12 +157,24 @@ The goals of this thesis are to:
 
 % TODO
 This chapter introduces the technologies used in implementation of this thesis. Section~\ref{tech:omp} introduces
-OpenMP API, used to parallelize the computation. Section~\ref{tech:mpi} introduces MPI, a Message Passing
-Interface, used for inter-process communication in the distributed SpMV implementation. SIMD parallel
-processing as well as SSE/AVX instructions sets are defined in Section~\ref{tech:simd}. Lastly
+OpenMP API, used to parallelize the computation. SIMD parallel
+processing as well as SSE/AVX instructions sets are defined in Section~\ref{tech:simd}. 
+Section~\ref{tech:mpi} introduces MPI, a Message Passing
+Interface, used for inter-process communication in the distributed SpMV implementation.  Lastly
 Section~\ref{theory:MMEF} introduces Matrix Marked Exchange Format for storing sparse and dense matrices,
 and Section~\ref{theory:HDF5} introduces Hierarchical Data Format v5, used for efficient sparse matrix
 on-disk storage as described in Section~\ref{csr5:onDisk}.
+
+
+\section{SIMD}\label{tech:simd}
+
+As defined in Flynn's taxonomy, Single Instruction Multiple Data (or SIMD) is a type of parallel
+processing, where a single instruction is applied to multiple data streams.
+
+Modern CPUs provide Streaming SIMD Extensions (or SSE) Instruction Set Extensions which work on 16 byte
+registers, as well as Advanced Vector Extensions (or AVX) which work with 32 byte registers.
+These can be leveraged in C++ by using OpenMP pragma directives or compiler provided set of intrinsics.
+
 
 \section{OpenMP}\label{tech:omp}
 
@@ -197,15 +209,6 @@ subroutines, or methods, according to the appropriate language bindings which, f
 Fortran, are part of the MPI standard.
 \cite{mpi40}
 
-
-\section{SIMD}\label{tech:simd}
-
-As defined in Flynn's taxonomy, Single Instruction Multiple Data (or SIMD) is a type of parallel
-processing, where a single instruction is applied to multiple data streams.
-
-Modern CPUs provide Streaming SIMD Extensions (or SSE) Instruction Set Extensions which work on 16 byte
-registers, as well as Advanced Vector Extensions (or AVX) which work with 32 byte registers.
-These can be leveraged in C++ by using OpenMP pragma directives or compiler provided set of intrinsics.
 
 \section{PETSc}\label{tech:petsc}
 
