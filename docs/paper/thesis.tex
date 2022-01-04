@@ -142,7 +142,7 @@ The goals of this thesis are to:
     \item Implement the parallel SpMV algorithm introduced in~\cite{liu2015csr5}.
     \item Introduce efficient on-disk storage format for sparse-matrix format outlined
           in~\cite{liu2015csr5} suitable for distributed version.
-    \item Implement a distributed version of parallel SpMV using the parallel implementation
+    \item Implement a distributed version of parallel SpMV (D-CSR5) using the parallel implementation
           and storage format introduced in this thesis.
     \item Measure and review the viability of distributing SpMV\@.
     \item Benchmark the distributed implementation against PETSc suite.
@@ -158,9 +158,9 @@ The goals of this thesis are to:
 \chapter{Overview of used technologies}\label{tech}
 
 % TODO
-This chapter introduces the technologies used in implementation of this thesis. Section~\ref{tech:omp} introduces
-OpenMP API, used to parallelize the computation. SIMD parallel
-processing as well as SSE/AVX instructions sets are defined in Section~\ref{tech:simd}.
+This chapter introduces the technologies used in implementation of this thesis.
+SIMD parallel processing as well as SSE/AVX instructions sets are defined in Section~\ref{tech:simd}.
+Section~\ref{tech:omp} introduces OpenMP API, used to parallelize the computation.
 Section~\ref{tech:mpi} introduces MPI, a Message Passing
 Interface, used for inter-process communication in the distributed SpMV implementation.  Lastly
 Section~\ref{theory:MMEF} introduces Matrix Marked Exchange Format for storing sparse and dense matrices,
@@ -173,9 +173,90 @@ on-disk storage as described in Section~\ref{csr5:onDisk}.
 As defined in Flynn's taxonomy, Single Instruction Multiple Data (or SIMD) is a type of parallel
 processing, where a single instruction is applied to multiple data streams.
 
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}
+        % tiles
+
+        \coordinate (xmm0) at (0, 0);
+
+        \draw[step=0.5cm,gray,very thin] ($ (xmm0) + (0, 0) $) grid ($ (xmm0) + (2, 0.5)$);
+        \foreach \i in {0,...,3}
+        \node (xmm0\i) at ($(xmm0) + (\i * 0.5 + 0.25, 0.25)$) {$\i$};
+
+        \node at ($(xmm0) + (-1, 0.25)$) {\csre{xmm0}};
+
+        \coordinate (xmm1) at (0, -1);
+
+        \draw[step=0.5cm,gray,very thin] ($ (xmm1) + (-0.01, 0) $) grid ($ (xmm1) + (2, 0.5)$);
+        \foreach \i [evaluate=\i as \ff using int(3-\i)] in {0,...,3}
+        \node (xmm1\i) at ($(xmm1) + ({\i * 0.5 + 0.25}, 0.25)$) {$\ff$};
+
+        \node at ($(xmm1) + (-1, 0.25)$) {\csre{xmm1}};
+
+
+        \foreach \i in {0,...,3}
+            {
+                \draw [-stealth] (xmm0\i) -- (xmm1\i);
+                \node [circle, fill=white!100, draw=black!50, scale=0.35] at ($(xmm0\i) + (0, -0.45)$) {+};
+            }
+
+        \coordinate (xmm3) at (0, -2);
+
+        \draw[step=0.5cm,gray,very thin] ($ (xmm3) + (-0.01, 0) $) grid ($ (xmm3) + (2, 0.5)$);
+        \foreach \i in {0,...,3}
+        \node (xmm2\i) at ($(xmm3) + ({\i*0.5 + 0.25}, 0.25)$) {$3$};
+
+        \node at ($(xmm3) + (-1, 0.25)$) {\csre{xmm2}};
+
+        \foreach \i in {0,...,3}
+            {
+                \draw [-stealth] (xmm1\i) -- (xmm2\i);
+            }
+
+
+        \draw [dotted] (-1, -1.3) -- (6, -1.3);
+        \node (st) [anchor=east, scale=0.8] at (6, -1.1) {\csre{vpaddd xmm2, xmm2, xmm1}};
+
+        \foreach \i in {0,...,4}
+        \draw [dotted, draw=red!90, line width = 0.3mm] (\i*0.5, 0.5) -- (\i*0.5, -2);
+
+        \foreach \i in {0,...,3}
+        \node [above=0.5mm of xmm0\i, anchor=south] {$L_{\i}$};
+
+    \end{tikzpicture}
+    \caption{Example of SIMD addition using SSE}\label{tech:simd:fig}
+\end{figure}
+
 Modern CPUs provide Streaming SIMD Extensions (or SSE) Instruction Set Extensions which work on 16 byte
 registers, as well as Advanced Vector Extensions (or AVX) which work with 32 byte registers.
-These can be leveraged in C++ by using OpenMP pragma directives or compiler provided set of intrinsics.
+To illustrate, Figure~\ref{tech:simd:fig} shows addition (single instruction) of two
+four-integer arrays (multiple data) using the \csre{vpaddd} instruction from SSE\@. The data streams
+are sometimes referred to as lanes (marked as \(L_0\)-\(L_3\) in Figure~\ref{tech:simd:fig}).
+
+In C++ there are several ways to achieve vectorization\footnote{Note that for compiler to enable
+    vector instructions, target architecture must be provided.}.
+First of these are SIMD intrinsics. Intrinsics
+are assembly-coded functions that let you use C++ function calls and variables in place of assembly
+instructions, improving readability. To generate the \csre{vpaddd} instruction from Figure~\ref{tech:simd:fig}
+intrinsic \csre{_mm_add_epi32} can be used.
+
+Vectorization may also be achieved by using a pragma directive from OpenMP described in Section~\ref{tech:omp},
+as shown in Figure~\ref{tech:simd:omp}.
+
+\begin{figure}[htp]
+    \centering
+    \begin{minted}{C++}
+        #pragma omp simd
+        for (int lane = 0; lane < 4; ++lane)
+            c[i] = a[i] + b[i]
+    \end{minted}
+    \caption{Vectorization using OpenMP}\label{tech:simd:omp}
+\end{figure}
+
+Lastly, standard C++ may be used to produce vectorized code by utilizing \csre{<execution>} header
+and its \csre{par_unseq} and \csre{unseq} execution policies. These however only aid the compiler
+auto-vectorization and do not guarantee the vector instructions will actually be used.
 
 
 \section{OpenMP}\label{tech:omp}
@@ -183,6 +264,51 @@ These can be leveraged in C++ by using OpenMP pragma directives or compiler prov
 OpenMP API is defined by a collection of compiler directives, library routines, and environment variables.
 It provides a model for parallel programming that is portable across architectures
 from different vendors. Compilers from numerous vendors support the OpenMP API\cite{openmp18}.
+OpenMP uses fork-join model of parallel execution.
+
+For C++ the directives have the form of preprocessor \texttt{\#pragma} directives, with the following
+syntax.
+\begin{minted}{c++}
+    #pragma omp <directive-name> [clause[[,]clause]...] new-line
+\end{minted}
+
+To enable OpenMP, compiler must be invoked with a \csre{-fopenmp}
+switch for gcc/clang based compilers, while MSVC accepts the \csre{/openmp} flag.
+
+\subsection{\texttt{parallel} directive}
+
+\texttt{parallel} directive marks a region to be executed in parallel. A \textbf{team} within the parallel
+region is a set of one or more threads participating in the execution of this region. If the team has at
+least two active threads the parallel region is \textbf{active} else it is called \textbf{inactive}.
+
+The threads in OpenMP have a \textbf{numerical identifier}. In this thesis, this numerical identifier will be
+referred to as \textbf{thread id}\footnote{Not the thread id in the context of an OS.}.
+The thread which has thread id equal to 0 is called the \textbf{master}
+thread within the team while other consecutive thread ids are assigned to remaining threads.
+It can be obtained by calling \mintinline{C++}{omp_get_thread_num}.
+
+\subsection{\texttt{for} directive}
+
+Referred to as Worksharing-Loop Construct in~\cite{openmp18}. It specifies that the iterations
+of the associated loop(s) will be executed in parallel by the threads of the currently active
+team. This means the execution is only parallelized if the loop is performed inside of a
+\texttt{parallel} region in first place.
+
+All of the allowed clauses for the directive can be found in~\cite{openmp18}, the only relevant one
+for this thesis is \texttt{schedule}, specified as \\
+\texttt{schedule([modifier [, modifier]:]kind[, chunk\_size])}. Modifier isn't immediately relevant
+but \texttt{kind} is. \textbf{kind} specifies, how the work is distributed among the threads.
+
+When \texttt{dynamic} kind is specified, the iterations are distributed among threads dynamically.
+Meaning when thread finishes processing its assigned chunk (of \texttt{chunk\_size} elements),
+it requests a new chunk until no chunks remain.
+
+\texttt{static} kind distributes chunks of \texttt{chunk\_size} among the participating threads in a
+round-robin fashion. This is used heavily in the computational kernel described in Section~\ref{csr5:spmv}.
+
+\texttt{parallel} and \texttt{for} directives may be combined as shown in Figure~\ref{tech:omp:loop},
+to create a so-called parallel worksharing-loop construct. Which is a shortcut for specifying
+\texttt{parallel} construct containing a worksharing-loop.
 
 \begin{figure}[htp]
     \begin{minted}{C++}
@@ -190,9 +316,13 @@ from different vendors. Compilers from numerous vendors support the OpenMP API\c
     for (int i = 0; i < num_iters; ++i)
         // performed in parallel
     \end{minted}
-    \caption{Loop parallelized using OpenMP directives.}
+    \caption{Loop parallelized using OpenMP directives.}\label{tech:omp:loop}
 \end{figure}
 
+
+OpenMP contains many other primitives for parallel programming such as atomics, barriers
+and semaphores and can be also used to vectorize loops using the \texttt{simd} construct as as shown
+in Figure~\ref{tech:simd:omp}.
 
 \section{MPI}\label{tech:mpi}
 
@@ -546,7 +676,7 @@ The algorithm for performing parallel SpMV using matrices stored in CSR5 format 
 Section~\ref{csr5:spmv}.
 
 
-\chapter{Implementation}
+\chapter{Implementation}\label{impl}
 
 This chapter introduces \csre{dim}. \csre{dim} is a library/toolkit which is the result of the research done for this
 thesis. \csre{dim} is implemented in C++20 using OpenMP and MPI introduced in Sections~\ref{tech:omp} and
@@ -705,6 +835,8 @@ struct csr5_info {
     \caption{\csre{csr5_info} pseudo-code.}
 \end{figure}
 
+\vfil
+\pagebreak
 
 \section{Sparse matrix vector multiplication}\label{csr5:spmv}
 
@@ -752,13 +884,41 @@ CPU which supports AVX2 extensions.
 \end{figure}
 
 Using \(N\) threads, each thread gets a contiguous chunk of tiles of the same size (except possibly the
-last thread). Tiles within the context of a thread are then processed sequentially as shown in 
-Figure~\ref{csr5:thr_dist}.
+last thread) as shown in Figure~\ref{csr5:thr_dist}. The computational kernel of CSR5 SpMV can be split into three main parts. First each thread processes
+its tile chunk. Then the necessary synchronization of sub-results from all threads is performed.
+Lastly, the tail partition of matrix, which wasn't in any tile (at most \(\sigma{} \cdot \omega\) elements)
+is processed.
 
+\begin{algorithm}[h]
+    \caption{Corpus of the CSR5 SpMV}
+    \begin{algorithmic}
+        \Function{spmv}{$\var{A}$, $\var{x}$}
+        \State \(\var{y} \gets \text{result vector}\)
+        \State \(\var{calib} \gets \mathbbm{0}\)
+        \State \(spmv\_full\_tiles(\var{A}, \var{x}, \var{calib}, \var{y})\)
+        \State \(spmv\_sync(\var{calib}, \var{y})\)
+        \State \(spmv\_tail(\var{A}, \var{x}, \var{y})\)
 
+        \Return $\var{y}$
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Processing full tiles}
+
+Each thread processes its assigned tile chunk sequentially.
 To describe the tile processing, the notion of \textbf{sub-segments} within a tile column needs
 to be established.
-~\cite{liu2015csr5} defines three types of sub-segments. A green sub-segment is a segment which contains
+~\cite{liu2015csr5} defines three types of sub-segments.
+
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=1]{static/A_secs.pdf}
+    \caption{Synchronization of sub-segments within a tile (Source:~\cite{liu2015csr5}).}\label{csr5:tileSync}
+\end{figure}
+
+A green sub-segment is a segment which contains
 all of the elements of a single row, that is, it starts with a set bit in \csre{bit_flag} and ends with
 another set-bit (denoting start of a new row) in \csre{bit_flag}. A blue sub-segment is unsealed from
 the bottom (column does not end with a set bit in \csre{bit_flag}).
@@ -769,27 +929,99 @@ directly by combining \csre{tile_ptr} and \csre{y_offset} information. Red and b
 further add their partial sums since they do not form a complete segment.
 
 
-\begin{figure}[htp]
-    \centering
-    \includegraphics[scale=1]{static/A_secs.pdf}
-    \caption{Synchronization of sub-segments within a tile (Source:~\cite{liu2015csr5}).}
-\end{figure}
+\begin{algorithm}[h]
+    \caption{Processing assigned tile chunk CSR5 SpMV}
+    \begin{algorithmic}
+        \Function{spmv\_full\_tiles}{$\var{A}$, $\var{x}$, $\var{calib}$, $\var{y}$}
+
+        \For{\(\var{tile\_id} \in \text{assigned tiles}\)}
+        \State $\var{row} \gets \var{A.tile\_ptr[tile\_id]}$
+        \State $\var{desc} \gets \var{A.tile\_desc[tile\_id]}$
+        \State $\var{direct} \gets \var{desc}\text{ starts with red sub-segment}$
+        \State $spmv\_single\_tile(\var{A}, \var{desc})$
+        \If{\(\text{first tile in assigned tiles }\textbf{and}\var{ !direct}\)}
+        \State $\var{calib[tid]} \gets \text{first output element}$
+        \Else
+        \If{\var{direct}}
+        \State $\var{y[row]} \gets \text{first output element}$
+        \Else
+        \State $\var{y[row]} \pluseq \text{first output element}$
+        \EndIf
+        \EndIf
+        \EndFor
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
 
 Each tile having 4 columns (\(\omega{}\)) and 16 rows (\(\sigma{}\)), the
 thread will perform \(\sigma{}\) iterations,
 processing \(\omega{}\) non-zero elements in each iteration using SIMD instructions, in other words,
 each column is assigned a SIMD-lane and processed in parallel. This is the reason
 for \(\omega{} = 4\) as AVX2 instructions can work on 4 double precision floating point numbers at once
-as well as the reason for data being in-place transposed.
+as well as the reason for data being in-place transposed. Algorithm~\ref{csr5:spmv:single_tile} shows
+how a single tile column is processed.
+
+\begin{algorithm}[h]
+    \caption{Single tile column processing CSR5 SpMV}\label{csr5:spmv:single_tile}
+    \begin{algorithmic}
+        \Function{spmv\_single\_tile}{$\var{A}$, $\var{desc}$}
+
+        \State $\var{any\_segment} \gets \var{desc.bit\_flag[0]}$
+
+        \State $\var{sum} \gets \var{tile\_vals[0]} \cdot \var{x[tile\_col\_idx[0]]}$
+        \State $\var{red\_segsum} \gets 0$
+
+        \For{\(\var{tile\_row} \in range(1, \sigma{})\)}
+        \State $\var{segment\_end} \gets \var{desc.bit\_flag[tile\_row]}$
+        \If{\var{segment\_end}}
+        \If{\var{any\_segment}}
+        \State $\text{store to y, green segment}$
+        \Else
+        \State $\var{red\_segsum} \gets \var{sum}$
+        \EndIf
+
+        \State $\var{sum} \gets 0$
+
+        \State $\var{any\_segment} \gets \var{true}$
+        \EndIf
+
+        \State $\var{sum} \pluseq \var{tile\_vals[tile\_row]} \cdot \var{x[tile\_col\_idx[tile\_row]]}$
+        \EndFor
+        \State ${}$ \Comment{Here, \var{sum} will hold the blue sub-segment and \var{red\_segsum} will hold the red sub-segment partial results.
+            Except when no no segment has started (\var{any\_segment} is false), then \var{sum} holds the red-subsegment
+            partial result and there is no blue sub-segment. The synchronization between lanes is shown in Figure~\ref{csr5:tileSync}.}
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
 
 
-This minimizes the critical sections, as the tiles within the chunk do not have to be
+\subsection{Synchronizing overlapping elements}
+
+CSR5 minimizes the critical sections, as the tiles within the chunk do not have to be
 synchronized since they are processed sequentially in the context of a thread. Only a single element of
 \(y\) may be overlapping between neighboring chunks of tiles which only happens if the first tile of the
 chunk starts with a red sub-section. To synchronize these elements, each thread
 stores its first output element, in a `calibrator'. After the parallel part of algorithm is over, each
 threads calibrator is added to the result to perform final synchronization.
 
+\begin{algorithm}
+    \caption{Synchronizing the overlapping elements in y CSR5 SpMV}
+    \begin{algorithmic}
+        \Function{spmv\_sync}{$\var{calib}$, $\var{y}$}
+
+        \For{\(\var{tid} \in \text{threads}\)}
+        \State $\var{y\_idx} \gets \text{tile\_ptr of first tile assigned to thread}$
+        \State $\var{y[y\_idx]} \pluseq \var{calib[tid]}$
+        \EndFor
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Tail partition}
+
+If the number of non-zero elements for a matrix isn't divisible by \(\sigma{} \cdot \omega{}\), there
+is a ``tail'' partition which does not form a full tile. This partition is processed by the same SpMV
+algorithm as the one introduced in Section~\ref{smsf:csr} for CSR matrices.
 
 \section{Selecting on disk storage format}\label{impl:matlabComp}
 
@@ -953,13 +1185,11 @@ among threads in a single process implementation (see Figure~\ref{csr5:thr_dist}
 assigned to processes are further subdivided among the threads of each process. Furthermore, same
 synchronization principles apply, thus only processes which have first tile starting with red-subsegment
 (as defined in~\ref{csr5:spmv}) need to synchronize with the process to the
-left\footnote{In the sense of MPI topology.}.
+left\footnote{In the sense of MPI topology.}. This implementation will be referred to as D-CSR5.
 
 Section~\ref{dspmv:load} outlines the algorithm used to load the chunks for each process using HDF5 and
 MPI-IO. Then, the synchronization algorithm for edge elements of result vector as well as an algorithm for
 distributing the result vector amongst the processes is introduced in~\ref{dspmv:sync}.
-
-
 
 
 
@@ -1606,7 +1836,7 @@ and gap-kron respectively.
 
 \section{PETSc}
 
-To compare the distributed sparse matrix vector multiplication implemented by \csre{dim}
+To compare the distributed sparse matrix vector multiplication (D-CSR5) implemented by \csre{dim}
 to a state of the art BLAS library, an
 implementation of conjugate gradient solver using \csre{PETSc} (v3.15.1) introduced in
 Section~\ref{tech:petsc} was created.
@@ -1657,7 +1887,7 @@ the two implementations.
     \caption{PETSc and dim implementation benchmark results}
 \end{figure}
 
-With the \texttt{distributing s} step removed, the speedup of \csre{dim} implementation compared to \csre{PETSc}
+With the \texttt{distributing s} step removed, the speedup of D-CSR5 based implementation compared to \csre{PETSc}
 ranges from 2.4 and 2.57x for iteration and spmv steps respectively upto 8.5 and 9.46x.
 
 \begin{figure}[htp]
@@ -1673,7 +1903,7 @@ ranges from 2.4 and 2.57x for iteration and spmv steps respectively upto 8.5 and
         \csre{8-1-16}   & 3.72                                   & 4.81                                 & 5.57                                  & 7.03 & 8.53      & 9.46 \\
         \bottomrule
     \end{tabular}
-    \caption{Speedup of iteration and spmv step of iteration using dim and petsc}
+    \caption{Speedup of iteration and SpMV step of iteration using when using D-CSR5 vs PETSc}
 \end{figure}
 
 
@@ -1969,6 +2199,8 @@ if finer structure needs to be captured (or the matrix is large).
     \item[PETSc] Portable, Extensible Toolkit for Scientific computation
     \item[CG] conjugate gradient method
     \item[SpMV] Sparse Matrix-Vector multiplication
+    \item[SSE] Streaming SIMD Extensions
+    \item[AVX] Advanced Vector Extensions
 \end{description}
 
 
