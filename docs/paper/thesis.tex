@@ -1884,11 +1884,15 @@ the two implementations.
 \begin{figure}[htp]
     \centering
     \includegraphics[scale=0.4]{static/petsc_vs_dim.pdf}
-    \caption{PETSc and dim implementation benchmark results}
+    \caption{PETSc vs D-CSR5 benchmark results (no synchronization)}\label{bench:petsc:vsDim}
 \end{figure}
 
-With the \texttt{distributing s} step removed, the speedup of D-CSR5 based implementation compared to \csre{PETSc}
-ranges from 2.4 and 2.57x for iteration and spmv steps respectively upto 8.5 and 9.46x.
+Even with the \texttt{distributing s} step removed the benchmark results (visualized in 
+Figure~\ref{bench:petsc:vsDim}) show, that D-CSR5 implementation performs better
+on all the benchmarked configurations. The speedup of D-CSR5 based implementation compared to \csre{PETSc}
+ranges from 2.4 and 2.57x for iteration and SpMV steps respectively up to 8.5 and 9.46x. Speedup over all layout 
+and input matrix combinations is shown in Figure~\ref{bench:petsc:table}.
+
 
 \begin{figure}[htp]
     \centering
@@ -1903,7 +1907,7 @@ ranges from 2.4 and 2.57x for iteration and spmv steps respectively upto 8.5 and
         \csre{8-1-16}   & 3.72                                   & 4.81                                 & 5.57                                  & 7.03 & 8.53      & 9.46 \\
         \bottomrule
     \end{tabular}
-    \caption{Speedup of iteration and SpMV step of iteration using when using D-CSR5 vs PETSc}
+    \caption{Speedup of iteration and SpMV step of iteration using when using D-CSR5 vs PETSc}\label{bench:petsc:table}
 \end{figure}
 
 
