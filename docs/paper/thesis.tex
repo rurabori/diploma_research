@@ -1912,7 +1912,8 @@ The benchmarks were run on the RCI cluster, using AMD nodes.
 
 Single process implementation uses CSR5 format for storing the sparse matrix and the
 SpMV algorithm  described in Section~\ref{csr5:spmv} for the \(A \cdot s\) step. It was ran
-with 16, 32, 64, and 128 CPUs available for each input matrix.
+with 16, 32, 64, and 128 CPUs available for each input matrix. The naming of steps 
+in the graphs follows the naming scheme introduced in Section~\ref{dcg:steps}.
 
 \begin{figure}[htp]
     \centering
@@ -2140,7 +2141,7 @@ in Alogithm~\ref{app:cg:algo}.
     \end{algorithmic}
 \end{algorithm}
 
-\section{Distributed conjugate gradient implementation}
+\section{Distributed conjugate gradient implementation}\label{dcg:steps}
 
 Each process first obtains a full copy of \csre{s}.
 Then the steps of the algorithm above are performed as follows with each step being labeled as 
