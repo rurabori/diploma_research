@@ -121,27 +121,27 @@ auto main_impl(const arguments_t& args) -> int {
     spdlog::info("creating synchronization took {}", sync_time);
 
     const auto output_range = mpi_mat.output_range();
-    const auto sync_first_row = mpi_mat.matrix().first_tile_uncapped();
+    const auto owning_range = mpi_mat.owning_range();
     const auto row_count = output_range.count();
 
     general_stats.local_rows = row_count;
-    general_stats.local_elements = mpi_mat.matrix().non_zero_count();
+    general_stats.local_elements = mpi_mat.local_nnz();
 
     // r0 = b - A*x0;  x0 = {0...} => r0 = b
-    auto r = dim::vec<double>(row_count - sync_first_row, 1.);
+    auto r = dim::vec<double>(owning_range.count(), 1.);
 
     // s0 = r0
     auto s = dim::vec<double>(mpi_mat.matrix().dimensions.cols, 1.);
     auto s_out = s.subview(output_range.first_row, row_count);
-    auto s_own = s_out.subview(sync_first_row);
+    auto s_own = s.subview(owning_range.first_row, owning_range.count());
 
     // norm_b = b.magnitude()
     const auto norm_b = mpi_magnitude(r.raw());
 
     // the output vector for spmv.
-    auto temp = dim::vec<double>(row_count);
+    auto As = dim::vec<double>(row_count);
     // and a view into it conditionally skipping first element.
-    auto temp_own = temp.subview(sync_first_row);
+    auto As_own = As.subview(!mpi_mat.owns_first_row());
 
     auto calibrator = mpi_mat.matrix().allocate_calibrator();
     auto x_partial = dim::vec<double>(r.size());
@@ -159,26 +159,26 @@ auto main_impl(const arguments_t& args) -> int {
 
         // temp = A*s
         cg_stats.steps.spmv += section(
-          [&] { mpi_mat.spmv_partial(csr5::spmv_data_t{.x = s.raw(), .y = temp.raw(), .calibrator = calibrator}); });
+          [&] { mpi_mat.spmv_partial(csr5::spmv_data_t{.x = s.raw(), .y = As.raw(), .calibrator = calibrator}); });
 
         sw.reset();
         // fire edge temp sync request.
-        auto sync_request = sync.edge_sync.sync(temp.raw());
+        auto sync_request = sync.edge_sync.sync(As.raw());
         cg_stats.steps.edge_sync += sw.elapsed();
 
         // alpha = (r * r)  / (s * temp)
         sw.reset();
-        const auto alpha = r_r / mpi_reduce(s_out.raw(), temp.raw());
+        const auto alpha = r_r / mpi_reduce(s_out.raw(), As.raw());
         cg_stats.steps.alpha += sw.elapsed();
 
         // x += s * alpha
         cg_stats.steps.part_x += section([&] { x_partial.axpy(s_own, alpha); });
 
         // must be done before this.
-        cg_stats.steps.edge_sync += section([&] { sync_request.await(temp.raw()); });
+        cg_stats.steps.edge_sync += section([&] { sync_request.await(As.raw()); });
 
         // r -= temp * alpha
-        cg_stats.steps.part_r += section([&] { r.axpy(temp_own, -alpha); });
+        cg_stats.steps.part_r += section([&] { r.axpy(As_own, -alpha); });
 
         sw.reset();
         auto tmp = mpi_reduce(r.raw());

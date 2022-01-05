@@ -44,6 +44,10 @@ public:
 
     [[nodiscard]] auto matrix() const noexcept -> const matrix_type& { return _matrix; }
 
+    [[nodiscard]] auto owns_first_row() const noexcept { return !_matrix.first_tile_uncapped(); }
+
+    [[nodiscard]] auto local_nnz() const noexcept { return _matrix.non_zero_count(); }
+
     template<typename... Args>
     auto spmv_partial(Args&&... args) const noexcept -> void {
         _matrix.spmv<matrix_type::spmv_strategy::partial>(std::forward<Args>(args)...);
@@ -53,6 +57,11 @@ public:
 
     [[nodiscard]] auto output_range() const noexcept -> output_range_t {
         return output_range_t{.first_row = _matrix.first_row_idx(), .last_row = _matrix.last_row_idx()};
+    }
+
+    [[nodiscard]] auto owning_range() const noexcept -> output_range_t {
+        const auto skip_first = !owns_first_row();
+        return output_range_t{.first_row = _matrix.first_row_idx() + skip_first, .last_row = _matrix.last_row_idx()};
     }
 
     [[nodiscard]] auto all_output_ranges() const noexcept -> std::vector<output_range_t>;
