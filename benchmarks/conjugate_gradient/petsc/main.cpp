@@ -69,34 +69,24 @@ requires(sizeof...(Result) > 1) auto petsc_call(Args&&... args) -> std::tuple<Re
 }
 
 auto load_partial(const arguments& args) {
-    using mat_t = guard<Mat, MatCreateMPIAIJWithArrays, MatDestroy>;
+    using mat_t = guard<Mat, MatCreate, MatDestroy>;
+
     auto partial = dim::mpi::load_csr_partial(args.input_matrix.data(), args.matrix_name.data(), PETSC_COMM_WORLD);
 
-    using mat2_t = guard<Mat, MatCreate, MatDestroy>;
-
-    auto mat2 = mat2_t{PETSC_COMM_WORLD};
-    petsc_try MatSetType(mat2, MATMPIAIJ);
-    petsc_try MatSetSizes(mat2,                                                   //
+    auto mat = mat_t{PETSC_COMM_WORLD};
+    petsc_try MatSetType(mat, MATMPIAIJ);
+    petsc_try MatSetSizes(mat,                                                   //
                           static_cast<int>(partial.matrix_chunk.dimensions.rows), //
                           static_cast<int>(partial.global_dimensions.cols),
                           static_cast<int>(partial.global_dimensions.rows),
                           static_cast<int>(partial.global_dimensions.cols));
 
-    petsc_try MatMPIAIJSetPreallocationCSR(mat2, //
+    petsc_try MatMPIAIJSetPreallocationCSR(mat, //
                                            reinterpret_cast<PetscInt*>(partial.matrix_chunk.row_start_offsets.data()),
                                            reinterpret_cast<PetscInt*>(partial.matrix_chunk.col_indices.data()),
                                            partial.matrix_chunk.values.data());
 
-    return mat2;
-
-    // return mat_t{PETSC_COMM_WORLD,
-    //              static_cast<int>(partial.matrix_chunk.dimensions.rows),
-    //              static_cast<int>(partial.global_dimensions.cols),
-    //              static_cast<int>(partial.global_dimensions.rows),
-    //              static_cast<int>(partial.global_dimensions.cols),
-    //              reinterpret_cast<PetscInt*>(partial.matrix_chunk.row_start_offsets.data()),
-    //              reinterpret_cast<PetscInt*>(partial.matrix_chunk.col_indices.data()),
-    //              partial.matrix_chunk.values.data()};
+    return mat;
 }
 
 auto vec_norm(Vec vec) -> PetscReal { return petsc_call<PetscReal, VecNorm>(vec, NORM_2); }
