@@ -1,10 +1,9 @@
 #include "generate_heatmap.h"
-#include "dim/io/h5.h"
+#include <dim/io/h5.h>
 
 #include <fmt/chrono.h>
 #include <fmt/format.h>
 
-#include <limits>
 #include <opencv2/core/cvdef.h>
 #include <opencv2/core/matx.hpp>
 #include <opencv2/opencv.hpp>
@@ -12,6 +11,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
 
+#include <limits>
 #include <stdexcept>
 
 namespace {

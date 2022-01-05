@@ -15,6 +15,7 @@ target_link_libraries(
   dim_cli
   PRIVATE fmt::fmt
           dim::io
+          dim::simple_main
           structopt::structopt
           spdlog::spdlog
           magic_enum::magic_enum
