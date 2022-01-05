@@ -14,6 +14,10 @@
 
 #include <spdlog/spdlog.h>
 
+/**
+ * @brief define a main_impl function, returning an int taking ArgumentsType before using this macro.
+ *
+ */
 // NOLINTNEXTLINE - these war crimes are the simplest way to make a simple application.
 #define DIM_MAIN(ArgumentsType)                                                    \
     int main(int argc, char* argv[]) try {                                         \
