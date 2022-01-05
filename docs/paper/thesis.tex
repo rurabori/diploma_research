@@ -1892,18 +1892,20 @@ Three square matrices were selected for benchmarking.
 
 \subsection{Compilation options}
 
-\textbf{Compiler}: \texttt{GCC 10.3} \\
-\textbf{Optimization level}: \texttt{-O3} \\
-\textbf{Microarchitecture}: \texttt{native (znver2)} \\
+The benchmarks were run on the RCI cluster, using AMD nodes.
 
-
-\subsection{Hardware}
-
-The benchmarks were ran on RCI cluster, using AMD nodes.\\
 \textbf{CPU}: \texttt{2 x AMD EPYC 7543 (64 cores/128 threads 2.8GHz)} \\
-\textbf{RAM}: \texttt{1TB}\\
-\textbf{Storage}: \texttt{8TB NVMe} \\
-\textbf{Network}: \texttt{200GbE InfiniBand EDR for MPI communication}
+\textbf{Network}: \texttt{200GbE InfiniBand EDR for MPI communication}\\
+\begin{minipage}{0.5\textwidth}
+    \textbf{RAM}: \texttt{1TB}\\
+    \textbf{Storage}: \texttt{8TB NVMe} \\
+\end{minipage}%
+\begin{minipage}{0.5\textwidth}
+    \textbf{Compiler}: \texttt{GCC 10.3} \\
+    \textbf{Optimization level}: \texttt{-O3} \\
+    \textbf{March}: \texttt{native(znver2)} \\
+\end{minipage}
+
 
 
 \section{Single process implementation}
@@ -1914,8 +1916,8 @@ with 16, 32, 64, and 128 CPUs available for each input matrix.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.35]{static/single_process.pdf}
-    \caption{Scaling of single process implementation conjugate gradient with CPU count}
+    \includegraphics[scale=0.5]{static/single_process.pdf}
+    \caption{Scaling of single process implementation CG with CPU count}
 \end{figure}
 
 Benchmark results show that the sparse matrix-vector multiplication
@@ -1927,7 +1929,7 @@ matrices respectively when the single process implementation is running on 16 th
 \begin{figure}[htp]
     \centering
     \includegraphics[scale=0.6]{static/cg_sp_nlpkkt240_16.pdf}
-    \caption{Percentage of time spent in steps of cg (nlpkkt240, 16CPUs)}
+    \caption{Percentage of time spent in steps of CG (nlpkkt240, 16CPUs)}
 \end{figure}
 
 
@@ -1964,7 +1966,7 @@ can be compared directly.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.45]{static/mpi.pdf}
+    \includegraphics[scale=0.5]{static/mpi.pdf}
     \caption{Average iteration times of single and multi process implementations}
 \end{figure}
 
@@ -1978,7 +1980,7 @@ and \textit{gap-kron} respectively.
 \begin{figure}[htp]
     \centering
     \includegraphics[scale=0.58]{static/io_mp.pdf}
-    \caption{Time spent doing IO vs conjugate gradient (8-1-16 layout)}
+    \caption{Time spent doing IO vs CG (8-1-16 layout)}
 \end{figure}
 
 \section{PETSc}
@@ -1991,7 +1993,7 @@ Section~\ref{tech:petsc} was created.
 \csre{PETSc} supports
 multiple storage formats for sparse matrices such as compressed sparse row, block compressed
 sparse row, etc. The default for distributed sparse matrices, which is compressed sparse row
-(PETSc \csre{MatType = MATMPIAIJ}~\cite{petsc-user-ref}) was used for benchmarking.
+(PETSc \csre{MatType} \csre{MATMPIAIJ}~\cite{petsc-user-ref}) was used for benchmarking.
 
 Furthermore, since \csre{PETSc} is a general-purpose library, some tradeoffs had to be made
 in the benchmarking code. Even though \csre{PETSc} has its own conjugate gradient implementation
@@ -2010,7 +2012,7 @@ so this approach yields good load distribution across all processes.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.45]{static/petsc_mpi.pdf}
+    \includegraphics[scale=0.5]{static/petsc_mpi.pdf}
     \caption{PETSc implementation benchmark results}
 \end{figure}
 
@@ -2026,11 +2028,11 @@ in its memory. To obtain a sub-vector of \csre{s}, suitable for distributed \csr
 However, \csre{VecGetSubVector} may allocate new memory to store the sub-vector in, releasing said memory
 when \csre{VecRestoreSubVector} is called, thus skewing the actual time needed for synchronization of
 \csre{s} itself. For this reason, the \texttt{distributing s} step will not be considered when comparing
-the two implementations.
+the two implemen\-tations.
 
 \begin{figure}[htp]
     \centering
-    \includegraphics[scale=0.4]{static/petsc_vs_dim.pdf}
+    \includegraphics[scale=0.5]{static/petsc_vs_dim.pdf}
     \caption{PETSc vs D-CSR5 benchmark results (no synchronization)}\label{bench:petsc:vsDim}
 \end{figure}
 
@@ -2086,7 +2088,7 @@ single-process solution. These benchmarks clearly show that distributing the spa
 for large sparse matrices can lead to significant speed-up even though the result needs to be synchronized
 and distributed amongst all processes each iteration.
 
-To compare the performance of this solution against a battle-tested implementation conjugate gradient method
+To compare the performance of this solution against a battle-tested implemen\-tation conjugate gradient method
 was also implemented using \texttt{PETSc} toolkit and then benchmarked. Comparing the average per-iteration times
 suggests that the approach implemented in \csre{dim} leads to non-negligible speed ups.
 
@@ -2141,13 +2143,18 @@ in Alogithm~\ref{app:cg:algo}.
 \section{Distributed conjugate gradient implementation}
 
 Each process first obtains a full copy of \csre{s}.
-Then the steps of the algorithm above are performed as follows.
+Then the steps of the algorithm above are performed as follows with each step being labeled as 
+\texttt{CG<num>} for the steps of the actual algorithm and \texttt{DCG<num>} for the steps 
+only the distributed version performs.
 
-$\var{As} \gets \var{A} \cdot \var{s}$, each process can perform SpMV on its local part of
+\textbf{Step \texttt{CG0}}: $\var{As} \gets \var{A} \cdot \var{s}$. Each process can perform SpMV on its local part of
 \csre{A}. This SpMV will result, in each process having part of \csre{As}, with some overlapping
 output elements having only part of its value which needs to be synchronized.
 
-$\var{alpha} \gets \frac{\var{r\_r}}{\var{s} \cdot \var{As}}$. Since each process only has part of
+\textbf{Step \texttt{DCG0.1}}: edge sync. After SpMV is done, the synchronization for overlapping 
+edge elements described in Section~\ref{dspmv:sync} can begin.
+
+\textbf{Step \texttt{CG1}}: $\var{alpha} \gets \frac{\var{r\_r}}{\var{s} \cdot \var{As}}$. Since each process only has part of
 \csre{As} and full \csre{s}, it can do its part of the $\var{s} \cdot \var{As}$.
 Dot product of two vectors is computed as $x \cdot y = \sum x_i \cdot y_i$, so $\var{s} \cdot \var{As}$
 can be rewritten as $a \cdot As = \sum_{p=0}^{np} \sum_{i=os_p}^{oe_p} s_i \cdot As_{i-os_p}$ where
@@ -2162,21 +2169,26 @@ As multiplication in $R$ is distributive, this can be rewritten as $s_i \cdot As
 so there is no need to synchronize $As_i$ as result will be synchronized when partial results for
 each process are summed.
 
-$\var{x} \gets \var{x} + \var{alpha} \cdot \var{s}$ each process only has the part of \csre{x},
+\textbf{Step \texttt{CG2}}: $\var{x} \gets \var{x} + \var{alpha} \cdot \var{s}$ each process only has the part of \csre{x},
 coinciding with the output ranges into \csre{As} it owns. Thus thus each process only
 modifies said part of \csre{x}.
 
-$\var{r} \gets \var{r} - \var{alpha} \cdot \var{As}$ Similarly to previous step, each process
+\textbf{Step \texttt{CG3}}: $\var{r} \gets \var{r} - \var{alpha} \cdot \var{As}$ Similarly to previous step, each process
 only modifies the part of residual vector \csre{r}. Synchronization of overlapping
 output elements for \csre{As} must be done before this step, as process which owns the
 element uses it to modify \var{r} in this step.
 
-$\var{r\_r\_new} \gets \var{r'} \cdot \var{r}$ Same as in alpha computation, the dot product
+\textbf{Step \texttt{CG4}}: $\var{r\_r\_new} \gets \var{r'} \cdot \var{r}$ Same as in alpha computation, the dot product
 can be divided into sub sums, which can then be summed across all processes, using
 \csre{MPI_Allreduce}.
 
-$\var{s} \gets \var{r} + \var{beta} \cdot \var{s}$ each process computes only part of new
-\csre{s}, corresponding to its output range in \csre{As}. The resulting \csre{s} is
+\textbf{Step \texttt{DCG0.1}}: edge sync. The second part of \texttt{DCG0}, which calls \csre{MPI_Waitall}
+to wait until the sync is over as the owning processes need to have the correct values in \csre{s}.
+
+\textbf{Step \texttt{CG5}}: $\var{s} \gets \var{r} + \var{beta} \cdot \var{s}$ each process computes only part of new
+\csre{s}, corresponding to its output range in \csre{As}. 
+
+\textbf{Step \texttt{DCG0.1}}: distributing \csre{s}. The resulting \csre{s} is
 then distributed to all processes using same algorithm as described in section
 about synchronization of distributed SpMV results using \csre{MPI_Allgatherv}.
 This distribution step is the heaviest as far as MPI communication goes.
