@@ -866,7 +866,7 @@ public:
         }
     }
 
-    auto non_zero_count() const noexcept -> size_t { return vals.size(); }
+    [[nodiscard]] auto non_zero_count() const noexcept -> size_t { return vals.size(); }
 };
 
 } // namespace dim::mat

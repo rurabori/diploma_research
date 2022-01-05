@@ -102,7 +102,7 @@ void to_json(nlohmann::json& j, const cg_stats_t& stats) {
 
 auto main_impl(const arguments_t& args) -> int {
     using dim::mpi::csr5::csr5_partial;
-    constexpr auto csr5_strat = csr5_partial::matrix_type::spmv_strategy::partial;
+    using csr5 = typename csr5_partial::matrix_type;
 
     auto general_stats = general_stats_t{};
 
@@ -116,22 +116,22 @@ auto main_impl(const arguments_t& args) -> int {
 
     spdlog::info("creating synchronization");
     sw.reset();
-    const auto output_range = mpi_mat.output_range();
-    const auto sync_first_row = mpi_mat.matrix.first_tile_uncapped();
     auto sync = mpi_mat.make_sync();
     const auto sync_time = sw.elapsed();
     spdlog::info("creating synchronization took {}", sync_time);
 
+    const auto output_range = mpi_mat.output_range();
+    const auto sync_first_row = mpi_mat.matrix().first_tile_uncapped();
     const auto row_count = output_range.count();
 
     general_stats.local_rows = row_count;
-    general_stats.local_elements = mpi_mat.matrix.vals.size();
+    general_stats.local_elements = mpi_mat.matrix().non_zero_count();
 
     // r0 = b - A*x0;  x0 = {0...} => r0 = b
     auto r = dim::vec<double>(row_count - sync_first_row, 1.);
 
     // s0 = r0
-    auto s = dim::vec<double>(mpi_mat.matrix.dimensions.cols, 1.);
+    auto s = dim::vec<double>(mpi_mat.matrix().dimensions.cols, 1.);
     auto s_out = s.subview(output_range.first_row, row_count);
     auto s_own = s_out.subview(sync_first_row);
 
@@ -143,7 +143,7 @@ auto main_impl(const arguments_t& args) -> int {
     // and a view into it conditionally skipping first element.
     auto temp_own = temp.subview(sync_first_row);
 
-    auto calibrator = mpi_mat.matrix.allocate_calibrator();
+    auto calibrator = mpi_mat.matrix().allocate_calibrator();
     auto x_partial = dim::vec<double>(r.size());
 
     auto r_r = mpi_reduce(r.raw());
@@ -159,7 +159,7 @@ auto main_impl(const arguments_t& args) -> int {
 
         // temp = A*s
         cg_stats.steps.spmv += section(
-          [&] { mpi_mat.matrix.spmv<csr5_strat>({.x = s.raw(), .y = temp.raw(), .calibrator = calibrator}); });
+          [&] { mpi_mat.spmv_partial(csr5::spmv_data_t{.x = s.raw(), .y = temp.raw(), .calibrator = calibrator}); });
 
         sw.reset();
         // fire edge temp sync request.

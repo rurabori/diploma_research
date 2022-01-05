@@ -19,21 +19,14 @@ struct sync_t
     result_sync_t result_sync;
 };
 
-struct csr5_partial
+class csr5_partial
 {
+public:
     using matrix_type = mat::csr5<double>;
 
-    MPI_Comm communicator{};
-    matrix_type matrix;
-
-    static auto load(const std::filesystem::path& path, const std::string& group_name,
-                     MPI_Comm communicator = MPI_COMM_WORLD) -> csr5_partial;
-
-    [[nodiscard]] auto output_range() const noexcept -> output_range_t {
-        return output_range_t{.first_row = matrix.first_row_idx(), .last_row = matrix.last_row_idx()};
-    }
-
-    [[nodiscard]] auto all_output_ranges() const noexcept -> std::vector<output_range_t>;
+private:
+    MPI_Comm _communicator{};
+    matrix_type _matrix;
 
     [[nodiscard]] auto make_edge_sync() const noexcept -> edge_sync_t;
 
@@ -41,9 +34,28 @@ struct csr5_partial
 
     [[nodiscard]] auto make_result_sync() const noexcept -> result_sync_t;
     [[nodiscard]] auto make_result_sync(std::span<const output_range_t> output_ranges) const noexcept -> result_sync_t;
+    [[nodiscard]] auto make_sync(std::span<const output_range_t> output_ranges) const noexcept -> sync_t;
+
+    csr5_partial(MPI_Comm comm, matrix_type&& mat) : _communicator{comm}, _matrix{std::move(mat)} {}
+
+public:
+    static auto load(const std::filesystem::path& path, const std::string& group_name,
+                     MPI_Comm communicator = MPI_COMM_WORLD) -> csr5_partial;
+
+    [[nodiscard]] auto matrix() const noexcept -> const matrix_type& { return _matrix; }
+
+    template<typename... Args>
+    auto spmv_partial(Args&&... args) const noexcept -> void {
+        _matrix.spmv<matrix_type::spmv_strategy::partial>(std::forward<Args>(args)...);
+    }
 
     [[nodiscard]] auto make_sync() const noexcept -> sync_t;
-    [[nodiscard]] auto make_sync(std::span<const output_range_t> output_ranges) const noexcept -> sync_t;
+
+    [[nodiscard]] auto output_range() const noexcept -> output_range_t {
+        return output_range_t{.first_row = _matrix.first_row_idx(), .last_row = _matrix.last_row_idx()};
+    }
+
+    [[nodiscard]] auto all_output_ranges() const noexcept -> std::vector<output_range_t>;
 };
 
 } // namespace dim::mpi::csr5

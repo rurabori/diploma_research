@@ -15,14 +15,13 @@ auto csr5_partial::load(const std::filesystem::path& path, const std::string& gr
 
     auto in = io::h5::file_t::open(path, H5F_ACC_RDONLY, access);
 
-    return {.communicator = communicator,
-            .matrix = load_csr5_partial(in.open_group(group_name),
-                                        {.idx = mpi::rank(communicator), .total_count = mpi::size(communicator)})};
+    return {communicator, load_csr5_partial(in.open_group(group_name),
+                                            {.idx = mpi::rank(communicator), .total_count = mpi::size(communicator)})};
 }
 
 auto csr5_partial::all_output_ranges() const noexcept -> std::vector<output_range_t> {
     const auto my_output_range = output_range();
-    const auto comm_size = mpi::size(communicator);
+    const auto comm_size = mpi::size(_communicator);
 
     auto result = std::vector<output_range_t>(comm_size);
     ::MPI_Allgather(&my_output_range, 2, MPI_UINT32_T, result.data(), 2, MPI_UINT32_T, MPI_COMM_WORLD);
@@ -32,13 +31,13 @@ auto csr5_partial::all_output_ranges() const noexcept -> std::vector<output_rang
 auto csr5_partial::make_edge_sync() const noexcept -> edge_sync_t { return make_edge_sync(all_output_ranges()); }
 
 auto csr5_partial::make_edge_sync(std::span<const output_range_t> output_ranges) const noexcept -> edge_sync_t {
-    const auto current = mpi::rank(communicator);
-    return edge_sync_t::create(output_range_t::syncs_downto(output_ranges, current), communicator);
+    const auto current = mpi::rank(_communicator);
+    return edge_sync_t::create(output_range_t::syncs_downto(output_ranges, current), _communicator);
 }
 
 auto csr5_partial::make_result_sync() const noexcept -> result_sync_t { return make_result_sync(all_output_ranges()); }
 auto csr5_partial::make_result_sync(std::span<const output_range_t> output_ranges) const noexcept -> result_sync_t {
-    return result_sync_t::create(output_ranges, communicator);
+    return result_sync_t::create(output_ranges, _communicator);
 }
 
 auto csr5_partial::make_sync() const noexcept -> sync_t { return make_sync(all_output_ranges()); }
