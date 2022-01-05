@@ -1,7 +1,21 @@
 #ifndef INCLUDE_DIM_MAT_STORAGE_FORMATS_CSR5
 #define INCLUDE_DIM_MAT_STORAGE_FORMATS_CSR5
 
+#include <dim/bit.h>
+#include <dim/mat/storage_formats/base.h>
+#include <dim/mat/storage_formats/csr.h>
+#include <dim/memory/aligned_allocator.h>
+#include <dim/opt.h>
+#include <dim/simd.h>
+
+#include <omp.h>
+
+#include <emmintrin.h>
+#include <immintrin.h>
+#include <xmmintrin.h>
+
 #include <bit>
+#include <cassert>
 #include <climits>
 #include <cmath>
 #include <concepts>
@@ -10,21 +24,8 @@
 #include <cstdio>
 #include <numeric>
 #include <ranges>
-
-#include <dim/bit.h>
-#include <dim/mat/storage_formats/base.h>
-#include <dim/mat/storage_formats/csr.h>
-#include <dim/memory/aligned_allocator.h>
-#include <dim/opt.h>
-#include <dim/simd.h>
 #include <span>
-
-#include <omp.h>
-
-#include <emmintrin.h>
-#include <immintrin.h>
 #include <stdexcept>
-#include <xmmintrin.h>
 
 namespace dim::mat {
 

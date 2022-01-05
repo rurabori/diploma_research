@@ -5,7 +5,6 @@
 
 #include <dim/mat/storage_formats.h>
 #include <dim/memory/aligned_allocator.h>
-#include <dim/resource.h>
 
 #include <dim/io/file.h>
 #include <dim/io/h5/attribute.h>

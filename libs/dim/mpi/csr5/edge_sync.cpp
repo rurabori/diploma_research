@@ -33,12 +33,12 @@ auto edge_sync_t::create(size_t left_sync_root, MPI_Comm parent_comm) -> edge_sy
         const auto as_int = static_cast<int>(node_rank);
         if (rank == node_rank) {
             // we always give every process the opportunity to register in this rank.
-            result._right_sync = dim::mpi::split_comm(parent_comm, as_int, as_int);
+            result._right_sync = dim::mpi::split(parent_comm, as_int, as_int);
         } else if (rank == left_sync_root) {
             // if we're syncing in this nodes color, we register, else we don't.
-            result._left_sync = dim::mpi::split_comm(parent_comm, static_cast<int>(rank), as_int);
+            result._left_sync = dim::mpi::split(parent_comm, static_cast<int>(rank), as_int);
         } else {
-            (void)dim::mpi::split_comm(parent_comm, MPI_UNDEFINED, MPI_UNDEFINED);
+            (void)dim::mpi::split(parent_comm, MPI_UNDEFINED, MPI_UNDEFINED);
         }
     }
 
