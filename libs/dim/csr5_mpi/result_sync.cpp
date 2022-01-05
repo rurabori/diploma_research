@@ -29,4 +29,10 @@ auto result_sync_t::sync(std::span<double> full_result, std::span<const double> 
                      _recvcounts.data(), _recvoffsets.data(), MPI_DOUBLE, _comm);
 }
 
+auto result_sync_t::sync(std::span<double> full_result) -> void {
+    // NOLINTNEXTLINE - MPI_IN_PLACE cast necessary.
+    ::MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DOUBLE, full_result.data(), _recvcounts.data(), _recvoffsets.data(),
+                     MPI_DOUBLE, _comm);
+}
+
 } // namespace dim::csr5_mpi

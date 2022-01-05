@@ -29,6 +29,7 @@ public:
     static auto create(std::span<const output_range_t> all_output_ranges, MPI_Comm comm) -> result_sync_t;
 
     auto sync(std::span<double> full_result, std::span<const double> partial_result) -> void;
+    auto sync(std::span<double> full_result) -> void;
 };
 
 } // namespace dim::csr5_mpi
