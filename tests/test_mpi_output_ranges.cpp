@@ -6,9 +6,9 @@
 #include <variant>
 #include <vector>
 
-#include <dim/csr5_mpi/output_range.h>
+#include <dim/mpi/csr5/output_range.h>
 
-using dim::csr5_mpi::output_range_t;
+using dim::mpi::csr5::output_range_t;
 
 TEST_CASE("single runs") {
     std::vector<output_range_t> runs{{0, 1}, {2, 4}, {5, 6}};

@@ -1,6 +1,6 @@
-#include <dim/csr5_mpi/output_range.h>
+#include <dim/mpi/csr5/output_range.h>
 
-namespace dim::csr5_mpi {
+namespace dim::mpi::csr5 {
 
 auto output_range_t::syncs_downto(std::span<const output_range_t> all_output_ranges, size_t current) -> size_t {
     const auto base = all_output_ranges[current];
@@ -11,4 +11,4 @@ auto output_range_t::syncs_downto(std::span<const output_range_t> all_output_ran
     return current;
 }
 
-} // namespace dim::csr5_mpi
+} // namespace dim::mpi::csr5

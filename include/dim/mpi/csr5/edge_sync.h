@@ -1,12 +1,12 @@
-#ifndef INCLUDE_DIM_CSR5_MPI_EDGE_SYNC
-#define INCLUDE_DIM_CSR5_MPI_EDGE_SYNC
+#ifndef INCLUDE_DIM_MPI_CSR5_EDGE_SYNC
+#define INCLUDE_DIM_MPI_CSR5_EDGE_SYNC
 
 #include <dim/mpi/comm.h>
 
 #include <mpi.h>
 #include <span>
 
-namespace dim::csr5_mpi {
+namespace dim::mpi::csr5 {
 
 class edge_sync_t
 {
@@ -74,6 +74,6 @@ public:
     static auto create(size_t left_sync_root, MPI_Comm parent_comm = MPI_COMM_WORLD) -> edge_sync_t;
 };
 
-} // namespace dim::csr5_mpi
+} // namespace dim::mpi::csr5
 
-#endif /* INCLUDE_DIM_CSR5_MPI_EDGE_SYNC */
+#endif /* INCLUDE_DIM_MPI_CSR5_EDGE_SYNC */

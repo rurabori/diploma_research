@@ -1,5 +1,5 @@
 #include <dim/bench/timed_section.h>
-#include <dim/csr5_mpi/csr5_mpi.h>
+#include <dim/mpi/csr5.h>
 #include <dim/mpi/mpi.h>
 
 #include <spdlog/sinks/stdout_sinks.h>
@@ -26,7 +26,7 @@ struct arguments_t
 };
 STRUCTOPT(arguments_t, input_file, num_loads, group);
 
-using dim::csr5_mpi::csr5_partial;
+using dim::mpi::csr5::csr5_partial;
 using stopwatch = dim::bench::stopwatch;
 using dim::bench::section;
 

@@ -1,17 +1,17 @@
-#ifndef INCLUDE_DIM_CSR5_MPI_CSR5_MPI
-#define INCLUDE_DIM_CSR5_MPI_CSR5_MPI
+#ifndef INCLUDE_DIM_MPI_CSR5
+#define INCLUDE_DIM_MPI_CSR5
 
-#include <dim/csr5_mpi/edge_sync.h>
-#include <dim/csr5_mpi/output_range.h>
-#include <dim/csr5_mpi/result_sync.h>
 #include <dim/mat/storage_formats/csr5.h>
+#include <dim/mpi/csr5/edge_sync.h>
+#include <dim/mpi/csr5/output_range.h>
+#include <dim/mpi/csr5/result_sync.h>
 
 #include <filesystem>
 #include <string>
 
 #include <mpi.h>
 
-namespace dim::csr5_mpi {
+namespace dim::mpi::csr5 {
 
 struct sync_t
 {
@@ -46,6 +46,6 @@ struct csr5_partial
     [[nodiscard]] auto make_sync(std::span<const output_range_t> output_ranges) const noexcept -> sync_t;
 };
 
-} // namespace dim::csr5_mpi
+} // namespace dim::mpi::csr5
 
-#endif /* INCLUDE_DIM_CSR5_MPI_CSR5_MPI */
+#endif /* INCLUDE_DIM_MPI_CSR5 */

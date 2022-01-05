@@ -1,13 +1,10 @@
-#include "dim/csr5_mpi/edge_sync.h"
-#include "dim/csr5_mpi/output_range.h"
-#include "dim/csr5_mpi/result_sync.h"
-#include <dim/csr5_mpi/csr5_mpi.h>
+#include <dim/mpi/csr5.h>
 
 #include <dim/io/h5.h>
 #include <dim/mpi/mpi.h>
 #include <mpi.h>
 
-namespace dim::csr5_mpi {
+namespace dim::mpi::csr5 {
 
 auto csr5_partial::load(const std::filesystem::path& path, const std::string& group_name, MPI_Comm communicator)
   -> csr5_partial {
@@ -49,4 +46,4 @@ auto csr5_partial::make_sync() const noexcept -> sync_t { return make_sync(all_o
 auto csr5_partial::make_sync(std::span<const output_range_t> output_ranges) const noexcept -> sync_t {
     return {.edge_sync = make_edge_sync(output_ranges), .result_sync = make_result_sync(output_ranges)};
 }
-} // namespace dim::csr5_mpi
+} // namespace dim::mpi::csr5

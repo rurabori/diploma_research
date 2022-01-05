@@ -1,8 +1,8 @@
-#include <dim/csr5_mpi/result_sync.h>
+#include <dim/mpi/csr5/result_sync.h>
 
 #include <mpi.h>
 
-namespace dim::csr5_mpi {
+namespace dim::mpi::csr5 {
 
 result_sync_t::result_sync_t(MPI_Comm comm, size_t node_count) : _comm{comm} {
     _recvcounts.reserve(node_count);
@@ -35,4 +35,4 @@ auto result_sync_t::sync(std::span<double> full_result) -> void {
                      MPI_DOUBLE, _comm);
 }
 
-} // namespace dim::csr5_mpi
+} // namespace dim::mpi::csr5

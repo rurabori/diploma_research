@@ -1,13 +1,13 @@
-#ifndef INCLUDE_DIM_CSR5_MPI_RESULT_SYNC
-#define INCLUDE_DIM_CSR5_MPI_RESULT_SYNC
+#ifndef INCLUDE_DIM_MPI_CSR5_RESULT_SYNC
+#define INCLUDE_DIM_MPI_CSR5_RESULT_SYNC
 
-#include <dim/csr5_mpi/output_range.h>
+#include <dim/mpi/csr5/output_range.h>
 
 #include <mpi.h>
 
 #include <vector>
 
-namespace dim::csr5_mpi {
+namespace dim::mpi::csr5 {
 
 class result_sync_t
 {
@@ -32,6 +32,6 @@ public:
     auto sync(std::span<double> full_result) -> void;
 };
 
-} // namespace dim::csr5_mpi
+} // namespace dim::mpi::csr5
 
-#endif /* INCLUDE_DIM_CSR5_MPI_RESULT_SYNC */
+#endif /* INCLUDE_DIM_MPI_CSR5_RESULT_SYNC */

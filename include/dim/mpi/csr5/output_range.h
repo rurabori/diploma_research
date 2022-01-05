@@ -1,10 +1,10 @@
-#ifndef INCLUDE_DIM_CSR5_MPI_OUTPUT_RANGE
-#define INCLUDE_DIM_CSR5_MPI_OUTPUT_RANGE
+#ifndef INCLUDE_DIM_MPI_CSR5_OUTPUT_RANGE
+#define INCLUDE_DIM_MPI_CSR5_OUTPUT_RANGE
 
 #include <cstdint>
 #include <span>
 
-namespace dim::csr5_mpi {
+namespace dim::mpi::csr5 {
 
 //! @brief output range for partial matrix, just a pair of first and last row the partial matrix outputs to.
 struct output_range_t
@@ -35,6 +35,6 @@ struct output_range_t
     static auto syncs_downto(std::span<const output_range_t> all_output_ranges, size_t current) -> size_t;
 };
 
-} // namespace dim::csr5_mpi
+} // namespace dim::mpi::csr5
 
-#endif /* INCLUDE_DIM_CSR5_MPI_OUTPUT_RANGE */
+#endif /* INCLUDE_DIM_MPI_CSR5_OUTPUT_RANGE */

@@ -1,6 +1,6 @@
 #include <dim/bench/stopwatch.h>
 #include <dim/bench/timed_section.h>
-#include <dim/csr5_mpi/csr5_mpi.h>
+#include <dim/mpi/csr5.h>
 #include <dim/mpi/mpi.h>
 #include <dim/vec.h>
 
@@ -101,7 +101,7 @@ void to_json(nlohmann::json& j, const cg_stats_t& stats) {
 }
 
 auto main_impl(const arguments_t& args) -> int {
-    using dim::csr5_mpi::csr5_partial;
+    using dim::mpi::csr5::csr5_partial;
     constexpr auto csr5_strat = csr5_partial::matrix_type::spmv_strategy::partial;
 
     auto general_stats = general_stats_t{};
@@ -189,8 +189,6 @@ auto main_impl(const arguments_t& args) -> int {
         // sk+1 = rk+1 + beta * sk;
         cg_stats.steps.part_s += section([&] { s_own.aypx(r, beta); });
         cg_stats.steps.s_dist += section([&] { sync.result_sync.sync(s.raw()); });
-
-
     }
     cg_stats.total = cg_sw.elapsed();
     cg_stats.num_iters = *args.max_iters;

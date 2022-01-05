@@ -1,9 +1,9 @@
-#include <dim/csr5_mpi/edge_sync.h>
+#include <dim/mpi/csr5/edge_sync.h>
 
 #include <dim/mpi/mpi.h>
 #include <mpi.h>
 
-namespace dim::csr5_mpi {
+namespace dim::mpi::csr5 {
 
 auto edge_sync_t::sync(std::span<double> partial) noexcept -> future_sync_t {
     // send requests to both sides.
@@ -68,4 +68,4 @@ auto edge_sync_t::future_sync_t::await(std::span<double> result) noexcept -> voi
 edge_sync_t::request_t::request_t(active_tag args) : _to_sync{args.to_sync} {
     ::MPI_Iallreduce(&_to_sync, &_to_sync, 1, MPI_DOUBLE, MPI_SUM, args.comm, &_request);
 }
-} // namespace dim::csr5_mpi
+} // namespace dim::mpi::csr5
