@@ -68,7 +68,13 @@
 \author{Boris Rúra} %author's name without academic degrees
 \authorWithDegrees{Bc. Boris Rúra} %author's name with academic degrees
 \supervisor{doc. Ing. Ivan Šimeček, Ph.D.}
-\acknowledgements{The access to the computational infrastructure of the OP VVV funded project CZ.02.1.01/0.0/0.0/16\_019/0000765 ``Research Center for Informatics'' is also gratefully acknowledged.}
+\acknowledgements{
+    I'm extremely grateful to my parents for always supporting me and to my sister for showing me 
+    the ropes when I moved to Prague.
+    I would also like to extend my deepest gratitude to my supervisor doc. Ing. Ivan Šimeček, Ph.D., for providing invaluable guidance
+    during the process of writing this thesis.
+    The access to the computational infrastructure of the OP VVV funded project CZ.02.1.01/0.0/0.0/16\_019/0000765 ``Research Center for Informatics'' is also gratefully acknowledged.
+ }
 \abstractEN{The aim of this thesis is to research possibilities of distributing sparse matrix-vector multiplication among multiple processes using MPI and CSR5 storage format.
 The result of this research is a C++ library \texttt{dim}, which provides the building blocks for distributed 
 SpMV using CSR5.
@@ -125,11 +131,11 @@ a porovnávano s jednoprocesovou implementací založenou na CSR5 i distribuovan
 
 Sparse matrix-vector multiplication is a fundamental computational kernel used for many
 scientific computations, such as graph algorithms, numerical analysis, conjugate gradients
-as well as some machine learning algorithms, such as support vector machine.
+as well as some machine learning algorithms, such as support vector machines.
 While matrix-vector multiplication is a simple multiplication task, it is non-trivial to load balance
 properly for every sparsity structure matrix when parallelized.
 
-The conjugate gradient algorithm is one of the best known iterative methods which can be used, to solve large
+The conjugate gradient algorithm is one of the best known iterative methods, which can be used to solve large
 symmetric positive definite linear systems. With sparse matrix-vector multiplication being the most
 computationally intensive step of a conjugate gradient iteration, parallelizing the kernel and distributing
 the computation across multiple nodes can result in significantly shorter iteration times.
@@ -272,7 +278,7 @@ syntax.
     #pragma omp <directive-name> [clause[[,]clause]...] new-line
 \end{minted}
 
-To enable OpenMP, the compiler must be invoked with the \csre{-fopenmp}
+To enable the use of OpenMP, the compiler must be invoked with the \csre{-fopenmp}
 switch for GCC/clang-based compilers, while MSVC accepts the \csre{/openmp} flag.
 
 \subsection{\texttt{parallel} directive}
@@ -337,7 +343,7 @@ Extensions to the
 “classical” message-passing model are provided in collective operations, remote-memory
 access operations, dynamic process creation, and parallel I/O, which is used to speed-up loading
 sparse matrices from disk as described in Section~\ref{dspmv:load}. MPI is a specification, not
-an implementation; there are multiple implementations of MPI. This specification is for a
+an implementation; there are multiple implementations of MPI\@. This specification is for a
 library interface; MPI is not a language, and all MPI operations are expressed as functions,
 subroutines, or methods, according to the appropriate language bindings which, for C and
 Fortran, are part of the MPI standard.
@@ -891,7 +897,7 @@ another type if storage for a bigger matrix is required.
 \end{figure}
 
 \vfil
-\pagebreak 
+\pagebreak
 
 \section{CSR5 info}
 
@@ -906,9 +912,9 @@ The tile pointer array contains the index of the row of the first element. It wo
 and \csre{tile_ptr[tid + 1]} for the first and last rows respectively (range is open from the top).
 
 The most significant bit of the tile pointer, used as a flag, is set if a tile is \textbf{dirty}.
-A tile is dirty if it contains any empty rows. This flag bit must be stripped when the pointer is used for 
-indexing into \textbf{row pointer} array. The pointer is wrapped by a structure with \csre{is_dirty} and 
-\csre{idx} methods to force the call site to specify the required usage explicitly, making the interface 
+A tile is dirty if it contains any empty rows. This flag bit must be stripped when the pointer is used for
+indexing into \textbf{row pointer} array. The pointer is wrapped by a structure with \csre{is_dirty} and
+\csre{idx} methods to force the call site to specify the required usage explicitly, making the interface
 less error-prone.
 
 \begin{figure}[htp]
@@ -955,7 +961,7 @@ struct descriptor {
 
 As CSR5 tile descriptors contain bit flag maps, \csre{std::popcount} can be used to obtain the number of set bits,
 denoting the number of sections started in a column.
-Using this function allows the compiler to optimize the call to the instruction of the same name 
+Using this function allows the compiler to optimize the call to the instruction of the same name
 if the target ISA supports it.
 
 Previous research about CSR5~\cite{liu2015csr5} concluded, that for modern CPUs with AVX2 extensions, the optimal CSR5 tuning parameters
@@ -1152,8 +1158,8 @@ CSR5 SpMV minimizes the critical sections. The tiles within the chunk assigned t
 synchronized since they are processed sequentially in the context of the owning thread. Only a single element of
 \(y\) may be overlapping between neighboring chunks of tiles, which only happens if the first tile of the
 chunk starts with a red sub-section. Synchronization is a two-step process. First, each thread
-stores its first output element in a calibrator (see Algorithm~\ref{csr5:chunk}) during the parallel computation. 
-Second, after the parallel part of the algorithm is over, each threads calibrator is added to the result 
+stores its first output element in a calibrator (see Algorithm~\ref{csr5:chunk}) during the parallel computation.
+Second, after the parallel part of the algorithm is over, each threads calibrator is added to the result
 to perform the final synchronization as shown in Algorithm~\ref{csr5:calib}.
 
 \begin{algorithm}[htp]
@@ -1172,7 +1178,7 @@ to perform the final synchronization as shown in Algorithm~\ref{csr5:calib}.
 \subsection{Tail partition}
 
 If the number of non-zero elements for a matrix isn't divisible by \(\sigma{} \cdot \omega{}\), there
-is a ``tail'' partition which does not form a full tile. The algorithm introduced in Section~\ref{smsf:csr} 
+is a ``tail'' partition which does not form a full tile. The algorithm introduced in Section~\ref{smsf:csr}
 for CSR matrices is used to process this tail partition.
 
 
@@ -1363,7 +1369,7 @@ on how the matrix can be stored, or rather how the dataset needs to be structure
 Since MPI-IO was introduced in MPI revision 2.0~\cite{mpi20} in 1997, its API takes
 the size of data to be read as an integer argument, thus limiting the maximum amount of data read
 in a single call to 2GiB. The dataset needs to be chunked to avoid exceeding this limit
-\footnote{experimentally, chunks of 1000000 elements or ~8MiB of double-precision floating-point numbers performed best}, 
+\footnote{experimentally, chunks of 1000000 elements or ~8MiB of double-precision floating-point numbers performed best},
 else HDF5 tries to read all of it at once, resulting in an error in MPI-IO.
 
 
@@ -1549,9 +1555,9 @@ first and last output index for each process.
 \end{figure}
 
 Neighboring processes may share an output index. In the case of \(Ax = y\) established in the previous section,
-\(y_2\) and \(y_3\) are partially computed by processes p2, p3 and p3, p4 respectively. 
-An ownership model needs to be defined before the synchronization can be described. 
-The process with the lowest rank (in terms of MPI ranks) that writes to an output index 
+\(y_2\) and \(y_3\) are partially computed by processes p2, p3 and p3, p4 respectively.
+An ownership model needs to be defined before the synchronization can be described.
+The process with the lowest rank (in terms of MPI ranks) that writes to an output index
 owns the element of \(y\). Thus \(y_2\) is owned by p2 while \(y_3\) is owned by p3.
 
 \begin{figure}[htp]
@@ -1829,7 +1835,7 @@ element synchronization). From these ranges,
 an array of offsets into the complete result vector are computed. Each process
 either broadcasts its whole output range or skips the first element of the range if
 it is owned by a process to the left. The actual distribution of results is performed by
-calling \csre{MPI_Allgatherv}, introduced in Section~\ref{tech:mpi:red}, 
+calling \csre{MPI_Allgatherv}, introduced in Section~\ref{tech:mpi:red},
 with offsets and sizes computed as explained previously.
 
 \begin{algorithm}[htp]
@@ -1870,7 +1876,7 @@ with offsets and sizes computed as explained previously.
 To measure real-world performance of distributed sparse matrix-vector multiplication
 three implementations of numerical solvers using conjugate gradient method briefly explained in
 Appendix~\ref{app:cg}, were produced.
-Single and multi process implementations using the \csre{dim} toolkit 
+Single and multi process implementations using the \csre{dim} toolkit
 and a \texttt{PETSc} based multi process implementation.
 
 \section{Specification}
@@ -1921,7 +1927,7 @@ The benchmarks were run on the RCI cluster, using AMD nodes.
 
 Single process implementation uses CSR5 format for storing the sparse matrix and the
 SpMV algorithm  described in Section~\ref{csr5:spmv} for the \(A \cdot s\) step. It was ran
-with 16, 32, 64, and 128 CPUs available for each input matrix. The naming of steps 
+with 16, 32, 64, and 128 CPUs available for each input matrix. The naming of steps
 in the graphs follows the naming scheme introduced in Section~\ref{dcg:steps}.
 
 \begin{figure}[htp]
@@ -1932,7 +1938,7 @@ in the graphs follows the naming scheme introduced in Section~\ref{dcg:steps}.
 
 Benchmark results show that the sparse matrix-vector multiplication
 \(As\) is the most computationally intensive step as it takes 68.5, 77.5, and 95.4\% of
-total iteration time for \textit{nlpkkt240}, \textit{gap-web}, and \textit{gap-kron} 
+total iteration time for \textit{nlpkkt240}, \textit{gap-web}, and \textit{gap-kron}
 matrices respectively when the single process implementation is running on 16 threads.
 
 
@@ -2078,7 +2084,7 @@ among multiple computational nodes using MPI\@. To that end, coordinate (COO) an
 were reviewed, as well as Compressed Sparse Row 5 format introduced in~\cite{liu2015csr5}.
 
 On-disk storage formats for sparse matrices were reviewed. Namely Matrix Market Exchange Format
-and HDF5 backed format used by MATLAB v7.3. After reviewing existing formats, a storage scheme for CSR5 was 
+and HDF5 backed format used by MATLAB v7.3. After reviewing existing formats, a storage scheme for CSR5 was
 devised
 using HDF5 as underlying format, nullifying the need for conversion from CSR to CSR5 each time a matrix
 is loaded.
@@ -2153,15 +2159,15 @@ in Alogithm~\ref{app:cg:algo}.
 \section{Distributed conjugate gradient implementation}\label{dcg:steps}
 
 Each process first obtains a full copy of \csre{s}.
-Then the steps of the algorithm above are performed as follows with each step being labeled as 
-\texttt{CG<num>} for the steps of the actual algorithm and \texttt{DCG<num>} for the steps 
+Then the steps of the algorithm above are performed as follows with each step being labeled as
+\texttt{CG<num>} for the steps of the actual algorithm and \texttt{DCG<num>} for the steps
 only the distributed version performs.
 
 \textbf{Step \texttt{CG0}}: $\var{As} \gets \var{A} \cdot \var{s}$. Each process can perform SpMV on its local part of
 \csre{A}. This SpMV will result, in each process having part of \csre{As}, with some overlapping
 output elements having only part of its value which needs to be synchronized.
 
-\textbf{Step \texttt{DCG0.1}}: edge sync. After SpMV is done, the synchronization for overlapping 
+\textbf{Step \texttt{DCG0.1}}: edge sync. After SpMV is done, the synchronization for overlapping
 edge elements described in Section~\ref{dspmv:sync} can begin.
 
 \textbf{Step \texttt{CG1}}: $\var{alpha} \gets \frac{\var{r\_r}}{\var{s} \cdot \var{As}}$. Since each process only has part of
@@ -2196,7 +2202,7 @@ can be divided into sub sums, which can then be summed across all processes, usi
 to wait until the sync is over as the owning processes need to have the correct values in \csre{s}.
 
 \textbf{Step \texttt{CG5}}: $\var{s} \gets \var{r} + \var{beta} \cdot \var{s}$ each process computes only part of new
-\csre{s}, corresponding to its output range in \csre{As}. 
+\csre{s}, corresponding to its output range in \csre{As}.
 
 \textbf{Step \texttt{DCG0.1}}: distributing \csre{s}. The resulting \csre{s} is
 then distributed to all processes using same algorithm as described in section
@@ -2355,7 +2361,7 @@ of the segment of the matrix the pixel represents.
 
 However, this command will behave a bit differently when process count \csre{-p} is specified. It will not
 reflect the density structure as precisely as the black and white output, coloring the pixels
-with a different color for each process instead. Resolution can also be specified by providing 
+with a different color for each process instead. Resolution can also be specified by providing
 \csre{-r <width> <height>} if a finer structure needs to be captured (or the matrix is large).
 
 
