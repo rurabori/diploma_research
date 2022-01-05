@@ -4,6 +4,7 @@
 #include <dim/memory/aligned_allocator.h>
 
 #include <execution>
+#include <algorithm>
 #include <span>
 
 namespace dim {
@@ -37,6 +38,8 @@ public:
     auto aypx(const vec_impl<ValueType, StorageContainerR>& x, ValueType alpha) noexcept -> void {
         a_p_impl(x.raw(), [alpha](ValueType lhs_elem, ValueType rhs_elem) { return rhs_elem + alpha * lhs_elem; });
     }
+
+    auto set(ValueType value) noexcept -> void { std::fill(std::execution::par_unseq, _values.begin(), _values.end(), value); }
 
     [[nodiscard]] auto size() const noexcept -> size_t { return _values.size(); }
 };
