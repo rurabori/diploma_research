@@ -401,7 +401,7 @@ It consists of four stages:
 \end{itemize}
 
 
-\subsection{\texttt{MPI\_Allgatherv}}
+\subsection{\texttt{MPI\_Allgatherv}}\label{tech:mpi:gat}
 
 \csre{MPI_Allgatherv} is a collective, blocking operation, which is useful for distributing arrays of
 data between processes. A \textbf{collective} operation in MPI is an operation in which a group of
@@ -454,7 +454,7 @@ The routine takes an input array, its size, an output array, \texttt{displs} and
 The last two arrays contain offset into the output array and the amount of contributed data for each
 participating process respectively and have to be the same for every participating process.
 
-\subsection{\texttt{MPI\_Allreduce}}
+\subsection{\texttt{MPI\_Allreduce}}\label{tech:mpi:red}
 
 \csre{MPI_Allreduce} performs parallel reduction among all participating processes. Different reduction
 operators can be used, such as \csre{MPI_SUM}, \csre{MPI_PROD}, \csre{MPI_MAX} etc. The implementation
@@ -580,7 +580,7 @@ It's two primary objects are \textbf{groups} and \textbf{datasets}.
 \subsubsection{Group}
 
 HDF5 groups organize data. Every file contains at least a root group.
-Each group can contain other groups, or be linked to objects in other files.
+Each group can contain other groups or be linked to objects in other files.
 
 \begin{figure}[!h]
     \centering
@@ -837,7 +837,7 @@ matrices stored in CSR5 is outlined in Section~\ref{csr5:onDisk}.
 \section{CSR5}\label{impl:csr5}
 
 A common issue of parallel SpMV is load balancing. Storing matrices in CSR5 format avoids this by
-grouping data into tiles of fixed size. Furthermore, the tiles are independent, allowing for a high
+grouping data into tiles of a fixed size. Furthermore, the tiles are independent, allowing for a high
 degree of parallelism and small critical sections. For this reason \csre{dim}, stores all matrices in
 CSR5 format and implements sparse vector multiplication algorithm introduced in~\cite{liu2015csr5}.
 
@@ -1587,15 +1587,15 @@ owns the element of \(y\). Thus \(y_2\) is owned by p2 while \(y_3\) is owned by
     \caption{Ownership of \(y\)}
 \end{figure}
 
-To synchronize the elements, each process has two MPI communicators. One for synchronizing the element
-it owns, referred to as OWN, and one for synchronizing the element it does not own referred to as LEFT.
+Each process has two MPI communicators to synchronize the elements. One for synchronizing the element
+it owns referred to as OWN, and one for synchronizing the element it does not own referred to as LEFT.
 Either of these communicators can be \csre{MPI_COMM_NULL} if no synchronization is necessary for the owned
 (or non-owned) element.
 
-First step in creating synchronization communicators is processes exchanging their output ranges,
-which consist of indices of first and last output elements for each process. From
+The first step in creating synchronization communicators is participating processes exchanging their output ranges.
+Output ranges consist of indices of the first and last output elements for each process. From
 these, each process can check if it needs to synchronize to the left and if it needs to
-create a communicator on which processs to the right of it will sync.
+create a communicator on which processes to the right of it will sync.
 
 \begin{figure}[htp]
     \centering
@@ -1608,14 +1608,13 @@ create a communicator on which processs to the right of it will sync.
 
 \csre{MPI_Comm_Split} splits a communicator according to a \csre{color} and a \csre{key}.
 \csre{color} is used to group processes, and \csre{key} is used to create ordering within processes
-of same \csre{color}. Furthermore, if only a single processs is present, the
+of same \csre{color}. Furthermore, if only a single process is present, the
 returned communicator will be \csre{MPI_COMM_NULL}. Thus if all processes first compute the
-process which will own the first output index in their output range then it is possible
+process which will own the first output index in their output range, then it is possible
 to iterate over every rank and allow every process to establish an owning communicator
 in the iteration in which \(i = rank\) and for all the processes which need to synchronize
 the element this process owns, to register to this communicator. If no process registers,
-the communicator returned is \csre{MPI_COMM_NULL} and no
-synchronization is performed.
+the communicator returned is \csre{MPI_COMM_NULL}, and no synchronization is performed.
 
 \begin{algorithm}[htp]
     \caption{Creating communicators for syncing edge elements}
@@ -1704,8 +1703,8 @@ Depending on values of LEFT and OWN communicators the processes can be split int
 \end{figure}
 
 
-Once the communicators are established, processes which have at least one non-NULL
-communicator call \csre{MPI_Allreduce} with either first, last or both elements
+With the communicators established, processes that have at least one non-NULL
+communicator call \csre{MPI_Allreduce} with either first, last, or both elements
 to synchronize the edge elements in every participating process.
 
 \begin{figure}[htp]
@@ -1769,9 +1768,9 @@ to synchronize the edge elements in every participating process.
 \subsection{Distributing the result}\label{dspmv:dist}
 
 After synchronizing overlapping output ranges, the result can be distributed to every process.
-Ownership rules established in previous section apply when distributing the result vector.
-First process writing an element owns the element and is the only one broadcasting it to
-other processes.
+Ownership rules established in the previous section apply when distributing the result vector.
+The first process that writes an element owns it and is the only process broadcasting it to
+others.
 
 \begin{figure}[htp]
     \centering
@@ -1816,12 +1815,13 @@ other processes.
     \caption{Distribution of result of \(Ax = y\) assuming \(x=\mathbbm{1}\)}
 \end{figure}
 
-To synchronize all elements, first output ranges, must be exchanged (which is done for the edge
-element synchronization anyway). From these ranges,
-an array of offsets into the complete result vector are computed, with each process
-either broadcasting its whole output range, or skipping the first element in the range if
+Before partial results can be distributed, output ranges must be exchanged (which is done for the edge
+element synchronization). From these ranges,
+an array of offsets into the complete result vector are computed. Each process
+either broadcasts its whole output range or skips the first element of the range if
 it is owned by a process to the left. The actual distribution of results is performed by
-calling \csre{MPI_Allgatherv}, with offsets and sizes computed as explained previously.
+calling \csre{MPI_Allgatherv}, introduced in Section~\ref{tech:mpi:red}, 
+with offsets and sizes computed as explained previously.
 
 \begin{algorithm}[htp]
     \caption{Synchronizing partial results across processes}
@@ -1858,10 +1858,11 @@ calling \csre{MPI_Allgatherv}, with offsets and sizes computed as explained prev
 
 \chapter{Benchmarks}
 
-To measure real world performance of distributed sparse matrix vector multiplication
-three implementations of numerical solvers using conjugate gradient method, briefly explained in
+To measure real-world performance of distributed sparse matrix-vector multiplication
+three implementations of numerical solvers using conjugate gradient method briefly explained in
 Appendix~\ref{app:cg}, were produced.
-Single and multi process implementations using \csre{dim} and a PETSc multi process implementation.
+Single and multi process implementations using the \csre{dim} toolkit 
+and a \texttt{PETSc} based multi process implementation.
 
 \section{Specification}
 
@@ -1909,7 +1910,7 @@ The benchmarks were ran on RCI cluster, using AMD nodes.\\
 
 Single process implementation uses CSR5 format for storing the sparse matrix and the
 SpMV algorithm  described in Section~\ref{csr5:spmv} for the \(A \cdot s\) step. It was ran
-with 16, 32, 64 and 128 CPUs available for each input matrix.
+with 16, 32, 64, and 128 CPUs available for each input matrix.
 
 \begin{figure}[htp]
     \centering
@@ -1917,10 +1918,10 @@ with 16, 32, 64 and 128 CPUs available for each input matrix.
     \caption{Scaling of single process implementation conjugate gradient with CPU count}
 \end{figure}
 
-Benchmark results show, that the sparse matrix vector multiplication
-\(As\) is the most computationaly intensive step as it takes 68.5, 77.5 and 95.4\% of
-total iteration time for nlpkkt240, gap-web and gap-kron matrices respectively when
-the single process implementation is running on 16 threads.
+Benchmark results show that the sparse matrix-vector multiplication
+\(As\) is the most computationally intensive step as it takes 68.5, 77.5, and 95.4\% of
+total iteration time for \textit{nlpkkt240}, \textit{gap-web}, and \textit{gap-kron} 
+matrices respectively when the single process implementation is running on 16 threads.
 
 
 \begin{figure}[htp]
@@ -1930,13 +1931,13 @@ the single process implementation is running on 16 threads.
 \end{figure}
 
 
-It can further be observed, that sparse matrix vector multiplication scales well with
+It can further be observed that sparse matrix-vector multiplication scales well with
 number of CPUs available.
 
 \subsection{IO}
 
-With the benchmarked matrices ranging in size from 9GiB up to 50GiB, loading the matrices,
-may become a non-negligible part of total computation time. Following graphs show impact of
+With the benchmarked matrices ranging in size from 9GiB up to 50GiB, loading the matrices
+may become a non-negligible part of total computation time. The following graphs show the impact of
 IO on total run-time of benchmark as well as achieved throughput using the fastest single process
 configuration with 128CPUs available.
 
@@ -1947,8 +1948,8 @@ configuration with 128CPUs available.
 \end{figure}
 
 By using HDF5 to store matrices in binary format and utilizing fast NVMe storage available
-on RCI nodes the impact of IO on total run time can be minimized. However even after doing so,
-for \csre{GAP-web} matrix, loading the matrix takes up 26\% of total benchmark runtime.
+on RCI nodes, the impact of IO on total run time can be minimized. However even after doing so,
+for \csre{GAP-web} matrix, loading the matrix takes up 26\% of the total benchmark runtime.
 
 
 \section{Distributed conjugate gradient implementation}
@@ -1956,7 +1957,7 @@ for \csre{GAP-web} matrix, loading the matrix takes up 26\% of total benchmark r
 First, three MPI layouts were benchmarked, each totaling 128CPUs. A layout
 in this text will mean a triplet of \textbf{node count} $N$,
 \textbf{number of processes per node} $P$
-and \textbf{number of cpus per process} $C$ (usually abbreviated to \csre{N-P-C}).
+and \textbf{number of CPUs per process} $C$ (usually abbreviated to \csre{N-P-C}).
 The benchmarked layouts were \csre{2-1-64}, \csre{4-1-32} and \csre{8-1-16}, keeping
 the same CPU count as the fastest single process implementation so that the results
 can be compared directly.
@@ -1970,9 +1971,9 @@ can be compared directly.
 \subsection{IO}
 
 RCI cluster provides BeeGFS parallel filesystem and by utilizing the algorithm described in
-Section~\ref{dspmv:load}, the IO throughput can be improved on considerably. Using best-performing \csre{8-1-16}
-layout results, throughput has improved by a factor of 2.5, 5.6 and 6.9 for nlpkkt240, gap-web
-and gap-kron respectively.
+Section~\ref{dspmv:load}, the IO throughput can be improved considerably. Using best-performing \csre{8-1-16}
+layout results, throughput has improved by a factor of 2.5, 5.6, and 6.9 for \textit{nlpkkt240}, \textit{gap-web}
+and \textit{gap-kron} respectively.
 
 \begin{figure}[htp]
     \centering
@@ -1982,27 +1983,27 @@ and gap-kron respectively.
 
 \section{PETSc}
 
-To compare the distributed sparse matrix vector multiplication (D-CSR5) implemented by \csre{dim}
+To compare the distributed sparse matrix-vector multiplication (D-CSR5) implemented by \csre{dim}
 to a state of the art BLAS library, an
 implementation of conjugate gradient solver using \csre{PETSc} (v3.15.1) introduced in
 Section~\ref{tech:petsc} was created.
 
-\csre{PETSc} offers,
+\csre{PETSc} supports
 multiple storage formats for sparse matrices such as compressed sparse row, block compressed
-sparse row etc. The default for distributed sparse matrices, which is compressed sparse row
+sparse row, etc. The default for distributed sparse matrices, which is compressed sparse row
 (PETSc \csre{MatType = MATMPIAIJ}~\cite{petsc-user-ref}) was used for benchmarking.
 
-Furthermore, since \csre{PETSc} is a general purpose library, some tradeoffs had to be made
+Furthermore, since \csre{PETSc} is a general-purpose library, some tradeoffs had to be made
 in the benchmarking code. Even though \csre{PETSc} has its own conjugate gradient implementation
 (\csre{KSPCG}),
-the goal of the benchmark is to compare performance of distributed sparse matrix vector
+the goal of the benchmark is to compare the performance of distributed sparse matrix-vector
 multiplication, not the conjugate gradient implementation as a whole. To improve the granularity
 of benchmarked sections, an alternative
-implementation was produced to enable timing separate steps of the iteration instead of just
-timing a whole iteration step.
+implementation was produced to enable the timing of separate steps of the iteration instead of just
+timing the whole iteration step.
 
-As the benchmark is using CSR as storage format,
-each process of petsc solver loads a sub-section of the input matrix' rows of the same size (except possibly the last
+As the benchmark is using CSR as a storage format,
+each process of \csre{PETSc} solver loads a sub-section of the input matrix' rows of the same size (except possibly the last
 process. Non-zero elements in the matrices used for benchmarking are distributed fairly
 evenly across these sections\footnote{Heatmaps can be generated by running  \csre{dim_cli generate_heatmap <input_matrix>}.},
 so this approach yields good load distribution across all processes.
@@ -2013,11 +2014,11 @@ so this approach yields good load distribution across all processes.
     \caption{PETSc implementation benchmark results}
 \end{figure}
 
-The benchmark results show, that significant portion of time each iteration is spent in the \texttt{distributing s}
-step. This partly stems from a design decision made in PETSc. The distributed vectors (such as \csre{s}),
+The benchmark results show that a significant portion of time each iteration is spent in the \texttt{distributing s}
+step. This issue partly stems from a design decision made in PETSc. The distributed vectors (such as \csre{s})
 have local size (size of vector part physically present in process) and global size (size of the whole vector).
 For vector-vector operations such as \csre{axpy} or dot product, PETSc requires the participating vectors to
-have same local size. Since each process may require any element from
+have the same local size. Since each process may require any element from
 \csre{s}\footnote{Because any element in a row of sparse matrix can be non-zero.} it must have whole \csre{s}
 in its memory. To obtain a sub-vector of \csre{s}, suitable for distributed \csre{sAs} a process must call
 \csre{VecGetSubVector} and then restore said sub-vector in \csre{s} by calling \csre{VecRestoreSubVector}.
@@ -2033,11 +2034,11 @@ the two implementations.
     \caption{PETSc vs D-CSR5 benchmark results (no synchronization)}\label{bench:petsc:vsDim}
 \end{figure}
 
-Even with the \texttt{distributing s} step removed the benchmark results (visualized in
-Figure~\ref{bench:petsc:vsDim}) show, that D-CSR5 implementation performs better
+Even with the \texttt{distributing s} step removed, benchmark results (visualized in
+Figure~\ref{bench:petsc:vsDim}) show that D-CSR5 implementation performs better
 on all the benchmarked configurations. The speedup of D-CSR5 based implementation compared to \csre{PETSc}
-ranges from 2.4 and 2.57x for iteration and SpMV steps respectively up to 8.5 and 9.46x. Speedup over all layout
-and input matrix combinations is shown in Figure~\ref{bench:petsc:table}.
+ranges from 2.4 and 2.57x for iteration and SpMV steps respectively up to 8.5 and 9.46x. Speedup over every
+layout and input matrix combination is shown in Figure~\ref{bench:petsc:table}.
 
 
 \begin{figure}[htp]
@@ -2060,12 +2061,13 @@ and input matrix combinations is shown in Figure~\ref{bench:petsc:table}.
 \setsecnumdepth{part}
 \chapter{Conclusion}
 
-The aim of this thesis was to research and evaluate the viability of distributing sparse matrix-vector multiplication
+This thesis aimed to research and evaluate the viability of distributing sparse matrix-vector multiplication
 among multiple computational nodes using MPI\@. To that end, coordinate (COO) and compressed sparse row (CSR) formats
-were reviewed as well as Compressed Sparse Row 5 format introduced in~\cite{liu2015csr5}.
+were reviewed, as well as Compressed Sparse Row 5 format introduced in~\cite{liu2015csr5}.
 
-On-disk storage formats for sparse matrices were reviewed, namely Matrix Market Exchange Format
-and a HDF5 backed format used by MATLAB v7.3. From these formats a storage scheme for CSR5 was devised
+On-disk storage formats for sparse matrices were reviewed. Namely Matrix Market Exchange Format
+and HDF5 backed format used by MATLAB v7.3. After reviewing existing formats, a storage scheme for CSR5 was 
+devised
 using HDF5 as underlying format, nullifying the need for conversion from CSR to CSR5 each time a matrix
 is loaded.
 
@@ -2079,19 +2081,19 @@ multiplication inside each process. Leveraging the MPI-IO capabilities of HDF5 l
 relevant parts of the matrix to minimize the time spent performing I/O operations. An algorithm for
 synchronizing and distributing the partial results was then outlined and implemented.
 
-This distributed solution was then benchmarked using conjugate gradient Method implementation against the
-single-process solution. These benchmarks clearly show, that distributing the sparse matrix-vector multiplication
+This distributed solution was then benchmarked, using conjugate gradient method implementation, against the
+single-process solution. These benchmarks clearly show that distributing the sparse matrix-vector multiplication
 for large sparse matrices can lead to significant speed-up even though the result needs to be synchronized
 and distributed amongst all processes each iteration.
 
-To compare the performance of this solution against a battle tested implementation, conjugate gradient Method
-was also implemented using PETSc toolkit and then benchmarked. Comparing the average per-iteration times,
-suggests that approach implemented in \csre{dim} leads to non-negligible speed ups.
+To compare the performance of this solution against a battle-tested implementation conjugate gradient method
+was also implemented using \texttt{PETSc} toolkit and then benchmarked. Comparing the average per-iteration times
+suggests that the approach implemented in \csre{dim} leads to non-negligible speed ups.
 
 Future directions include researching algorithms other than conjugate gradient in which SpMV is the
 most computationally intensive task and the viability of distributing it. The on-disk storage format
 introduced by this thesis may also benefit from more generalization, as it is currently quite specific to
-CPU-only implementation of SpMV and thus not suitable for GPU or CPU/GPU heterogenous implementations.
+CPU-only implementation of SpMV and thus not suitable for GPU or CPU/GPU heterogeneous implementations.
 
 
 \bibliographystyle{iso690}
@@ -2103,7 +2105,7 @@ CPU-only implementation of SpMV and thus not suitable for GPU or CPU/GPU heterog
 
 \chapter{Conjugate gradient method}\label{app:cg}
 
-The conjugate gradient algorithm (abbr. CG) is one of the best known iterative methods which can be used, to solve large
+The conjugate gradient algorithm (abbr. CG) is one of the best known iterative methods which can be used to solve large
 symmetric positive definite linear systems~\cite{saad03:IMS}. The algorithm in its iterative form is outlined
 in Alogithm~\ref{app:cg:algo}.
 
@@ -2138,12 +2140,12 @@ in Alogithm~\ref{app:cg:algo}.
 
 \section{Distributed conjugate gradient implementation}
 
-To distribute conjugate gradient, each process first obtains a full copy of \csre{s}.
+Each process first obtains a full copy of \csre{s}.
 Then the steps of the algorithm above are performed as follows.
 
 $\var{As} \gets \var{A} \cdot \var{s}$, each process can perform SpMV on its local part of
-\csre{A}. This will result, in each process having part of \csre{As}, with some overlapping
-output elements having only part of it's value which needs to be synchronized.
+\csre{A}. This SpMV will result, in each process having part of \csre{As}, with some overlapping
+output elements having only part of its value which needs to be synchronized.
 
 $\var{alpha} \gets \frac{\var{r\_r}}{\var{s} \cdot \var{As}}$. Since each process only has part of
 \csre{As} and full \csre{s}, it can do its part of the $\var{s} \cdot \var{As}$.
@@ -2154,10 +2156,10 @@ $p$ respectively.The outer sum can be computed using \csre{MPI_Allreduce},
 summing the results of inner sum for each process.
 
 For the elements that need to be synchronized (multiple processes are computing their sub-values),
-the resulting element is a sum of all of the subresults thus $s \cdot As = \sum s_i \cdot As_i$ term for $i$
-which is computed by multiple processes can be rewriten as $s_i \cdot (As_{i_{p1}} + ... + As_{i_{pn}})$.
+the resulting element is a sum of all of the sub-results thus $s \cdot As = \sum s_i \cdot As_i$ term for $i$
+which is computed by multiple processes can be rewritten as $s_i \cdot (As_{i_{p1}} + ... + As_{i_{pn}})$.
 As multiplication in $R$ is distributive, this can be rewritten as $s_i \cdot As_{i_{p1}} + ... + s_i \cdot As_{i_{pn}}$
-so there is no need to synchronize $As_i$ as result will be synchonized when partial results for
+so there is no need to synchronize $As_i$ as result will be synchronized when partial results for
 each process are summed.
 
 $\var{x} \gets \var{x} + \var{alpha} \cdot \var{s}$ each process only has the part of \csre{x},
@@ -2180,12 +2182,12 @@ about synchronization of distributed SpMV results using \csre{MPI_Allgatherv}.
 This distribution step is the heaviest as far as MPI communication goes.
 
 Note that this algorithm may be further optimized as described in~\cite{distCGwRedSync}, but
-since it is only used as test-bed for benchmarking implementation in \csre{dim} these are not
+since it is only used as a test-bed for benchmarking implementation in \csre{dim} these are not
 implemented.
 
 \chapter{Building dim}
 
-This chapters describes the process of obtaining dependencies, configuring and building \texttt{dim} as well
+This chapter describes the process of obtaining dependencies, configuring, and building \texttt{dim} as well
 as optional benchmarks.
 
 \section{Dependencies}\label{bdim:deps}
@@ -2204,10 +2206,10 @@ are:
 \csre{dim} is also built by GitHub Actions CI by clang 13 as well as linted by clang-tidy on each commit.
 
 \csre{conan} is used for package management. \csre{conan} is implemented in Python and can be
-obtained from \csre{pip}. The project will invoke \csre{conan} automatically, when \csre{cmake} configure step
+obtained from \csre{pip}. The project will invoke \csre{conan} automatically when \csre{cmake} configure step
 is running, so it should be transparent to the user. If the code is built locally (meaning not on RCI cluster),
-some packages hosted on authors private Artifactory instance are needed. To add the remote the following commands
-have to be executed.
+some packages hosted on a private Artifactory instance of the author are needed. The following commands
+have to be executed to add the remote:
 
 \begin{minted}[]{bash}
     # the remote requires revisions to 
@@ -2220,7 +2222,7 @@ have to be executed.
     cmake . -B build # cmake arguments as usual ...
 \end{minted}
 
-When building on the RCI cluster, it may be beneficcial
+When building on the RCI cluster, it may be beneficial
 to use the provided libraries optimized for the nodes they will be running on. To enable this,
 pass \mintinline{bash}{-Dsystem_scientific_libs="ON"} to \csre{cmake} when configuring. There is a script
 at \csre{scripts/rci/slurm_cmake} which will automatically load modules needed for compilation and offload
@@ -2230,8 +2232,8 @@ the configuration/compilation step to a computational node.
 
 The project provides only two configuration options immediately relevant to this thesis. The
 first one is \csre{enable_petsc_benchmark} which is disabled by default. If it is enabled,
-the PETSc implementation of distributed conjugate gradient will be built and the project
-will require PETSc as dependency. The second option is \csre{system_scientific_libs} which
+the PETSc implementation of the distributed conjugate gradient will be built, and the project
+will require PETSc as a dependency. The second option is \csre{system_scientific_libs} which
 was explained in~\ref{bdim:deps}. Both of these options can be enabled/disabled by passing
 \csre{-D<option>="ON/OFF"} to \csre{cmake} during configuration phase.
 
@@ -2266,7 +2268,7 @@ after it is built by running:
 \csre{dim} build produces multiple executables. Benchmarks which were used to produce data for this thesis as
 well as \csre{dim_cli}, a command-line utility with multiple subcommands for downloading/converting and
 working with sparse matrices in general. Only the CLI will be explained as the benchmarks map well to
-graphs in this thesis so they should be pretty self-explanatory.
+graphs in this thesis, so they should be pretty self-explanatory.
 
 \subsection{dim\_cli}
 
@@ -2294,7 +2296,7 @@ when \csre{dim} is installed as a SLURM module.
 \end{minted}
 
 \csre{compare_results} takes a path to HDF5 file (or two files), with result vectors and compares them.
-This is useful mainly for checking the results are correct and stable across implementations.
+This command is mainly useful for checking the results are correct and stable across implementations.
 
 \begin{minted}{bash}
     # compare two result vectors.
@@ -2302,7 +2304,7 @@ This is useful mainly for checking the results are correct and stable across imp
 \end{minted}
 
 \csre{download} subcommand retrieves a matrix from an URL provided as an argument and unpacks it while
-downloading, saving some time as the used matrices are quite large.
+downloading, saving some time as the used matrices are fairly large.
 
 \begin{minted}{bash}
     # downlaod and unpack matrix from <URL> into 
@@ -2311,8 +2313,8 @@ downloading, saving some time as the used matrices are quite large.
 \end{minted}
 
 \csre{generate_heatmap} expects a path to matrix in CSR5 format introduced in Section~\ref{csr5:onDisk}.
-It will produce a black and white PNG image, with the brightness reflecting the number of non-zero element
-of the segment of matrix the pixel represents.
+It will produce a black and white PNG image, with the brightness reflecting the number of non-zero elements
+of the segment of the matrix the pixel represents.
 
 \begin{minted}{bash}
     dim_cli generate_heatmap mat.csr5.h5
@@ -2330,9 +2332,9 @@ of the segment of matrix the pixel represents.
 \end{figure}
 
 However, this command will behave a bit differently when process count \csre{-p} is specified. It will not
-reflect the density structure as precisely as the black and white output, but it will instead color the pixels
-with a different color for each process. Resolution can also be specified by providing \csre{-r <width> <height>}
-if finer structure needs to be captured (or the matrix is large).
+reflect the density structure as precisely as the black and white output, coloring the pixels
+with a different color for each process instead. Resolution can also be specified by providing 
+\csre{-r <width> <height>} if a finer structure needs to be captured (or the matrix is large).
 
 
 
