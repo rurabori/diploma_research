@@ -206,7 +206,7 @@ namespace detail {
 
         const auto tmp_sum256d = vec;
         // inclusive prefix scan.
-        vec = simd::hscan_avx(vec);
+        vec = simd::inclusive_scan(vec);
 
         // vec[i] = vec[i + seg_offset[i]] - vec[i] + tmp[i]
         return _mm256_add_pd(_mm256_sub_pd(simd::shuffle_relative(vec, segsum_offset), vec), tmp_sum256d);
@@ -585,7 +585,7 @@ public:
                 }
 
                 // total sum for this tile.
-                return simd::hsum_avx(sum256d);
+                return simd::sum(sum256d);
             }
         };
 

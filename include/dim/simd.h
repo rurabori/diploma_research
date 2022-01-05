@@ -25,21 +25,33 @@ consteval auto make_permute_seq(std::integral auto... seq) -> int {
     return value;
 }
 
-inline auto hscan_avx(__m256d in256d) -> __m256d {
-    auto t0 = _mm256_permute4x64_pd(in256d, make_permute_seq(3, 0, 1, 2));
-    auto t1 = _mm256_add_pd(in256d, _mm256_blend_pd(t0, _mm256_set1_pd(0), 0b0001));
+/**
+ * @brief Performs an inclusive scan of elements of [a].
+ *
+ * @param a the vector to be summed.
+ * @return __m256d the result of inclusive scan.
+ */
+inline auto inclusive_scan(__m256d a) -> __m256d {
+    auto t0 = _mm256_permute4x64_pd(a, make_permute_seq(3, 0, 1, 2));
+    auto t1 = _mm256_add_pd(a, _mm256_blend_pd(t0, _mm256_set1_pd(0), 0b0001));
 
-    t0 = _mm256_permute4x64_pd(in256d, make_permute_seq(2, 3, 0, 1));
+    t0 = _mm256_permute4x64_pd(a, make_permute_seq(2, 3, 0, 1));
     t1 = _mm256_add_pd(t1, _mm256_blend_pd(t0, _mm256_set1_pd(0), 0b0011));
 
-    t0 = _mm256_permute4x64_pd(in256d, make_permute_seq(1, 2, 3, 0));
+    t0 = _mm256_permute4x64_pd(a, make_permute_seq(1, 2, 3, 0));
     t1 = _mm256_add_pd(t1, _mm256_blend_pd(t0, _mm256_set1_pd(0), 0b0111));
 
     return t1;
 }
 
-inline auto hsum_avx(__m256d in256d) -> double {
-    __m256d hsum = _mm256_add_pd(in256d, _mm256_permute2f128_pd(in256d, in256d, make_permute_seq(1, 0)));
+/**
+ * @brief Performs a sum of elements of [a].
+ *
+ * @param a the vector to be summed.
+ * @return double the sum.
+ */
+inline auto sum(__m256d a) -> double {
+    __m256d hsum = _mm256_add_pd(a, _mm256_permute2f128_pd(a, a, make_permute_seq(1, 0)));
 
     // NOLINTNEXTLINE - initialization would be dead write.
     double sum;
@@ -47,6 +59,7 @@ inline auto hsum_avx(__m256d in256d) -> double {
 
     return sum;
 }
+
 /**
  * @brief vec[i] = vec[i + desc[i]]
  *
@@ -67,6 +80,9 @@ inline auto shuffle_relative(__m256d vec, __m128i desc) noexcept -> __m256d {
     return _mm256_castsi256_pd(_mm256_permutevar8x32_epi32(_mm256_castpd_si256(vec), shuffle_mask));
 }
 
+/**
+ * @brief Checks if any bit is set in [vec].
+ */
 inline auto any_bit_set(__m256i vec) -> bool {
     // _mm256_testz_si256 returns 1 if vec & 0xFF == 0, hence if it returns 0, some bit was set.
     return !_mm256_testz_si256(vec, _mm256_set1_epi64x(all_bits_set<int64_t>));
