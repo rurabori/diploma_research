@@ -158,13 +158,13 @@ The goals of this thesis are to:
 \chapter{Overview of used technologies}\label{tech}
 
 % TODO
-This chapter introduces the technologies used in implementation of this thesis.
-SIMD parallel processing as well as SSE/AVX instructions sets are defined in Section~\ref{tech:simd}.
+This chapter introduces the technologies used in the implementation of this thesis.
+SIMD parallel processing, as well as SSE/AVX instructions sets, are defined in Section~\ref{tech:simd}.
 Section~\ref{tech:omp} introduces OpenMP API, used to parallelize the computation.
 Section~\ref{tech:mpi} introduces MPI, a Message Passing
 Interface, used for inter-process communication in the distributed SpMV implementation.  Lastly
 Section~\ref{theory:MMEF} introduces Matrix Marked Exchange Format for storing sparse and dense matrices,
-and Section~\ref{theory:HDF5} introduces Hierarchical Data Format v5, used for efficient sparse matrix
+and Section~\ref{theory: HDF5} introduces Hierarchical Data Format v5, used for efficient sparse matrix
 on-disk storage as described in Section~\ref{csr5:onDisk}.
 
 
@@ -229,13 +229,13 @@ processing, where a single instruction is applied to multiple data streams.
 \end{figure}
 
 Modern CPUs provide Streaming SIMD Extensions (or SSE) Instruction Set Extensions which work on 16 byte
-registers, as well as Advanced Vector Extensions (or AVX) which work with 32 byte registers.
+registers, as well as Advanced Vector Extensions (or AVX), which work with 32-byte registers.
 To illustrate, Figure~\ref{tech:simd:fig} shows addition (single instruction) of two
 four-integer arrays (multiple data) using the \csre{vpaddd} instruction from SSE\@. The data streams
 are sometimes referred to as lanes (marked as \(L_0\)-\(L_3\) in Figure~\ref{tech:simd:fig}).
 
-In C++ there are several ways to achieve vectorization\footnote{Note that for compiler to enable
-    vector instructions, target architecture must be provided.}.
+In C++, there are several ways to achieve vectorization\footnote{Note that the target architecture needs
+    to be specified for the compiler to enable vector instructions.}.
 First of these are SIMD intrinsics. Intrinsics
 are assembly-coded functions that let you use C++ function calls and variables in place of assembly
 instructions, improving readability. To generate the \csre{vpaddd} instruction from Figure~\ref{tech:simd:fig}
@@ -264,7 +264,7 @@ auto-vectorization and do not guarantee the vector instructions will actually be
 OpenMP API is defined by a collection of compiler directives, library routines, and environment variables.
 It provides a model for parallel programming that is portable across architectures
 from different vendors. Compilers from numerous vendors support the OpenMP API\cite{openmp18}.
-OpenMP uses fork-join model of parallel execution.
+OpenMP uses the fork-join model of parallel execution.
 
 For C++ the directives have the form of preprocessor \texttt{\#pragma} directives, with the following
 syntax.
@@ -272,14 +272,14 @@ syntax.
     #pragma omp <directive-name> [clause[[,]clause]...] new-line
 \end{minted}
 
-To enable OpenMP, compiler must be invoked with a \csre{-fopenmp}
-switch for gcc/clang based compilers, while MSVC accepts the \csre{/openmp} flag.
+To enable OpenMP, the compiler must be invoked with the \csre{-fopenmp}
+switch for GCC/clang-based compilers, while MSVC accepts the \csre{/openmp} flag.
 
 \subsection{\texttt{parallel} directive}
 
 \texttt{parallel} directive marks a region to be executed in parallel. A \textbf{team} within the parallel
 region is a set of one or more threads participating in the execution of this region. If the team has at
-least two active threads the parallel region is \textbf{active} else it is called \textbf{inactive}.
+least two active threads, the parallel region is \textbf{active}, else it is called \textbf{inactive}.
 
 The threads in OpenMP have a \textbf{numerical identifier}. In this thesis, this numerical identifier will be
 referred to as \textbf{thread id}\footnote{Not the thread id in the context of an OS.}.
@@ -291,8 +291,8 @@ It can be obtained by calling \mintinline{C++}{omp_get_thread_num}.
 
 Referred to as Worksharing-Loop Construct in~\cite{openmp18}. It specifies that the iterations
 of the associated loop(s) will be executed in parallel by the threads of the currently active
-team. This means the execution is only parallelized if the loop is performed inside of a
-\texttt{parallel} region in first place.
+team. As a result, the execution is only parallelized if the loop is performed inside of a
+\texttt{parallel} region in the first place.
 
 All of the allowed clauses for the directive can be found in~\cite{openmp18}, the only relevant one
 for this thesis is \texttt{schedule}, specified as \\
@@ -300,11 +300,11 @@ for this thesis is \texttt{schedule}, specified as \\
 but \texttt{kind} is. \textbf{kind} specifies, how the work is distributed among the threads.
 
 When \texttt{dynamic} kind is specified, the iterations are distributed among threads dynamically.
-Meaning when thread finishes processing its assigned chunk (of \texttt{chunk\_size} elements),
+Meaning when a thread finishes processing its assigned chunk (of \texttt{chunk\_size} elements),
 it requests a new chunk until no chunks remain.
 
 \texttt{static} kind distributes chunks of \texttt{chunk\_size} among the participating threads in a
-round-robin fashion. This is used heavily in the computational kernel described in Section~\ref{csr5:spmv}.
+round-robin fashion. This kind is used heavily in the computational kernel described in Section~\ref{csr5:spmv}.
 
 \texttt{parallel} and \texttt{for} directives may be combined as shown in Figure~\ref{tech:omp:loop},
 to create a so-called parallel worksharing-loop construct. Which is a shortcut for specifying
@@ -321,7 +321,7 @@ to create a so-called parallel worksharing-loop construct. Which is a shortcut f
 
 
 OpenMP contains many other primitives for parallel programming such as atomics, barriers
-and semaphores and can be also used to vectorize loops using the \texttt{simd} construct as as shown
+and semaphores and can also be used to vectorize loops using the \texttt{simd} construct as shown
 in Figure~\ref{tech:simd:omp}.
 
 \section{MPI}\label{tech:mpi}
@@ -333,7 +333,7 @@ that of another process through cooperative operations on each process.
 
 Extensions to the
 “classical” message-passing model are provided in collective operations, remote-memory
-access operations, dynamic process creation, and parallel I/O which is used to speed-up loading
+access operations, dynamic process creation, and parallel I/O, which is used to speed-up loading
 sparse matrices from disk as described in Section~\ref{dspmv:load}. MPI is a specification, not
 an implementation; there are multiple implementations of MPI. This specification is for a
 library interface; MPI is not a language, and all MPI operations are expressed as functions,
@@ -341,11 +341,156 @@ subroutines, or methods, according to the appropriate language bindings which, f
 Fortran, are part of the MPI standard.
 \cite{mpi40}
 
+\subsection{Initialization}\label{tech:mpi:init}
+
+Before invoking any MPI routines, a participating process must call \csre{MPI_Init} which
+initializes internal state of an MPI implementation, which must then be freed by calling
+\csre{MPI_Finalize}.
+
+\subsection{Communicators}\label{tech:mpi:comm}
+
+Most MPI routines require a communicator. In MPI a \textbf{communicator} a communicator is a
+context for a communication operation~\cite{mpi40}. Participating processes are also referred to as
+\textbf{process group} and are each process is assigned a non-negative \textbf{rank} within this group.
+
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}
+        \node (p0) [circle, draw=red!90] at (0, 0) {0};
+        \node (p1) [right=of p0, circle, draw=green!90]{1};
+        \node (p2) [right=of p1, circle, draw=blue!90]{2};
+        \node (p3) [right=of p2, circle, draw=orange!90]{3};
+
+        \node (commWorld) [draw=black!90, fit={(p0) (p1) (p2) (p3)}, rounded corners] {};
+        \node [above=0.1cm of commWorld, anchor=south] {\csre{MPI_COMM_WORLD}};
+
+        \node (p11) [below=1.5cm of p1, circle, draw=green!90]{0};
+        \node (p21) [right=of p11, circle, draw=orange!90]{1};
+
+        \node (commNew) [draw=black!90, fit={(p11) (p21)}, rounded corners] {};
+
+        \draw [-stealth] (commWorld) -- (commNew);
+
+        \node (mpiSpl) [fill=white!100, draw=gray!90] at ($(commWorld)!0.5!(commNew)$) {\csre{MPI_Comm_split}};
+
+    \end{tikzpicture}
+    \caption{Splitting a communicator to create a new one}\label{tech:mpi:comm:fig}
+\end{figure}
+
+MPI implementations provide some predefined
+communicators such as \csre{MPI_COMM_WORLD} which contains every process accessible
+after initialization described in Section~\ref{tech:mpi:init} and \csre{MPI_COMM_SELF}
+which contains only the calling process (self). One of the most common methods for creating
+new communicators is splitting an existing one. This can be done by calling
+\csre{MPI_Comm_split} (Shown in Figure~\ref{tech:mpi:comm:fig}) and is utilized for synchronization
+of sub-results as explained in Section~\ref{dspmv:sync}.
+
+\subsection{MPI operations}\label{tech:mpi:op}
+
+An MPI operation is a sequence of steps performed to establish and enable data transfer/synchronization\cite{mpi40}.
+It consists of four stages:
+
+\begin{itemize}
+    \item \textbf{Initialization} hands over the argument list to the operation, but not the content
+          of the data buffers.
+    \item \textbf{Starting} hands over the control of the data buffers.
+    \item \textbf{Completion} returns control of the content of the data buffers and indicates
+          that output buffers and arguments may have been updated.
+    \item \textbf{Freeing} returns the control of the rest of the argument list to the caller.
+
+\end{itemize}
+
+
+\subsection{\texttt{MPI\_Allgatherv}}
+
+\csre{MPI_Allgatherv} is a collective, blocking operation, which is useful for distributing arrays of
+data between processes. A \textbf{collective} operation in MPI is an operation in which a group of
+processes participates, for which the completion
+stage may or may not finish before all processes in the group have started the operation.
+A \textbf{blocking} operation combines all four stages outlined in Section~\ref{tech:mpi:op}.
+
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}
+        \node (p0) [circle, draw=red!90] at (0, 0) {0};
+        \node (p1) [right=of p0, circle, draw=green!90]{1};
+        \node (p2) [right=of p1, circle, draw=blue!90]{2};
+
+        \coordinate (p0data) at ($(p0) + (0, -0.75)$);
+        \coordinate (p1data) at ($(p1) + (-0.5, -0.75)$);
+        \coordinate (p2data) at ($(p2) + (-0.25, -0.75)$);
+        \coordinate (result) at ($(p1) + (0, -2.5)$);
+
+        \node (p00) [rectangle, draw=black!90] at (p0data) {0};
+        \node (p0r) [rectangle, draw=red!90] at ($(result) + (-1, 0)$) {0};
+
+        \foreach \x [evaluate=\x as \ff using int(\x+2)] in {0,...,2}
+            {
+                \node (p1\x) [rectangle, draw=black!90] at ($(p1data) + (\x * 0.45, 0)$) {\ff};
+                \node (p1r\x) [rectangle, draw=green!90] at ($(result) + (\x * 0.45 - 0.5, 0)$) {\ff};
+            }
+
+        \foreach \x [evaluate=\x as \ff using int(3-\x)] in {0,...,1}
+            {
+                \node (p2\x) [rectangle, draw=black!90] at ($(p2data) + (\x * 0.45, 0)$) {\ff};
+                \node (p2r\x) [rectangle, draw=blue!90] at ($(result) + (\x * 0.45 + 0.9, 0)$) {\ff};
+            }
+
+        \draw [-stealth] (p00) -- (p0r);
+        \draw [-stealth] (p11) -- (p1r1);
+        \draw [-stealth] ($(p20)!0.5!(p21) + (0, -0.25)$) -- ($(p2r0)!0.5!(p2r1) + (0, 0.25)$);
+
+
+        \node (mpiRed) [fill=white!100, draw=gray!90] at ($(p11)!0.5!(p1r1) + (0.1, 0)$) {\texttt{MPI\_Allgatherv}};
+
+        \node [below=3mm of p1r1, anchor=center] {$\var{displs} = \{0, 1, 4\}\text{, }\var{recvcounts} = \{1, 3, 2\}$};
+
+
+    \end{tikzpicture}
+    \caption{Distributing data with \texttt{MPI\_Allgatherv}}\label{tech:mpi:allgat:fig}
+\end{figure}
+
+The routine takes an input array, its size, an output array, \texttt{displs} and \texttt{recvcounts}.
+The last two arrays contain offset into the output array and the amount of contributed data for each
+participating process respectively and have to be the same for every participating process.
+
+\subsection{\texttt{MPI\_Allreduce}}
+
+\csre{MPI_Allreduce} performs parallel reduction among all participating processes. Different reduction
+operators can be used, such as \csre{MPI_SUM}, \csre{MPI_PROD}, \csre{MPI_MAX} etc. The implementation
+produced alongside this thesis mostly uses its non-blocking counterpart, \csre{MPI_Iallreduce}.
+A \textbf{non-blocking} operation
+combines the first two MPI operation stages into a single non-blocking call. It then must be finished by
+either waiting by calling \csre{MPI_Wait} (or \csre{MPI_Waitall} if waiting on multiple operations).
+This operation is the backbone of synchronization for parallel SpMV outlined in Section~\ref{dspmv:sync}.
+
+\begin{figure}[htp]
+    \centering
+    \begin{tikzpicture}
+        \node (p0) [circle, draw=red!90] at (0, 0) {0};
+        \node (p1) [right=of p0, circle, draw=green!90]{1};
+        \node (p2) [right=of p1, circle, draw=blue!90]{2};
+
+        \node (p00) [rectangle, draw=black!90] at ($(p0) + (0, -0.75)$) {1};
+        \node (p10) [rectangle, draw=black!90] at ($(p1) + (0, -0.75)$) {3};
+        \node (p20) [rectangle, draw=black!90] at ($(p2) + (0, -0.75)$) {2};
+
+        \node (red) [fill=white!100, draw=gray!90] at ($(p1) + (0, -1.5)$) {\texttt{MPI\_Allreduce(MPI\_SUM)}};
+
+        \foreach \x in {0,...,2}
+        \draw [-stealth] (p\x0) -- (red);
+
+        \node (result) [rectangle, draw=black!90] at ($(p1) + (0, -2.5)$) {6};
+
+        \draw[-stealth] (red) -- (result);
+    \end{tikzpicture}
+    \caption{Performing parallel reduction with \texttt{MPI\_Allreduce}}\label{tech:mpi:allred:fig}
+\end{figure}
 
 \section{PETSc}\label{tech:petsc}
 
 Portable, Extensible Toolkit for Scientific computation (PETSc) is a suite of data structures and routines
-for scalable solution of scientific applications modeled by partial differential equations.
+for scalable solutions of scientific applications modeled by partial differential equations.
 It supports MPI, and GPUs through CUDA, HIP or OpenCL, as well as hybrid MPI-GPU parallelism~\cite{petsc-web-page}.
 
 PETSc contains three main algebraic objects \csre{Mat} for matrices, \csre{Vec} for vectors and \csre{IS}
@@ -355,30 +500,30 @@ and \csre{Vec} are immediately relevant to this thesis.
 
 \section{Matrix Market Exchange Format}\label{theory:MMEF}
 
-Matrix Market Exchange Format is a textual format, used as native format in Matrix Market\footnote{
+Matrix Market Exchange Format is a textual format, used as a native format in Matrix Market\footnote{
     Matrix Market is a repository of sparse matrices which can be found at https://math.nist.gov/MatrixMarket/
 }.
-It has two flavours, Array format for dense matrices, Coordinate format for sparse matrices~\cite{mmef}.
+It has two flavors, Array format for dense matrices, Coordinate format for sparse matrices~\cite{mmef}.
 
 % TODO: citations
 
 \subsection{General Format Specification}
 
-All Matrix Market echange format files contain three sections, which must appear in order:
+All Matrix Market exchange format files contain three sections, which must appear in order:
 
 \begin{enumerate}
     \item \textbf{Header} First line of a file, must follow the template:
           \begin{lstlisting}
     %%MatrixMarket object format [qualifier...]
 \end{lstlisting}
-          Where object type indicates the mathematical object (e.g. vector, matrix) which is
+          Where object type indicates the mathematical object (e.g., vector or matrix)
           stored in the file. Type indicates the format (array or coordinate) used to store
-          the object. Qualifiers are used to further indicate special properties of the stored
-          object (e.g. symmetry, field) thus their number as well as allowed values depend on
+          the object. Qualifiers are used to indicate special properties of the stored
+          object (e.g., symmetry, field). Their number, as well as allowed values, depends on
           the stored object.
     \item \textbf{Comments} Zero or more line of comments\footnote{Comments are lines starting with \%.}.
     \item \textbf{Data} Remainder of the file contains data representing the object.
-          The format of data is dependent on the stored object but for simplicity,
+          The format of data is dependent on the stored object, but for simplicity,
           each data entry should occupy a single line.
 \end{enumerate}
 
@@ -413,18 +558,19 @@ First line of data contains exactly three integers:
 \end{itemize}
 
 The following \csre{L} lines each contain \csre{I} - the row index, \csre{J} - the column index
-and the corresponding value. Indices are 1 based. Entries not explicitly provided are considered
+and the corresponding value. Indices are 1-based. Entries not explicitly provided are considered
 to be zero, except for those known by symmetry.
 
 
 \section{HDF5}\label{theory:HDF5}
 
 HDF5 is a data model, library, and file format for storing and managing data.
-It supports an unlimited variety of datatypes, and is designed for flexible and
-efficient I/O and for high volume and complex data. HDF5 is portable and is extensible,
+It supports an unlimited variety of data types and is designed for flexible and
+efficient I/O for high volume and complex data. HDF5 is portable and is extensible,
 allowing applications to evolve in their use of HDF5. The HDF5 Technology suite includes
 tools and applications for managing, manipulating, viewing, and analyzing data in the HDF5 format.
-\cite{hdf5} HDF5 is defined by HDF5 File Format Specification, which specifies bit-level organization of an HDF5.
+\cite{hdf5} HDF5 is defined by HDF5 File Format Specification, which specifies the bit-level
+organization of an HDF5.
 
 \subsection{HDF5 Abstract Data Model}
 
@@ -434,7 +580,7 @@ It's two primary objects are \textbf{groups} and \textbf{datasets}.
 \subsubsection{Group}
 
 HDF5 groups organize data. Every file contains at least a root group.
-Each group can contain other groups or be linked to objects in other files.
+Each group can contain other groups, or be linked to objects in other files.
 
 \begin{figure}[!h]
     \centering
@@ -443,12 +589,12 @@ Each group can contain other groups or be linked to objects in other files.
 \end{figure}
 
 Working with groups and their members is similar to working with files and directories in UNIX.
-Objects are often described by giving their path names (e.g. \texttt{/Viz}).
+Objects are described by giving their pathnames (e.g., \texttt{/Viz}).
 
 \subsubsection{Dataset}
 
 Datasets organize and contain the "raw" data. They consist of raw data and metadata needed to describe it.
-The metadata needed to describe a dataset consists of datatypes, dataspaces, properties and optionally,
+The metadata needed to describe a dataset consists of datatypes, dataspaces, properties and optionally
 attributes.
 
 \begin{figure}[H]
@@ -469,9 +615,9 @@ Datatypes describe individual elements in dataset. There are two groups of datat
 
 \subsubsection{Dataspace}
 
-Dataspaces describe the layout of datasets elements. It may be empty (NULL), contain a single element (scalar)
-or an array\footnote{Number of dimmensions of the array is reffered to as rank of the dataspace.}. They provide
-logical layout of a dataset stored in a file (including rank and dimensions). As well as application's data buffers
+Dataspaces describe the layout of datasets elements. It may be empty (NULL), contain a single element (scalar),
+or an array\footnote{The number of dimensions of the array is referred to as rank of the dataspace.}. They provide
+a logical layout of the dataset stored in a file (including rank and dimensions). As well as the application's data buffers
 and data elements participating in I/O. Thus an application can select subsets of a dataset.
 % TODO: reference the chapter which will discuss hyperslabs more in depth.
 
@@ -486,8 +632,8 @@ and data elements participating in I/O. Thus an application can select subsets o
 \subsubsection{Attribute}
 
 Attributes may optionally be associated with objects. An attribute consists of a name-value pair.
-They are similar to datasets in that they too, have a datatype and dataspace. However they do not
-support partial I/O, can't be compressed nor extended.
+They are similar to datasets in that they too have a datatype and dataspace. However, they do not
+support partial I/O and cannot be compressed or extended.
 
 
 \chapter{Sparse matrix storage formats}
@@ -506,13 +652,13 @@ by the column and row in the rectangle they occupy.
 
 In numerical analysis and scientific computing, a sparse matrix or sparse array
 is a matrix in which most of the elements are zero. There is no strict definition
-regarding the proportion of zero-value elements for a matrix to qualify as sparse
+regarding the proportion of zero-value elements for a matrix to qualify as sparse,
 but a common criterion is that the number of non-zero elements is roughly equal
-to the number of rows or columns. By contrast, if most of the elements are non-zero,
+to the number of rows or columns. By contrast, if most elements are non-zero,
 the matrix is considered dense.
 The number of zero-valued elements divided by the total number of elements (e.g., m × n for an m × n matrix) is sometimes referred to as the sparsity of the matrix.
-\cite{efficientSDMM} The number of non zero elements of a sparse matrix is usually denoted
-as \(n_{nz}\) number of columns as \(n\) and number of rows as \(m\).
+\cite{efficientSDMM} The number of non-zero elements of a sparse matrix is usually denoted
+as \(n_{nz}\) number of columns as \(n\) and the number of rows as \(m\).
 
 To better illustrate the storage formats, let us define sparse matrix \(A\).
 \begin{equation*}
@@ -528,12 +674,11 @@ To better illustrate the storage formats, let us define sparse matrix \(A\).
 \section{Coordinate (COO)}\label{smsf:coo}
 
 Coordinate storage format, commonly referred to as COO, is the simplest of the three formats presented in this
-chapter. The matrix is stored in a  structure consisting of three arrays of length $n_{nz}$\cite{saad03:IMS}:
+chapter. COO stores the matrix in a structure consisting of three arrays of length $n_{nz}$\cite{saad03:IMS}:
 
-% TODO: this may be nicer if formated with minted or something similar.
 \begin{enumerate}
     \itemsep=0em
-    \item[vals] a real array containing all the real (or complex) values of the nonzero elements of A in any order.
+    \item[vals] an array containing all the real (or complex) values of the nonzero elements of A in any order.
     \item[row\_idx] an integer array containing their row indices.
     \item[col\_idx] a second integer array containing their column indices.
 \end{enumerate}
@@ -552,12 +697,12 @@ chapter. The matrix is stored in a  structure consisting of three arrays of leng
     \caption{$A$ stored in COO format}
 \end{table}
 
-As shown in Algorithm~\ref{coo:spmv}, to perform SpMV with a matrix stored in COO format, it is necessary
-to iterate over all non-zero elements, extracting their value, column index and row index from the
-relevant arrays in the COO structure. Then performing the multiplication \(\var{value * x[col]}\) and
+As shown in Algorithm~\ref{coo:spmv}, to perform SpMV with a matrix stored in the COO format, it is necessary
+to iterate over all non-zero elements, extracting their value, column index, and row index from the
+relevant arrays in the COO structure. Then performing the multiplication \(\var{value} \cdot \var{x[col]}\) and
 finally add the sub-result to \(\var{y[row]}\). This algorithm is not well suited for parallelization,
-as all the additions to the result vector \(\var{y}\) would have to be performed atomically. It may also
-degrade single-thread performance as order of non-zero elements is not specified, meaning accesses to $\var{x}$
+as all the additions to the result vector \(\var{y}\) would have to be atomic operations. It may also
+degrade single-thread performance as the order of non-zero elements is not specified, meaning accesses to $\var{x}$
 as well as $\var{y}$ are random and thus may not have the best cache locality.
 
 \begin{algorithm}
@@ -570,7 +715,7 @@ as well as $\var{y}$ are random and thus may not have the best cache locality.
         \State $\var{value} \gets \var{A.vals}$
         \State $\var{col} \gets \var{A.col\_idx[i]}$
         \State $\var{row} \gets \var{A.row\_idx[i]}$
-        \State $\var{y[row]} \pluseq \var{value * x[col]}$
+        \State $\var{y[row]} \pluseq \var{value} \cdot \var{x[col]}$
         \EndFor
 
         \Return $\var{y}$
@@ -593,7 +738,7 @@ Compressed Sparse Row is probably the most popular format for storing general sp
         \lstinline!col_idx!, at which each row of the matrix begins.
 \end{enumerate}
 
-This involves nonnegligible savings in storage.
+Storing only $m + 1$ elements in \csre{row_ptr} array, leads to non-negligible storage savings.
 
 \begin{table}[h!]
     \centering
@@ -613,9 +758,9 @@ This involves nonnegligible savings in storage.
 \end{table}
 
 SpMV with matrix in CSR format lends itself to parallelization better than the COO format. Since
-the non-zero elements are grouped by their rows, the outer loop of Algorithm~\ref{csr:spmv}
+CSR groups the non-zero elements by their rows, the outer loop of Algorithm~\ref{csr:spmv}
 can be parallelized with no synchronization necessary (no overlapping outputs in \(\var{y}\)).
-The issue with parallelized version of this algorithm is load-balancing as some rows may have
+The issue with the parallelized version of this algorithm is load-balancing, as some rows may have
 disproportionately more non-zero elements than others.
 
 \begin{algorithm}
@@ -630,7 +775,7 @@ disproportionately more non-zero elements than others.
         \For{\var{i = start; i < stop; ++i}}
         \State $\var{col} \gets \var{A.col\_idx[i]}$
         \State $\var{value} \gets \var{A.vals[i]}$
-        \State $\var{row\_result} \pluseq \var{value * x[col]}$
+        \State $\var{row\_result} \pluseq \var{value} \cdot \var{x[col]}$
         \EndFor
         \State $\var{y[row]} \gets \var{row\_result}$
         \EndFor
@@ -642,8 +787,8 @@ disproportionately more non-zero elements than others.
 \section{Compressed Sparse Row 5 (CSR5)}\label{csr5Intro}
 
 To achieve near-optimal load balance for matrices with any sparsity structures,
-all nonzero entries are partitioned to multiple 2D tiles of the same size.
-The CSR5 format has two tuning parameters: \(\omega{}\) and \(\sigma{}\), where \(\omega{}\)
+CSR5 partitions all nonzero entries to multiple 2D tiles of the same size.
+It has two tuning parameters: \(\omega{}\) and \(\sigma{}\), where \(\omega{}\)
 is a tile’s width and \(\sigma{}\) is its height~\cite{liu2015csr5}.
 
 Further, extra information is needed to efficiently compute SpMV\@.
@@ -672,8 +817,7 @@ a tile are stored in in \csre{empty_offset}. The actual size of this array is nu
     \caption{Matrix A stored in CSR5 format (Source:~\cite{liu2015csr5}).}
 \end{figure}
 
-The algorithm for performing parallel SpMV using matrices stored in CSR5 format is outlined in
-Section~\ref{csr5:spmv}.
+Section~\ref{csr5:spmv} outlines the algorithm for performing parallel SpMV using matrices stored in CSR5 format.
 
 
 \chapter{Implementation}\label{impl}
@@ -687,22 +831,22 @@ format used is CSR5 described in Section~\ref{impl:csr5}. The SpMV algorithm for
 format, introduced in~\cite{liu2015csr5} is further described in Section~\ref{csr5:spmv}.
 
 Lastly, an efficient on-disk storage format used by MATLAB for CSR matrices, storing the matrices in
-binary format using HDF5 is described in Section~\ref{impl:matlabComp} and its extension to support
+binary format using HDF5, described in Section~\ref{impl:matlabComp} and its extension to support
 matrices stored in CSR5 is outlined in Section~\ref{csr5:onDisk}.
 
 \section{CSR5}\label{impl:csr5}
 
 A common issue of parallel SpMV is load balancing. Storing matrices in CSR5 format avoids this by
-grouping data into tiles of fixed size. Furthermore the tiles are independent, allowing for high
+grouping data into tiles of fixed size. Furthermore, the tiles are independent, allowing for a high
 degree of parallelism and small critical sections. For this reason \csre{dim}, stores all matrices in
 CSR5 format and implements sparse vector multiplication algorithm introduced in~\cite{liu2015csr5}.
 
-Since the implementation of CSR5 in \csre{dim} utilizes AVX2 instructions, some preconditions have to be met.
+Since the implementation of CSR5 SpMV in \csre{dim} utilizes AVX2 instructions, it has some preconditions.
 Namely alignment of data passed to the AVX2 intrinsics. Most AVX2 instructions either require data to be
-aligned on a 32-byte adress or they have singnificantly worse performance if it isn't.
+aligned on a 32-byte address or have significantly worse performance for unaligned data.
 
 To facilitate this, C++ offers a customization point in its own contiguous data container \csre{std::vector}.
-By specifying an allocator, which returns allocated adresses with a specified alignment as the second
+By specifying an allocator, which returns allocated addresses with a specified alignment as the second
 template argument, the implementation can retain the interface of vector and satisfy preconditions of
 AVX2 instructions. Any usage of \csre{vector} in this thesis in code examples will refer to a \csre{std::vector}
 with a custom aligned allocator.
@@ -1887,10 +2031,10 @@ the two implementations.
     \caption{PETSc vs D-CSR5 benchmark results (no synchronization)}\label{bench:petsc:vsDim}
 \end{figure}
 
-Even with the \texttt{distributing s} step removed the benchmark results (visualized in 
+Even with the \texttt{distributing s} step removed the benchmark results (visualized in
 Figure~\ref{bench:petsc:vsDim}) show, that D-CSR5 implementation performs better
 on all the benchmarked configurations. The speedup of D-CSR5 based implementation compared to \csre{PETSc}
-ranges from 2.4 and 2.57x for iteration and SpMV steps respectively up to 8.5 and 9.46x. Speedup over all layout 
+ranges from 2.4 and 2.57x for iteration and SpMV steps respectively up to 8.5 and 9.46x. Speedup over all layout
 and input matrix combinations is shown in Figure~\ref{bench:petsc:table}.
 
 
