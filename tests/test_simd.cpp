@@ -23,7 +23,7 @@ TEST_CASE("simd::shuffle") {
     REQUIRE(vec_equal(dim::simd::shuffle_relative(base_vec, _mm_set_epi32(0, 1, 2, 3)), _mm256_set_pd(4., 4., 4., 4.)));
 }
 
-TEST_CASE("simd::hscan_avx") {
+TEST_CASE("simd::inclusive_scan") {
     const auto base_vec = _mm256_set_pd(4., 3., 2., 1.);
 
     REQUIRE(vec_equal(dim::simd::inclusive_scan(base_vec), _mm256_set_pd(10., 6., 3., 1.)));
