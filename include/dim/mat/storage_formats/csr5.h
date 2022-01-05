@@ -17,7 +17,7 @@
 #include <dim/memory/aligned_allocator.h>
 #include <dim/opt.h>
 #include <dim/simd.h>
-#include <dim/span.h>
+#include <span>
 
 #include <omp.h>
 
@@ -179,12 +179,12 @@ namespace detail {
     }
 
     template<typename iT>
-    bool is_dirty(const dim::span<const iT> row) {
+    bool is_dirty(const std::span<const iT> row) {
         return std::adjacent_find(row.begin(), row.end()) != row.end();
     }
 
     template<typename ValueType>
-    constexpr size_t count_consecutive_equal_elements(const dim::span<ValueType> data, const ValueType& example) {
+    constexpr size_t count_consecutive_equal_elements(const std::span<ValueType> data, const ValueType& example) {
         return static_cast<size_t>(std::distance(
           data.begin(), std::find_if_not(data.begin(), data.end(), [&](auto&& val) { return val == example; })));
     }
@@ -492,7 +492,7 @@ public:
 
     [[nodiscard]] auto tail_partition_start() const noexcept -> UnsignedType { return csr5_info.tile_ptr.back().idx(); }
 
-    static auto load_x(dim::span<const ValueType> x, dim::span<const UnsignedType> column_index_partition,
+    static auto load_x(std::span<const ValueType> x, std::span<const UnsignedType> column_index_partition,
                        size_t offset) noexcept {
         return _mm256_set_pd(x[column_index_partition[offset + 3]], x[column_index_partition[offset + 2]],
                              x[column_index_partition[offset + 1]], x[column_index_partition[offset]]);
@@ -500,9 +500,9 @@ public:
 
     struct spmv_data_t
     {
-        dim::span<const ValueType> x;
-        dim::span<ValueType> y;
-        dim::span<ValueType> calibrator;
+        std::span<const ValueType> x;
+        std::span<ValueType> y;
+        std::span<ValueType> calibrator;
     };
 
     struct spmv_thread_data
@@ -526,7 +526,7 @@ public:
             _mm256_store_si256(reinterpret_cast<__m256i*>(std::data(cond)), lcond);
         }
 
-        auto maybe_store(dim::span<ValueType> y, size_t idx) const noexcept {
+        auto maybe_store(std::span<ValueType> y, size_t idx) const noexcept {
             if (!cond[idx])
                 return 0;
 
@@ -534,7 +534,7 @@ public:
             return 1;
         }
 
-        [[nodiscard]] auto write_to_y(dim::span<ValueType> y) const noexcept -> __m128i {
+        [[nodiscard]] auto write_to_y(std::span<ValueType> y) const noexcept -> __m128i {
             return _mm_set_epi32(maybe_store(y, 3), maybe_store(y, 2), maybe_store(y, 1), maybe_store(y, 0));
         }
 
@@ -562,8 +562,8 @@ public:
         {
             const spmv_thread_data& thread_data;
             size_t tile_id;
-            dim::span<const ValueType> vals;
-            dim::span<const UnsignedType> col_idx;
+            std::span<const ValueType> vals;
+            std::span<const UnsignedType> col_idx;
 
             auto load_vals_and_x(size_t offset) const noexcept -> vals_and_x {
                 offset *= omega;
@@ -592,8 +592,8 @@ public:
         auto get_iter_data(const csr5& self, size_t tile_id) const noexcept -> spmv_iteration_data {
             return spmv_iteration_data{.thread_data = *this,
                                        .tile_id = tile_id,
-                                       .vals = dim::span{self.vals}.subspan(tile_id * tile_size(), tile_size()),
-                                       .col_idx = dim::span{self.col_idx}.subspan(tile_id * tile_size(), tile_size())};
+                                       .vals = std::span{self.vals}.subspan(tile_id * tile_size(), tile_size()),
+                                       .col_idx = std::span{self.col_idx}.subspan(tile_id * tile_size(), tile_size())};
         }
     };
 
@@ -822,7 +822,7 @@ public:
     }
 
     template<spmv_strategy Strategy = spmv_strategy::absolute>
-    auto spmv(dim::span<const ValueType> x, dim::span<ValueType> y, dim::span<ValueType> calibrator) const {
+    auto spmv(std::span<const ValueType> x, std::span<ValueType> y, std::span<ValueType> calibrator) const {
         spmv<Strategy>(spmv_data_t{.x = x, .y = y, .calibrator = calibrator});
     }
 
@@ -833,7 +833,7 @@ public:
     }
 
     template<spmv_strategy Strategy = spmv_strategy::absolute>
-    auto spmv(dim::span<const ValueType> x, dim::span<ValueType> y) const {
+    auto spmv(std::span<const ValueType> x, std::span<ValueType> y) const {
         auto calibrator = allocate_calibrator();
         return spmv<Strategy>(x, y, calibrator);
     }

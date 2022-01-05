@@ -9,7 +9,7 @@
 #include <system_error>
 #include <utility>
 
-#include <dim/span.h>
+#include <span>
 
 namespace dim::io {
 
@@ -54,8 +54,8 @@ public:
     }
 
     template<typename As>
-    auto as() -> dim::span<As> {
-        return dim::span{reinterpret_cast<As*>(_memory), _size / sizeof(As)};
+    auto as() -> std::span<As> {
+        return std::span{reinterpret_cast<As*>(_memory), _size / sizeof(As)};
     }
 };
 

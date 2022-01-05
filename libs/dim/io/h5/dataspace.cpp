@@ -11,7 +11,7 @@ auto dataspace_t::create(H5S_class_t cls) -> dataspace_t { return dataspace_t{::
 auto dataspace_view_t::get_ndims() const noexcept -> size_t {
     return static_cast<size_t>(::H5Sget_simple_extent_ndims(get_id()));
 }
-auto dataspace_view_t::get_dims(dim::span<hsize_t> dims) const -> void {
+auto dataspace_view_t::get_dims(std::span<hsize_t> dims) const -> void {
     if (dims.size() != get_ndims()) [[unlikely]]
         throw std::runtime_error{"dims could not be written to the provided span"};
 

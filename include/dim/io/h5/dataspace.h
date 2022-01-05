@@ -3,7 +3,7 @@
 
 #include <dim/io/h5/err.h>
 #include <dim/io/h5/view.h>
-#include <dim/span.h>
+#include <span>
 
 #include <H5Spublic.h>
 
@@ -18,7 +18,7 @@ struct dataspace_view_t : public view_t
 
     [[nodiscard]] auto get_ndims() const noexcept -> size_t;
 
-    auto get_dims(dim::span<hsize_t> dims) const -> void;
+    auto get_dims(std::span<hsize_t> dims) const -> void;
 
     [[nodiscard]] auto get_dim() const -> hsize_t;
 

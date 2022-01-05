@@ -17,7 +17,7 @@
 #include <fmt/chrono.h>
 #include <fmt/format.h>
 
-#include <dim/span.h>
+#include <span>
 
 namespace csr5::avx2 {
 
@@ -101,7 +101,7 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
 
     // convert csr5 data to csr data
     if (auto err
-        = aosoa_transpose<false>(_csr5_sigma, dim::span{_csr5_partition_pointer}, _csr_column_index, _csr_value);
+        = aosoa_transpose<false>(_csr5_sigma, std::span{_csr5_partition_pointer}, _csr_column_index, _csr_value);
         err != ANONYMOUSLIB_SUCCESS)
         return err;
 
@@ -154,7 +154,7 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
     _csr5_partition_descriptor_offset_pointer.resize(_csr5_partition_pointer.size());
 
     if (generate_partition_pointer<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
-          _csr5_sigma, _num_non_zero, _csr5_partition_pointer, dim::span{_csr_row_pointer, _num_rows + 1})
+          _csr5_sigma, _num_non_zero, _csr5_partition_pointer, std::span{_csr_row_pointer, _num_rows + 1})
         != ANONYMOUSLIB_SUCCESS)
         return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
 
@@ -170,14 +170,14 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::asCS
     if (_num_offsets) {
         _csr5_partition_descriptor_offset.resize(static_cast<size_t>(_num_offsets));
         if (generate_partition_descriptor_offset<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT>(
-              _csr5_sigma, _bit_y_offset, _bit_scansum_offset, _num_packet, dim::span{_csr_row_pointer, _num_rows + 1},
+              _csr5_sigma, _bit_y_offset, _bit_scansum_offset, _num_packet, std::span{_csr_row_pointer, _num_rows + 1},
               _csr5_partition_pointer, _csr5_partition_descriptor.data(),
               _csr5_partition_descriptor_offset_pointer.data(), _csr5_partition_descriptor_offset.data())
             != ANONYMOUSLIB_SUCCESS)
             return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
     }
 
-    if (aosoa_transpose<true>(_csr5_sigma, dim::span{_csr5_partition_pointer}, _csr_column_index, _csr_value)
+    if (aosoa_transpose<true>(_csr5_sigma, std::span{_csr5_partition_pointer}, _csr_column_index, _csr_value)
         != ANONYMOUSLIB_SUCCESS)
         return ANONYMOUSLIB_CSR_TO_CSR5_FAILED;
 

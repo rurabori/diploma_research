@@ -3,7 +3,7 @@
 
 #include <dim/io/h5/fwd.h>
 #include <dim/io/h5/view.h>
-#include <dim/span.h>
+#include <span>
 
 #include <H5Tpublic.h>
 
@@ -24,12 +24,12 @@ class type_t : public view_wrapper_t<type_view_t, H5Tclose>
     friend object_view_t;
 
 public:
-    static auto create_array(type_view_t base, dim::span<const hsize_t> dims) -> type_t {
+    static auto create_array(type_view_t base, std::span<const hsize_t> dims) -> type_t {
         return type_t{::H5Tarray_create(base.get_id(), static_cast<unsigned int>(dims.size()), dims.data())};
     }
 
     static auto create_array(type_view_t base, hsize_t dim) -> type_t {
-        return create_array(base, dim::span<const hsize_t>{&dim, 1});
+        return create_array(base, std::span<const hsize_t>{&dim, 1});
     }
 };
 
