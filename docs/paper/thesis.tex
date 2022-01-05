@@ -849,7 +849,7 @@ To facilitate this, C++ offers a customization point in its own contiguous data 
 By specifying an allocator, which returns allocated addresses with a specified alignment as the second
 template argument, the implementation can retain the interface of vector and satisfy preconditions of
 AVX2 instructions. Any usage of \csre{vector} in this thesis in code examples will refer to a \csre{std::vector}
-with a custom aligned allocator.
+with a custom-aligned allocator.
 
 \subsection{In memory layout}
 
@@ -894,15 +894,15 @@ Namely, \textbf{tile pointer}, \textbf{tile descriptor} and optionally \textbf{e
 
 \subsection{Tile pointer}
 
-Tile pointer array contains the index of the first elements row. It works similarly to a CSR
-\textbf{row pointer}. To get the range of rows covered by a tile, it can be queried for \csre{tile_ptr[tid]}
+The tile pointer array contains the index of the row of the first element. It works similarly to a CSR
+\textbf{row pointer}. The range of rows covered by a tile is obtained by querying \csre{tile_ptr[tid]}
 and \csre{tile_ptr[tid + 1]} for the first and last rows respectively (range is open from the top).
 
-The most significant bit of the tile pointer is also used as a flag, which is set if a tile is `dirty`.
-A tile is dirty if it contains any empty rows. This flag needs to be stripped when the pointer is used to
-index into \textbf{row pointer} array. To make the interface less error-prone, the pointer is wrapped
-in a structure with \csre{is_dirty} and \csre{idx} methods to force the call-site to explicitly specify
-which usage of the pointer it requires.
+The most significant bit of the tile pointer, used as a flag, is set if a tile is \textbf{dirty}.
+A tile is dirty if it contains any empty rows. This flag bit must be stripped when the pointer is used for 
+indexing into \textbf{row pointer} array. The pointer is wrapped by a structure with \csre{is_dirty} and 
+\csre{idx} methods to force the call site to specify the required usage explicitly, making the interface 
+less error-prone.
 
 \begin{figure}[htp]
     \begin{minted}{C++}
@@ -921,7 +921,7 @@ which usage of the pointer it requires.
 
 Amid the new additions to C++20 are bit-manipulation functions in \csre{<bit>} header.
 One of the new functions is \csre{std::bit_width} which takes \(N\) and returns \(M\) such that values
-upto \(N\) can be stored in \(M\) bits. This function can be used in conjunction with bit-fields
+up to \(N\) can be stored in \(M\) bits. This function can be used in conjunction with bit-fields
 and non-type template parameters to pack descriptors very efficiently while retaining readability when using
 them. Since \csre{y_offset} may be at most \(\sigma \cdot \omega\) (the number of new sections is at most the same
 as the number of elements in a tile) and \csre{scansum_offset} may be at most \(\omega - 1\) (as it is the number
@@ -946,9 +946,10 @@ struct descriptor {
     \caption{Tile descriptor pseudo-code.}\label{csr5:tileDesc}
 \end{figure}
 
-As CSR5 tile descriptors contain bit flag maps, \csre{std::popcount} can be used to obtain number of set bits,
-denoting number of sections started in a column.
-This allows the compiler to optimize the call to the instruction of same name if the target ISA supports it.
+As CSR5 tile descriptors contain bit flag maps, \csre{std::popcount} can be used to obtain the number of set bits,
+denoting the number of sections started in a column.
+Using this function allows the compiler to optimize the call to the instruction of the same name 
+if the target ISA supports it.
 
 Previous research about CSR5~\cite{liu2015csr5} concluded, that for modern CPUs with AVX2 extensions, the optimal CSR5 tuning parameters
 are \(\sigma = 16\) and \(\omega = 4\).
@@ -985,10 +986,10 @@ struct csr5_info {
 \section{Sparse matrix vector multiplication}\label{csr5:spmv}
 
 
-\csre{dim} uses CSR5 storage format, described in Section~\ref{csr5Intro}, for sparse matrices. This format was purposefully
+\csre{dim} uses CSR5 storage format, described in Section~\ref{csr5Intro}, for sparse matrices. A format purposefully
 designed to achieve better performance when performing parallel SpMV\@. This section provides an overview
 of this parallel SpMV algorithm (introduced in~\cite{liu2015csr5}) for CSR5 when performed on a multi-threaded
-CPU which supports AVX2 extensions.
+CPU, which supports AVX2 extensions.
 
 \begin{figure}[htp]
     \centering
@@ -1030,7 +1031,7 @@ CPU which supports AVX2 extensions.
 Using \(N\) threads, each thread gets a contiguous chunk of tiles of the same size (except possibly the
 last thread) as shown in Figure~\ref{csr5:thr_dist}. The computational kernel of CSR5 SpMV can be split into three main parts. First each thread processes
 its tile chunk. Then the necessary synchronization of sub-results from all threads is performed.
-Lastly, the tail partition of matrix, which wasn't in any tile (at most \(\sigma{} \cdot \omega\) elements)
+Lastly, the tail partition of the matrix, which was not in any tile (at most \(\sigma{} \cdot \omega\) elements)
 is processed.
 
 \begin{algorithm}[h]
@@ -1051,8 +1052,8 @@ is processed.
 \subsection{Processing full tiles}
 
 Each thread processes its assigned tile chunk sequentially.
-To describe the tile processing, the notion of \textbf{sub-segments} within a tile column needs
-to be established.
+The notion of \textbf{sub-segments} within a tile column needs
+to be established before tile processing can be described.
 ~\cite{liu2015csr5} defines three types of sub-segments.
 
 
@@ -1062,15 +1063,15 @@ to be established.
     \caption{Synchronization of sub-segments within a tile (Source:~\cite{liu2015csr5}).}\label{csr5:tileSync}
 \end{figure}
 
-A green sub-segment is a segment which contains
-all of the elements of a single row, that is, it starts with a set bit in \csre{bit_flag} and ends with
-another set-bit (denoting start of a new row) in \csre{bit_flag}. A blue sub-segment is unsealed from
+A green sub-segment is a segment that contains
+all of the elements of a single row. Meaning, it starts with a set bit in \csre{bit_flag} and ends with
+another set-bit (denoting start of a new row) in \csre{bit_flag}. A blue sub-segment is a segment unsealed from
 the bottom (column does not end with a set bit in \csre{bit_flag}).
-Red sub-segments are unsealed from the top (column does not start with a set bit in \csre{bit_flag}).
-If a tile column has no set bits, it is also marked as a red segment.
-Green sub-segments require no further synchronization and their sum can be written to result vector \(y\)
-directly by combining \csre{tile_ptr} and \csre{y_offset} information. Red and blue sub-segments must
-further add their partial sums since they do not form a complete segment.
+Red sub-segments are segments unsealed from the top (column does not start with a set bit in \csre{bit_flag}).
+A tile column with no set bits is also marked as a red segment.
+Green sub-segments require no further synchronization. Their sum can be written to the result vector \(y\)
+directly by combining \csre{tile_ptr} and \csre{y_offset} information. Red and blue sub-segment sub results must
+be synchronized as they do not form a complete segment.
 
 
 \begin{algorithm}[h]
@@ -1141,12 +1142,13 @@ how a single tile column is processed.
 
 \subsection{Synchronizing overlapping elements}
 
-CSR5 minimizes the critical sections, as the tiles within the chunk do not have to be
-synchronized since they are processed sequentially in the context of a thread. Only a single element of
-\(y\) may be overlapping between neighboring chunks of tiles which only happens if the first tile of the
-chunk starts with a red sub-section. To synchronize these elements, each thread
-stores its first output element, in a `calibrator'. After the parallel part of algorithm is over, each
-threads calibrator is added to the result to perform final synchronization.
+CSR5 SpMV minimizes the critical sections. The tiles within the chunk assigned to a thread do not have to be
+synchronized since they are processed sequentially in the context of the owning thread. Only a single element of
+\(y\) may be overlapping between neighboring chunks of tiles, which only happens if the first tile of the
+chunk starts with a red sub-section. Synchronization is a two-step process. First, each thread
+stores its first output element in a calibrator during the parallel computation. 
+Second, after the parallel part of the algorithm is over, each threads calibrator is added to the result 
+to perform the final synchronization.
 
 \begin{algorithm}
     \caption{Synchronizing the overlapping elements in y CSR5 SpMV}
@@ -1164,8 +1166,8 @@ threads calibrator is added to the result to perform final synchronization.
 \subsection{Tail partition}
 
 If the number of non-zero elements for a matrix isn't divisible by \(\sigma{} \cdot \omega{}\), there
-is a ``tail'' partition which does not form a full tile. This partition is processed by the same SpMV
-algorithm as the one introduced in Section~\ref{smsf:csr} for CSR matrices.
+is a ``tail'' partition which does not form a full tile. The algorithm introduced in Section~\ref{smsf:csr} 
+for CSR matrices is used to process this tail partition.
 
 \section{Selecting on disk storage format}\label{impl:matlabComp}
 
@@ -1173,20 +1175,20 @@ The matrices for which parallelized (and distributed) matrix-vector multiplicati
 have large on-disk size. This section compares Matrix Market Exchange Format~\cite{mmef} introduced in
 Section~\ref{theory:MMEF} and HDF5 backed format
 introduced by Matlab 7.3 for storing sparse matrices, comparing both on-disk size and throughput
-measured by number of elements loaded in a second.
+measured by the number of elements loaded in a second.
 
-\subsection{Matrix market storage format}
+\subsection{Matrix Market storage format}
 
-Matrix market exchange format is designed to be easy to parse. It provides a library to parse
+Matrix Market exchange format is designed to be easy to parse. It provides a library to parse
 the header and matrix dimensions~\cite{mmC}.
-The numerical entries, need to be parsed manually, for which most implemen\-tations use variations of \texttt{scanf}.
-Initial implementation in dim used \texttt{scanf} as well. This however proved to be a bottleneck as
+The numerical entries need to be parsed manually, for which most implementations use variations of \texttt{scanf}.
+Initial implementation in dim used \texttt{scanf} as well. However, this proved to be a bottleneck as
 the average throughput was only \num{4515017} elements/s. Profiling has shown that parsing the string representation
-was the the most computationally intensive step as 97.89\% of time spent was in \texttt{scanf} itself.
-To improve the loading times, in an effort to
+was the most computationally intensive step as 97.89\% of time spent was in \texttt{scanf} itself.
+To improve the loading times, to
 shorten the iteration times the process of benchmarking, an implementation using
-\mintinline{C++}{scnlib}\footnote{\mintinline{C++}{scnlib} is a modern C++ alternative to scanf.}
-was created. With an average throughput of \num{6068194} elements/s it resulted in 1.34x speedup, which was
+\mintinline{C++}{scnlib}\footnote{\mintinline{C++}{scnlib} is a modern C++ alternative to \texttt{scanf}.}
+was created. With an average throughput of \num{6068194} elements/s it resulted in 1.34x speed up, which was
 still a major development bottleneck.
 
 \begin{figure}[!h]
@@ -1203,7 +1205,7 @@ still a major development bottleneck.
 \newcommand{\hdts}[1]{\textcolor{hdtsc}{#1}}
 \newcommand{\hdat}[1]{\textcolor{hdatc}{#1}}
 
-Matrices stored in binary format using HDF5 introduced in~\ref{theory:HDF5} are supported by MATLAB,
+Loading matrices stored in binary format using HDF5 introduced in~\ref{theory:HDF5} is supported by MATLAB,
 as well as PETSc\footnote{PETSc has to be configured with HDF5 support when it is built}.
 They are stored in CSR format, represented as a single HDF5 group containing 3 datasets:
 \begin{itemize}
@@ -1211,7 +1213,7 @@ They are stored in CSR format, represented as a single HDF5 group containing 3 d
     \item \hdts{aj} - column index.
     \item \hdts{ir} - row pointer.
 \end{itemize}
-And a single attribute \hdat{MATLAB\_sparse} containing number of columns
+And a single attribute \hdat{MATLAB\_sparse} containing the number of columns
 of the stored matrix.
 
 \newtcolorbox{infobox}[1][]{%
@@ -1255,9 +1257,9 @@ and 18.12x speedup over \texttt{scnlib} implementation.
 \end{figure}
 
 
-Since MMEF uses coordinate format to store sparse matrices, it may omit elements from symmetrical matrices which can be inferred
-from their symmetrical counterparts. This can be used as size optimization. Matrices 2, 3 and 4 in Figure~\ref{impl:stor:size}
-are symmetrical, thus their on-disk size can be smaller with MMEF than it is with HDF5.
+Since MMEF uses the coordinate format to store sparse matrices, it may omit elements from symmetrical matrices, which can be inferred
+from their symmetrical counterparts. This fact can be used as size optimization. Matrices 2, 3 and 4 in Figure~\ref{impl:stor:size}
+are symmetrical. Thus their on-disk size can be smaller with MMEF compared to HDF5.
 
 \begin{figure}[htp]
     \centering
@@ -1265,16 +1267,16 @@ are symmetrical, thus their on-disk size can be smaller with MMEF than it is wit
     \caption{On-disk size of HDF5 and MMEF storage formats.}\label{impl:stor:size}
 \end{figure}
 
-However, HDF5 format supports dataset compression by LZMA. Setting chunk size to 4096 and compression level to 5 for each of the 3 datasets,
-it is possible to achieve considerable storage savings (the biggest matrix is 7.8x smaller stored as compressed HDF5 compared to MMEF)
+However, the HDF5 format supports dataset compression by LZMA. Setting chunk size to 4096 and compression level to 5 for each of the three datasets,
+it is possible to achieve considerable storage savings (the largest matrix is 7.8x smaller stored as compressed HDF5 compared to MMEF)
 while maintaining better loading performance, with average throughput being \num{27074837} elements/s, about 4x slower than HDF5 with no compression,
-but still 4 and 6 times faster than scnlib and scanf implementations respectively.
+but still 4 and 6 times faster than \texttt{scnlib} and \texttt{scanf} implementations respectively.
 
 
 \section{On disk storage for CSR5 matrices}\label{csr5:onDisk}
 
-With HDF5 proving to be the faster alternative to textual MMEF format, it is used for storing sparse
-matrices in CSR5 format as well.
+With HDF5 proving to be the faster alternative to textual MMEF format, it is also used for storing sparse
+matrices in CSR5 format.
 
 Each of the sequential data members \hdts{row\_ptr}, \hdts{col\_idx}, \hdts{vals}, \hdts{tile\_ptr},
 \hdts{empty\_offset}, \hdts{empty\_offset\_ptr}, are stored as one dimensional datasets of same name
@@ -1311,11 +1313,11 @@ and same datatype\footnote{\csre{H5T_STD_U32LE} for all the index arrays and \cs
     \caption{Layout of a sparse matrix stored as a HDF5 group}
 \end{figure}
 
-\hdts{tile\_desc} is stored as an one dimensional dataset, with datatype being
-an array of 4 little endian unsigned 32-bit integers. In essence storing the data to HDF5 file as
-they appear in memory. This does put a soft requirement on the code storing the CSR5 matrix to a file
+\hdts{tile\_desc} is stored as a one-dimensional dataset, with datatype being
+an array of 4 little-endian unsigned 32-bit integers. In essence, storing the data to the HDF5 file as
+they appear in memory. This decision does put a soft requirement on the code storing the CSR5 matrix to a file
 and the code loading it compiled by the same version of a compiler, as
-bit field in-memory layout is implementation defined, but allows faster loading. Furthermore both
+the bit-field in-memory layout is implementation-defined but allows faster loading. Furthermore, both
 Clang and GCC implement this in the same way so the requirement is only a soft one, as compatibility can
 be easily tested.
 
@@ -1323,16 +1325,16 @@ be easily tested.
 
 \chapter{Distributed Sparse Matrix Vector Multiplication}
 
-Using the principles described in Section~\ref{csr5:spmv}, sparse matrix vector multiplication can be
+Using the principles described in Section~\ref{csr5:spmv}, sparse matrix-vector multiplication can be
 distributed across multiple processes. The tiles are first divided among processes as they would be
 among threads in a single process implementation (see Figure~\ref{csr5:thr_dist}). Then, these chunks
-assigned to processes are further subdivided among the threads of each process. Furthermore, same
-synchronization principles apply, thus only processes which have first tile starting with red-subsegment
+assigned to processes are further subdivided among the threads of each process. Furthermore, the same
+synchronization principles apply, thus only processes that have the first tile starting with red-subsegment
 (as defined in~\ref{csr5:spmv}) need to synchronize with the process to the
 left\footnote{In the sense of MPI topology.}. This implementation will be referred to as D-CSR5.
 
 Section~\ref{dspmv:load} outlines the algorithm used to load the chunks for each process using HDF5 and
-MPI-IO. Then, the synchronization algorithm for edge elements of result vector as well as an algorithm for
+MPI-IO. Then, the synchronization algorithm for edge elements of the result vector as well as an algorithm for
 distributing the result vector amongst the processes is introduced in~\ref{dspmv:sync}.
 
 
@@ -1341,25 +1343,25 @@ distributing the result vector amongst the processes is introduced in~\ref{dspmv
 
 Since CSR5 partitions the non-zero elements of a matrix into tiles of
 size \(\sigma \cdot \omega\), each node can load only data relevant for tiles
-assigned to it. This is enabled by two features of HDF5, first of which
-is reading hyperslabs. A hyperslab is a subset of a HDF5 dataset, so
+assigned to it. This is enabled by two features of HDF5, the first of which
+is reading hyperslabs. A hyperslab is a subset of an HDF5 dataset, so
 nodes do not have to read whole datasets.
 
-Second feature enabling this, is HDF5s ability to utilize MPI-IO, allowing concurrent
-reads from every process rather than reading the matrix in main process
+The second feature enabling this is HDF5s ability to utilize MPI-IO, allowing concurrent
+reads from every process rather than reading the matrix in the main process
 and distributing it amongst the rest of the processes. This imposes a minor limitation
 on how the matrix can be stored, or rather how the dataset needs to be structured.
 Since MPI-IO was introduced in MPI revision 2.0~\cite{mpi20} in 1997, its API takes
-size of data to be read as an integer argument, thus limiting the maximum amount of data read
-in a single call to 2GiB. To avoid exceeding this limit, dataset needs to be chunked
-\footnote{experimentally, chunks of 1000000 elements or ~8MiB of double precision floating
-    point numbers performed best}, else HDF5 tries to read all of it at once and MPI-IO fails.
+the size of data to be read as an integer argument, thus limiting the maximum amount of data read
+in a single call to 2GiB. The dataset needs to be chunked to avoid exceeding this limit
+\footnote{experimentally, chunks of 1000000 elements or ~8MiB of double-precision floating-point numbers performed best}, 
+else HDF5 tries to read all of it at once, resulting in an error in MPI-IO.
 
 
-First step of loading a CSR5 matrix is obtaining the number of tiles of the matrix. This can be
-done by querying the dimensions of \csre{tile_desc} dataset which contains descriptor for each tile.
-The number of tiles is then divided by number of processes, meaning every process gets equal
-number of tiles (bar the last process which can have less) which in turns means equal number
+The first step of loading a CSR5 matrix is obtaining the number of tiles of the matrix. This can be
+done by querying the dimensions of \csre{tile_desc} dataset, which contains a descriptor for each tile.
+The number of tiles is then divided by the number of processes, meaning every process gets equal
+number of tiles (bar the last process, which can have less), which in turn means equal number
 of non-zero elements.
 
 
@@ -1537,11 +1539,11 @@ first and last output index for each process.
     \caption{Output ranges for processes p1-p4}
 \end{figure}
 
-Neighboring processes may share an output index. In the case of \(Ax = y\) established in previous section,
-\(y_2\) and \(y_3\) are partially computed by processes p2, p3 and p3, p4 respectively. To enable synchronization
-of these elements, an ownership model needs to be defined. The process with lowest rank
-(in terms of MPI ranks), that writes to an output index owns the element of \(y\) it points to.
-Thus \(y_2\) is owned by p2 and \(y_3\) is owned by p3.
+Neighboring processes may share an output index. In the case of \(Ax = y\) established in the previous section,
+\(y_2\) and \(y_3\) are partially computed by processes p2, p3 and p3, p4 respectively. 
+An ownership model needs to be defined before the synchronization can be described. 
+The process with the lowest rank (in terms of MPI ranks) that writes to an output index 
+owns the element of \(y\). Thus \(y_2\) is owned by p2 while \(y_3\) is owned by p3.
 
 \begin{figure}[htp]
     \centering
