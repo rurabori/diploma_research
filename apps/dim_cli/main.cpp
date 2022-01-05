@@ -56,9 +56,6 @@ int main(int argc, char* argv[]) try {
     if (arguments.download.has_value())
         return download(arguments.download);
 
-    if (arguments.csr5_info.has_value())
-        return csr5_info(arguments.csr5_info);
-
     if (arguments.generate_heatmap.has_value())
         return generate_heatmap(arguments.generate_heatmap);
 

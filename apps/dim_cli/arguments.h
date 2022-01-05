@@ -41,14 +41,6 @@ struct dim_cli
     };
     store_matrix_t store_matrix;
 
-    struct csr5_info_t : structopt::sub_command
-    {
-        path input;
-        size_t row;
-        std::optional<std::string> matrix_group{"A"};
-    };
-    csr5_info_t csr5_info;
-
     struct compare_results_t : structopt::sub_command
     {
         // file to load a matrix from.
@@ -93,9 +85,8 @@ struct dim_cli
 
 STRUCTOPT(dim_cli::compare_results_t, input_file, input_file_2, lhs_group, rhs_group);
 STRUCTOPT(dim_cli::store_matrix_t, input, output, in_group_name, group_name, append, format, config);
-STRUCTOPT(dim_cli::csr5_info_t, input, row, matrix_group);
 STRUCTOPT(dim_cli::download_t, url, destination_dir, format);
 STRUCTOPT(dim_cli::generate_heatmap_t, input_file, output_file, group, resolution, process_count);
-STRUCTOPT(dim_cli, store_matrix, csr5_info, compare_results, download, generate_heatmap, log_level);
+STRUCTOPT(dim_cli, store_matrix, compare_results, download, generate_heatmap, log_level);
 
 #endif /* APPS_DIM_CLI_ARGUMENTS */
