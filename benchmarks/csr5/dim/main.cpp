@@ -55,7 +55,7 @@ int main_impl(const arguments_t& arguments) {
 
     auto x = cache_aligned_vector<double>(dimensions.cols, 1.);
     auto Y = cache_aligned_vector<double>(matrix.dimensions.rows, 0.);
-    auto calibrator = matrix.allocate_calibrator();
+    auto calibrator = matrix.create_calibrator();
 
     // do some iterations to warm-up cache.
     for (size_t i = 0; i < 5; ++i)

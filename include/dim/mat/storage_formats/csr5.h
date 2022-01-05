@@ -267,6 +267,22 @@ struct csr5
     using tile_descriptor_type = tile_descriptor_t<sigma, omega>;
     using tile_col_storage = typename tile_descriptor_type::tile_column_descriptor::storage_t;
     using tile_ptr_type = tile_ptr_t<UnsignedType>;
+    using calibrator_type = calibrator_t<ValueType>;
+
+    enum class spmv_strategy
+    {
+        //! @brief adresses output vector directly.
+        absolute,
+        //! @brief adresses output vector relatively to where first tile starts.
+        partial
+    };
+
+    struct spmv_data_t
+    {
+        std::span<const ValueType> x;
+        std::span<ValueType> y;
+        calibrator_type& calibrator;
+    };
 
     struct csr5_info_t
     {
@@ -438,7 +454,6 @@ struct csr5
 
     csr5_info_t csr5_info;
 
-    // TODO: these are irrelevant for the matrix itself, needed only for SPmV, make them arguments.
     size_t val_offset{0};
     bool skip_tail{false};
 
@@ -476,38 +491,6 @@ private:
         transpose(vals);
         transpose(col_idx);
     }
-
-public:
-    static auto from_csr(csr<ValueType, StorageContainer> csr) -> csr5 {
-        auto&& info = csr5_info_t::from_csr(csr);
-
-        csr5 val{.dimensions = csr.dimensions,
-                 .vals = std::move(csr.values),
-                 .col_idx = std::move(csr.col_indices),
-                 .row_ptr = std::move(csr.row_start_offsets),
-                 .csr5_info = std::move(info)};
-
-        val.transpose();
-
-        return val;
-    }
-
-    [[nodiscard]] auto tail_partition_start() const noexcept -> UnsignedType { return csr5_info.tile_ptr.back().idx(); }
-
-    static auto load_x(std::span<const ValueType> x, std::span<const UnsignedType> column_index_partition,
-                       size_t offset) noexcept {
-        return _mm256_set_pd(x[column_index_partition[offset + 3]], x[column_index_partition[offset + 2]],
-                             x[column_index_partition[offset + 1]], x[column_index_partition[offset]]);
-    }
-
-    using calibrator_type = calibrator_t<ValueType>;
-    auto allocate_calibrator() const noexcept -> calibrator_type { return calibrator_type{}; }
-    struct spmv_data_t
-    {
-        std::span<const ValueType> x;
-        std::span<ValueType> y;
-        calibrator_type& calibrator;
-    };
 
     struct spmv_thread_data
     {
@@ -597,14 +580,6 @@ public:
                                        .vals = std::span{self.vals}.subspan(tile_id * tile_size(), tile_size()),
                                        .col_idx = std::span{self.col_idx}.subspan(tile_id * tile_size(), tile_size())};
         }
-    };
-
-    enum class spmv_strategy
-    {
-        //! @brief adresses output vector directly.
-        absolute,
-        //! @brief adresses output vector relatively to where first tile starts.
-        partial
     };
 
     template<spmv_strategy Strategy = spmv_strategy::absolute>
@@ -783,9 +758,7 @@ public:
         if (skip_tail)
             return;
 
-        // TODO: abstract this away to a separate method as well.
         const auto offset = Strategy == spmv_strategy::absolute ? 0 : csr5_info.tile_ptr.front().idx();
-
         const auto first_tail_element = csr5_info.tile_count * tile_size();
 
         const auto tail_start = tail_partition_start() - offset;
@@ -808,6 +781,40 @@ public:
         }
     }
 
+public:
+    /**
+     * @brief Creates a CSR5 matrix from a CSR one.
+     *
+     * @param csr to use, std::move() into this method if you don't need to retain the CSR matrix.
+     * @return csr5 resulting matrix.
+     */
+    static auto from_csr(csr<ValueType, StorageContainer> csr) -> csr5 {
+        auto&& info = csr5_info_t::from_csr(csr);
+
+        csr5 val{.dimensions = csr.dimensions,
+                 .vals = std::move(csr.values),
+                 .col_idx = std::move(csr.col_indices),
+                 .row_ptr = std::move(csr.row_start_offsets),
+                 .csr5_info = std::move(info)};
+
+        val.transpose();
+
+        return val;
+    }
+
+    //! @brief the index in output vector at which tail partition elements start.
+    [[nodiscard]] auto tail_partition_start() const noexcept -> UnsignedType { return csr5_info.tile_ptr.back().idx(); }
+
+    //! @brief creates a calibrator for spmv.
+    auto create_calibrator() const noexcept -> calibrator_type { return calibrator_type{}; }
+
+    /**
+     * @brief Performs Sparse Matrix-Vector multiplication (A*x) = y.
+     *
+     * @tparam Strategy absolute for full matrices, partial for partial ones.
+     * @param spmv_data @see spmv_data_t description.
+     * @return auto
+     */
     template<spmv_strategy Strategy = spmv_strategy::absolute>
     auto spmv(spmv_data_t spmv_data) const {
         if (spmv_data.x.size() != dimensions.cols)
@@ -821,23 +828,28 @@ public:
         spmv_tail_partition<Strategy>(spmv_data);
     }
 
+    /**
+     * @brief Performs Sparse Matrix-Vector multiplication (A*x) = y.
+     *
+     * @tparam Strategy absolute for full matrices, partial for partial ones.
+     * @param x
+     * @param y
+     */
     template<spmv_strategy Strategy = spmv_strategy::absolute>
-    auto spmv(std::span<const ValueType> x, std::span<ValueType> y, calibrator_type& calibrator) const {
-        spmv<Strategy>(spmv_data_t{.x = x, .y = y, .calibrator = calibrator});
+    auto spmv(std::span<const ValueType> x, std::span<ValueType> y) const -> void {
+        auto calibrator = create_calibrator();
+        spmv<Strategy>(x, y, calibrator);
     }
 
-    template<spmv_strategy Strategy = spmv_strategy::absolute>
-    auto spmv(std::span<const ValueType> x, std::span<ValueType> y) const {
-        auto calibrator = allocate_calibrator();
-        return spmv<Strategy>(x, y, calibrator);
-    }
-
+    //! @brief checks whether the first tile of this matrix is uncapped from top (red section).
     [[nodiscard]] auto first_tile_uncapped() const noexcept -> bool {
         return csr5_info.tile_desc.front().is_uncapped();
     }
 
+    //! @brief the first output index when performing SpMV.
     [[nodiscard]] auto first_row_idx() const noexcept { return csr5_info.first_row_idx(); }
 
+    //! @brief the last output index when performing SpMV.
     [[nodiscard]] auto last_row_idx() const noexcept {
         return skip_tail ? csr5_info.last_row_idx() : dimensions.rows - 1;
     }
@@ -848,6 +860,11 @@ public:
         UnsignedType col;
     };
 
+    /**
+     * @brief iterates over the non-zero elements.
+     *
+     * @param body any invocable taking coords and values as parameters.
+     */
     auto iterate(std::invocable<coords_t, ValueType> auto const& body) const noexcept -> void {
         for (size_t end_row_ptr = 1; end_row_ptr < row_ptr.size(); ++end_row_ptr) {
             const auto row = end_row_ptr - 1;
@@ -859,6 +876,7 @@ public:
         }
     }
 
+    //! @brief returns the number of non-zero elements this matrix contains.
     [[nodiscard]] auto non_zero_count() const noexcept -> size_t { return vals.size(); }
 };
 

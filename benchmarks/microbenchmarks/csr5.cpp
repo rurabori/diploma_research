@@ -39,7 +39,7 @@ static void bm_csr5_dim(benchmark::State& state) {
 
     const auto x = dim::mat::cache_aligned_vector<double>(matrix.dimensions.cols, 1.25);
     auto Y = dim::mat::cache_aligned_vector<double>(matrix.dimensions.cols, 0);
-    auto calibrator = matrix.allocate_calibrator();
+    auto calibrator = matrix.create_calibrator();
 
     for (auto _ : state) {
         matrix.spmv({x, Y, calibrator});

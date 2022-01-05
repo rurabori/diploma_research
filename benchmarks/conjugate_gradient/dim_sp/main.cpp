@@ -98,7 +98,7 @@ int main_impl(const arguments_t& args) {
     const auto norm_b = std::sqrt(r_r);
 
     auto As = dim::vec(element_count, 0.);
-    auto calibrator = matrix.allocate_calibrator();
+    auto calibrator = matrix.create_calibrator();
 
     auto cg_stats = cg_stats_t{};
     const auto cg_sw = stopwatch{};

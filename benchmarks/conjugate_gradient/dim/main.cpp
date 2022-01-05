@@ -143,7 +143,7 @@ auto main_impl(const arguments_t& args) -> int {
     // and a view into it conditionally skipping first element.
     auto As_own = As.subview(!mpi_mat.owns_first_row());
 
-    auto calibrator = mpi_mat.matrix().allocate_calibrator();
+    auto calibrator = mpi_mat.matrix().create_calibrator();
     auto x_partial = dim::vec<double>(r.size());
 
     auto r_r = mpi_reduce(r.raw());
