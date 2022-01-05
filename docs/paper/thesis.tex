@@ -164,7 +164,7 @@ Section~\ref{tech:omp} introduces OpenMP API, used to parallelize the computatio
 Section~\ref{tech:mpi} introduces MPI, a Message Passing
 Interface, used for inter-process communication in the distributed SpMV implementation.  Lastly
 Section~\ref{theory:MMEF} introduces Matrix Marked Exchange Format for storing sparse and dense matrices,
-and Section~\ref{theory: HDF5} introduces Hierarchical Data Format v5, used for efficient sparse matrix
+and Section~\ref{theory:HDF5} introduces Hierarchical Data Format v5, used for efficient sparse matrix
 on-disk storage as described in Section~\ref{csr5:onDisk}.
 
 
@@ -324,6 +324,8 @@ OpenMP contains many other primitives for parallel programming such as atomics, 
 and semaphores and can also be used to vectorize loops using the \texttt{simd} construct as shown
 in Figure~\ref{tech:simd:omp}.
 
+\vfil\pagebreak
+
 \section{MPI}\label{tech:mpi}
 
 MPI (Message-Passing Interface) is a message-passing library interface specification.
@@ -453,6 +455,8 @@ A \textbf{blocking} operation combines all four stages outlined in Section~\ref{
 The routine takes an input array, its size, an output array, \texttt{displs} and \texttt{recvcounts}.
 The last two arrays contain offset into the output array and the amount of contributed data for each
 participating process respectively and have to be the same for every participating process.
+
+\pagebreak
 
 \subsection{\texttt{MPI\_Allreduce}}\label{tech:mpi:red}
 
@@ -983,13 +987,12 @@ struct csr5_info {
     \caption{\csre{csr5_info} pseudo-code.}
 \end{figure}
 
-\vfil
-\pagebreak
+\vfil\pagebreak
 
 \section{Sparse matrix vector multiplication}\label{csr5:spmv}
 
 
-\csre{dim} uses CSR5 storage format, described in Section~\ref{csr5Intro}, for sparse matrices. A format purposefully
+\csre{dim} uses CSR5 storage format, described in Section~\ref{csr5Intro}, which was purposefully
 designed to achieve better performance when performing parallel SpMV\@. This section provides an overview
 of this parallel SpMV algorithm (introduced in~\cite{liu2015csr5}) for CSR5 when performed on a multi-threaded
 CPU, which supports AVX2 extensions.
@@ -1026,7 +1029,7 @@ CPU, which supports AVX2 extensions.
                 \node at ($(LLC\x) + (\i * 0.5 + 0.25, 0.25)$) {$i_\i$};
             }
 
-        \node[left=of tileArr, anchor=east] {Tiles:};
+        \node[anchor=east] at ($(tileArr) + (-0.1, 0.25)$) {Tiles:};
     \end{tikzpicture}
     \caption{Processing tiles using 4 threads}\label{csr5:thr_dist}
 \end{figure}
@@ -1052,6 +1055,7 @@ is processed.
     \end{algorithmic}
 \end{algorithm}
 
+
 \subsection{Processing full tiles}
 
 Each thread processes its assigned tile chunk sequentially.
@@ -1076,9 +1080,8 @@ Green sub-segments require no further synchronization. Their sum can be written 
 directly by combining \csre{tile_ptr} and \csre{y_offset} information. Red and blue sub-segment sub results must
 be synchronized as they do not form a complete segment.
 
-
 \begin{algorithm}[h]
-    \caption{Processing assigned tile chunk CSR5 SpMV}
+    \caption{Processing assigned tile chunk CSR5 SpMV}\label{csr5:chunk}
     \begin{algorithmic}
         \Function{spmv\_full\_tiles}{$\var{A}$, $\var{x}$, $\var{calib}$, $\var{y}$}
 
@@ -1149,12 +1152,12 @@ CSR5 SpMV minimizes the critical sections. The tiles within the chunk assigned t
 synchronized since they are processed sequentially in the context of the owning thread. Only a single element of
 \(y\) may be overlapping between neighboring chunks of tiles, which only happens if the first tile of the
 chunk starts with a red sub-section. Synchronization is a two-step process. First, each thread
-stores its first output element in a calibrator during the parallel computation. 
+stores its first output element in a calibrator (see Algorithm~\ref{csr5:chunk}) during the parallel computation. 
 Second, after the parallel part of the algorithm is over, each threads calibrator is added to the result 
-to perform the final synchronization.
+to perform the final synchronization as shown in Algorithm~\ref{csr5:calib}.
 
-\begin{algorithm}
-    \caption{Synchronizing the overlapping elements in y CSR5 SpMV}
+\begin{algorithm}[htp]
+    \caption{Synchronizing the overlapping elements in y CSR5 SpMV}\label{csr5:calib}
     \begin{algorithmic}
         \Function{spmv\_sync}{$\var{calib}$, $\var{y}$}
 
@@ -1172,6 +1175,7 @@ If the number of non-zero elements for a matrix isn't divisible by \(\sigma{} \c
 is a ``tail'' partition which does not form a full tile. The algorithm introduced in Section~\ref{smsf:csr} 
 for CSR matrices is used to process this tail partition.
 
+
 \section{Selecting on disk storage format}\label{impl:matlabComp}
 
 The matrices for which parallelized (and distributed) matrix-vector multiplication has the biggest benefit,
@@ -1182,15 +1186,17 @@ measured by the number of elements loaded in a second.
 
 \subsection{Matrix Market storage format}
 
+
+Matrix Market exchange format is designed to be easy to parse. It provides a library to parse
+the header and matrix dimensions~\cite{mmC}.
+The numerical entries need to be parsed manually, for which most implementations use variations of \texttt{scanf}.
+
 \begin{figure}[htp]
     \centering
     \includegraphics[scale=0.6]{static/mmef_loading.pdf}
     \caption{Loading times of MMEF}
 \end{figure}
 
-Matrix Market exchange format is designed to be easy to parse. It provides a library to parse
-the header and matrix dimensions~\cite{mmC}.
-The numerical entries need to be parsed manually, for which most implementations use variations of \texttt{scanf}.
 Initial implementation in dim used \texttt{scanf} as well. However, this proved to be a bottleneck as
 the average throughput was only \num{4515017} elements/s. Profiling has shown that parsing the string representation
 was the most computationally intensive step as 97.89\% of time spent was in \texttt{scanf} itself.
@@ -1208,9 +1214,9 @@ still a major development bottleneck.
 \newcommand{\hdts}[1]{\textcolor{hdtsc}{#1}}
 \newcommand{\hdat}[1]{\textcolor{hdatc}{#1}}
 
-Loading matrices stored in binary format using HDF5 introduced in~\ref{theory:HDF5} is supported by MATLAB,
+Loading matrices stored in binary format using HDF5 file format introduced in~\ref{theory:HDF5} is supported by MATLAB,
 as well as PETSc\footnote{PETSc has to be configured with HDF5 support when it is built}.
-They are stored in CSR format, represented as a single HDF5 group containing 3 datasets:
+The matrices are stored in CSR format, represented as a single HDF5 group containing 3 datasets:
 \begin{itemize}
     \item \hdts{data} - values of elements.
     \item \hdts{aj} - column index.
@@ -1260,8 +1266,8 @@ and 18.12x speedup over \texttt{scnlib} implementation.
 \end{figure}
 
 
-Since MMEF uses the coordinate format to store sparse matrices, it may omit elements from symmetrical matrices, which can be inferred
-from their symmetrical counterparts. This fact can be used as size optimization. Matrices 2, 3 and 4 in Figure~\ref{impl:stor:size}
+Since MMEF uses the coordinate format to store sparse matrices, it may omit elements from symmetrical matrices, that can be inferred
+from their symmetrical counterparts which can result in significant on-disk size reduction. Matrices 2, 3 and 4 in Figure~\ref{impl:stor:size}
 are symmetrical. Thus their on-disk size can be smaller with MMEF compared to HDF5.
 
 \begin{figure}[htp]
@@ -1270,7 +1276,7 @@ are symmetrical. Thus their on-disk size can be smaller with MMEF compared to HD
     \caption{On-disk size of HDF5 and MMEF storage formats.}\label{impl:stor:size}
 \end{figure}
 
-However, the HDF5 format supports dataset compression by LZMA. Setting chunk size to 4096 and compression level to 5 for each of the three datasets,
+However, the HDF5 format supports dataset compression by LZMA\@. Setting chunk size to 4096 and compression level to 5 for each of the three datasets,
 it is possible to achieve considerable storage savings (the largest matrix is 7.8x smaller stored as compressed HDF5 compared to MMEF)
 while maintaining better loading performance, with average throughput being \num{27074837} elements/s, about 4x slower than HDF5 with no compression,
 but still 4 and 6 times faster than \texttt{scnlib} and \texttt{scanf} implementations respectively.
@@ -1445,7 +1451,7 @@ are both starting at \csre{row_ptr[0]} and ending at \csre{row_ptr[-1]}.
 
 \section{Synchronization}\label{dspmv:sync}
 
-As explained in~\ref{csr5:spmv} a tile may share at most one output element with its neighbor,
+Section~\ref{csr5:spmv} established that a tile may share at most one output element with its neighbor,
 so a process has to synchronize at most two elements in its output range in \(y\). The synchronization
 mechanism is explained in Section~\ref{dspmv:sync}. If all processes need the whole result vector,
 it can be distributed as explained by Section~\ref{dspmv:dist}.
@@ -1897,9 +1903,9 @@ Three square matrices were selected for benchmarking.
 
 The benchmarks were run on the RCI cluster, using AMD nodes.
 
-\textbf{CPU}: \texttt{2 x AMD EPYC 7543 (64 cores/128 threads 2.8GHz)} \\
-\textbf{Network}: \texttt{200GbE InfiniBand EDR for MPI communication}\\
 \begin{minipage}{0.5\textwidth}
+    \textbf{CPU}: \texttt{2 x AMD EPYC 7543} \\
+    \textbf{Network}: \texttt{200GbE InfiniBand EDR}\\
     \textbf{RAM}: \texttt{1TB}\\
     \textbf{Storage}: \texttt{8TB NVMe} \\
 \end{minipage}%
@@ -2020,7 +2026,7 @@ so this approach yields good load distribution across all processes.
     \caption{PETSc implementation benchmark results}
 \end{figure}
 
-The benchmark results show that a significant portion of time each iteration is spent in the \texttt{distributing s}
+The benchmark results show that a significant portion of time each iteration is spent in the \texttt{DCG1:distributing s}
 step. This issue partly stems from a design decision made in PETSc. The distributed vectors (such as \csre{s})
 have local size (size of vector part physically present in process) and global size (size of the whole vector).
 For vector-vector operations such as \csre{axpy} or dot product, PETSc requires the participating vectors to
@@ -2031,7 +2037,7 @@ in its memory. To obtain a sub-vector of \csre{s}, suitable for distributed \csr
 
 However, \csre{VecGetSubVector} may allocate new memory to store the sub-vector in, releasing said memory
 when \csre{VecRestoreSubVector} is called, thus skewing the actual time needed for synchronization of
-\csre{s} itself. For this reason, the \texttt{distributing s} step will not be considered when comparing
+\csre{s} itself. For this reason, the \texttt{DCG1:distributing s} step will not be considered when comparing
 the two implemen\-tations.
 
 \begin{figure}[htp]
@@ -2377,10 +2383,12 @@ with a different color for each process instead. Resolution can also be specifie
 %change appropriately
 \dirtree{%
     .1 readme.txt\DTcomment{the file with CD contents description}.
-    .1 exe\DTcomment{the directory with executables}.
-    .1 src\DTcomment{the directory of source codes}.
-    .2 wbdcm\DTcomment{implementation sources}.
-    .2 thesis\DTcomment{the directory of \LaTeX{} source codes of the thesis}.
+    .1 src\DTcomment{the directory of source code}.
+    .2 include\DTcomment{Header files}.
+    .2 lib\DTcomment{Libraries}.
+    .2 apps\DTcomment{Applications}.
+    .2 benchmarks\DTcomment{Benchmarks}.
+    .2 docs/paper\DTcomment{the thesis source in \LaTeX format}.
     .1 thesis.pdf\DTcomment{the thesis text in PDF format}.
 }
 
