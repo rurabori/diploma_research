@@ -80,7 +80,7 @@ struct dim_cli
     };
     generate_heatmap_t generate_heatmap;
 
-    std::optional<log_level_t> log_level{log_level_t::warn};
+    std::optional<log_level_t> log_level{log_level_t::info};
 };
 
 STRUCTOPT(dim_cli::compare_results_t, input_file, input_file_2, lhs_group, rhs_group);
