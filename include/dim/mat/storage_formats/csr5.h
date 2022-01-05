@@ -4,6 +4,7 @@
 #include <dim/bit.h>
 #include <dim/mat/storage_formats/base.h>
 #include <dim/mat/storage_formats/csr.h>
+#include <dim/mat/storage_formats/csr5/calibrator.h>
 #include <dim/memory/aligned_allocator.h>
 #include <dim/opt.h>
 #include <dim/simd.h>
@@ -88,8 +89,8 @@ struct tile_descriptor_t
 
         iterate_columns([&](size_t col_idx, auto& col) {
             col.y_offset = desc.segn_scan[col_idx];
-            col.scansum_offset
-              = (has_rbit_set(desc.present, col_idx) ? std::countr_zero(desc.present >> (col_idx + 1)) : 0);
+            col.scansum_offset = static_cast<col_storage>(
+              has_rbit_set(desc.present, col_idx) ? std::countr_zero(desc.present >> (col_idx + 1)) : 0);
         });
 
         return desc.segn_scan[Omega];
@@ -499,17 +500,17 @@ public:
                              x[column_index_partition[offset + 1]], x[column_index_partition[offset]]);
     }
 
+    using calibrator_type = calibrator_t<ValueType>;
+    auto allocate_calibrator() const noexcept -> calibrator_type { return calibrator_type{}; }
     struct spmv_data_t
     {
         std::span<const ValueType> x;
         std::span<ValueType> y;
-        std::span<ValueType> calibrator;
+        calibrator_type& calibrator;
     };
 
     struct spmv_thread_data
     {
-        static constexpr auto stride = dim::memory::hardware_destructive_interference_size / sizeof(ValueType);
-
         // these need to be aligned to 32 as the intrinsics require it.
         const spmv_data_t& data;
         size_t tid{};
@@ -543,7 +544,7 @@ public:
             if (row_start == start_row_start && !direct) {
                 // we're in the first tile of chunk assigned to this thread, and the tile is unsealed from top. Need to
                 // sync with previous chunk. Throw into the calibrator for now.
-                data.calibrator[tid * stride] += val;
+                data.calibrator[tid] += val;
                 return;
             }
 
@@ -773,10 +774,8 @@ public:
 
     auto spmv_calibrator(spmv_data_t spmv_data, const spmv_parallel_data_t& parallel_data,
                          auto&& accessor) const noexcept {
-        constexpr auto stride = spmv_thread_data::stride;
-
         for (size_t i = 0; i < parallel_data.calibrator_count(); i++)
-            spmv_data.y[accessor(i * parallel_data.chunk_size).idx()] += spmv_data.calibrator[i * stride];
+            spmv_data.y[accessor(i * parallel_data.chunk_size).idx()] += spmv_data.calibrator[i];
     }
 
     template<spmv_strategy Strategy = spmv_strategy::absolute>
@@ -823,14 +822,8 @@ public:
     }
 
     template<spmv_strategy Strategy = spmv_strategy::absolute>
-    auto spmv(std::span<const ValueType> x, std::span<ValueType> y, std::span<ValueType> calibrator) const {
+    auto spmv(std::span<const ValueType> x, std::span<ValueType> y, calibrator_type& calibrator) const {
         spmv<Strategy>(spmv_data_t{.x = x, .y = y, .calibrator = calibrator});
-    }
-
-    auto allocate_calibrator() const noexcept -> StorageContainer<ValueType> {
-        return StorageContainer<ValueType>(static_cast<size_t>(::omp_get_max_threads())
-                                             * dim::memory::hardware_destructive_interference_size / sizeof(ValueType),
-                                           ValueType{});
     }
 
     template<spmv_strategy Strategy = spmv_strategy::absolute>
