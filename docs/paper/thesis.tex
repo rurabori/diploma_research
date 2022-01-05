@@ -135,7 +135,7 @@ as well as some machine learning algorithms, such as support vector machines.
 While matrix-vector multiplication is a simple multiplication task, it is non-trivial to load balance
 properly for every sparsity structure matrix when parallelized.
 
-The conjugate gradient algorithm is one of the best known iterative methods, which can be used to solve large
+The conjugate gradient algorithm is one of the best-known iterative methods, which can be used to solve large
 symmetric positive definite linear systems. With sparse matrix-vector multiplication being the most
 computationally intensive step of a conjugate gradient iteration, parallelizing the kernel and distributing
 the computation across multiple nodes can result in significantly shorter iteration times.
@@ -261,7 +261,7 @@ as shown in Figure~\ref{tech:simd:omp}.
 \end{figure}
 
 Lastly, standard C++ may be used to produce vectorized code by utilizing \csre{<execution>} header
-and its \csre{par_unseq} and \csre{unseq} execution policies. These however only aid the compiler
+and its \csre{par_unseq} and \csre{unseq} execution policies. However, these only aid the compiler
 auto-vectorization and do not guarantee the vector instructions will actually be used.
 
 
@@ -300,11 +300,12 @@ of the associated loop(s) will be executed in parallel by the threads of the cur
 team. As a result, the execution is only parallelized if the loop is performed inside of a
 \texttt{parallel} region in the first place.
 
-All of the allowed clauses for the directive can be found in~\cite{openmp18}, the only relevant one
+All of the allowed clauses for the directive can be found in~\cite{openmp18}. The only relevant clause
 for this thesis is \texttt{schedule}, specified as \\
-\texttt{schedule([modifier [, modifier]:]kind[, chunk\_size])}. Modifier isn't immediately relevant
-but \texttt{kind} is. \textbf{kind} specifies, how the work is distributed among the threads.
+\texttt{schedule([modifier [, modifier]:]kind[, chunk\_size])}.
 
+Modifier isn't immediately relevant
+but \texttt{kind} is. \textbf{kind} specifies, how the work is distributed among the threads.
 When \texttt{dynamic} kind is specified, the iterations are distributed among threads dynamically.
 Meaning when a thread finishes processing its assigned chunk (of \texttt{chunk\_size} elements),
 it requests a new chunk until no chunks remain.
@@ -334,7 +335,7 @@ in Figure~\ref{tech:simd:omp}.
 
 \section{MPI}\label{tech:mpi}
 
-MPI (Message-Passing Interface) is a message-passing library interface specification.
+MPI (Message-Passing Interface) is a message-passing library interface specifica\-tion.
 All parts of this definition are significant. MPI addresses primarily the message-passing parallel
 programming model, in which data is moved from the address space of one process to
 that of another process through cooperative operations on each process.
@@ -411,7 +412,7 @@ It consists of four stages:
 
 \subsection{\texttt{MPI\_Allgatherv}}\label{tech:mpi:gat}
 
-\csre{MPI_Allgatherv} is a collective, blocking operation, which is useful for distributing arrays of
+\csre{MPI_Allgatherv} is a collective, blocking operation; useful for distributing arrays of
 data between processes. A \textbf{collective} operation in MPI is an operation in which a group of
 processes participates, for which the completion
 stage may or may not finish before all processes in the group have started the operation.
@@ -511,7 +512,7 @@ and \csre{Vec} are immediately relevant to this thesis.
 \section{Matrix Market Exchange Format}\label{theory:MMEF}
 
 Matrix Market Exchange Format is a textual format, used as a native format in Matrix Market\footnote{
-    Matrix Market is a repository of sparse matrices which can be found at https://math.nist.gov/MatrixMarket/
+    Matrix Market is a repository of sparse matrices, which can be found at https://math.nist.gov/MatrixMarket/
 }.
 It has two flavors, Array format for dense matrices, Coordinate format for sparse matrices~\cite{mmef}.
 
@@ -604,7 +605,7 @@ Objects are described by giving their pathnames (e.g., \texttt{/Viz}).
 \subsubsection{Dataset}
 
 Datasets organize and contain the "raw" data. They consist of raw data and metadata needed to describe it.
-The metadata needed to describe a dataset consists of datatypes, dataspaces, properties and optionally
+The metadata needed to describe a dataset consists of datatypes, dataspaces, properties, and optionally
 attributes.
 
 \begin{figure}[H]
@@ -1041,7 +1042,8 @@ CPU, which supports AVX2 extensions.
 \end{figure}
 
 Using \(N\) threads, each thread gets a contiguous chunk of tiles of the same size (except possibly the
-last thread) as shown in Figure~\ref{csr5:thr_dist}. The computational kernel of CSR5 SpMV can be split into three main parts. First each thread processes
+last thread) as shown in Figure~\ref{csr5:thr_dist}. The computational kernel of CSR5 SpMV can be split into three main parts.
+First, each thread processes
 its tile chunk. Then the necessary synchronization of sub-results from all threads is performed.
 Lastly, the tail partition of the matrix, which was not in any tile (at most \(\sigma{} \cdot \omega\) elements)
 is processed.
@@ -1272,8 +1274,9 @@ and 18.12x speedup over \texttt{scnlib} implementation.
 \end{figure}
 
 
-Since MMEF uses the coordinate format to store sparse matrices, it may omit elements from symmetrical matrices, that can be inferred
-from their symmetrical counterparts which can result in significant on-disk size reduction. Matrices 2, 3 and 4 in Figure~\ref{impl:stor:size}
+Since MMEF uses the coordinate format to store sparse matrices, it may omit elements from symmetrical
+matrices\footnote{Those can be inferred from their symmetrical counterparts.}, 
+which can result in significant on-disk size reduction. Matrices 2, 3 and 4 in Figure~\ref{impl:stor:size}
 are symmetrical. Thus their on-disk size can be smaller with MMEF compared to HDF5.
 
 \begin{figure}[htp]
@@ -1333,12 +1336,12 @@ an array of 4 little-endian unsigned 32-bit integers. In essence, storing the da
 they appear in memory. This decision does put a soft requirement on the code storing the CSR5 matrix to a file
 and the code loading it compiled by the same version of a compiler, as
 the bit-field in-memory layout is implementation-defined but allows faster loading. Furthermore, both
-Clang and GCC implement this in the same way so the requirement is only a soft one, as compatibility can
+Clang and GCC implement this in the same way, so the requirement is only a soft one, as compatibility can
 be easily tested.
 
 
 
-\chapter{Distributed Sparse Matrix Vector Multiplication}
+\chapter{Distributed Sparse Matrix-Vector Multiplication}
 
 Using the principles described in Section~\ref{csr5:spmv}, sparse matrix-vector multiplication can be
 distributed across multiple processes. The tiles are first divided among processes as they would be
@@ -1376,7 +1379,7 @@ else HDF5 tries to read all of it at once, resulting in an error in MPI-IO.
 The first step of loading a CSR5 matrix is obtaining the number of tiles of the matrix. This can be
 done by querying the dimensions of \csre{tile_desc} dataset, which contains a descriptor for each tile.
 The number of tiles is then divided by the number of processes, meaning every process gets equal
-number of tiles (bar the last process, which can have less), which in turn means equal number
+number of tiles (bar the last process, which can have less), which in turn means an equal number
 of non-zero elements.
 
 
@@ -1457,7 +1460,7 @@ are both starting at \csre{row_ptr[0]} and ending at \csre{row_ptr[-1]}.
 
 \section{Synchronization}\label{dspmv:sync}
 
-Section~\ref{csr5:spmv} established that a tile may share at most one output element with its neighbor,
+Section~\ref{csr5:spmv} has established that a tile can share at most one output element with its neighbor,
 so a process has to synchronize at most two elements in its output range in \(y\). The synchronization
 mechanism is explained in Section~\ref{dspmv:sync}. If all processes need the whole result vector,
 it can be distributed as explained by Section~\ref{dspmv:dist}.
@@ -1926,7 +1929,7 @@ The benchmarks were run on the RCI cluster, using AMD nodes.
 \section{Single process implementation}
 
 Single process implementation uses CSR5 format for storing the sparse matrix and the
-SpMV algorithm  described in Section~\ref{csr5:spmv} for the \(A \cdot s\) step. It was ran
+SpMV algorithm  described in Section~\ref{csr5:spmv} for the \(A \cdot s\) step. It was benchmarked
 with 16, 32, 64, and 128 CPUs available for each input matrix. The naming of steps
 in the graphs follows the naming scheme introduced in Section~\ref{dcg:steps}.
 
@@ -2072,7 +2075,7 @@ layout and input matrix combination is shown in Figure~\ref{bench:petsc:table}.
         \csre{8-1-16}   & 3.72                                   & 4.81                                 & 5.57                                  & 7.03 & 8.53      & 9.46 \\
         \bottomrule
     \end{tabular}
-    \caption{Speedup of iteration and SpMV step of iteration using when using D-CSR5 vs PETSc}\label{bench:petsc:table}
+    \caption{Speedup of iteration and SpMV step of iteration using D-CSR5 vs PETSc}\label{bench:petsc:table}
 \end{figure}
 
 
@@ -2159,7 +2162,7 @@ in Alogithm~\ref{app:cg:algo}.
 \section{Distributed conjugate gradient implementation}\label{dcg:steps}
 
 Each process first obtains a full copy of \csre{s}.
-Then the steps of the algorithm above are performed as follows with each step being labeled as
+Then the steps of the algorithm above are performed as follows, with each step being labeled as
 \texttt{CG<num>} for the steps of the actual algorithm and \texttt{DCG<num>} for the steps
 only the distributed version performs.
 
@@ -2205,12 +2208,12 @@ to wait until the sync is over as the owning processes need to have the correct 
 \csre{s}, corresponding to its output range in \csre{As}.
 
 \textbf{Step \texttt{DCG0.1}}: distributing \csre{s}. The resulting \csre{s} is
-then distributed to all processes using same algorithm as described in section
-about synchronization of distributed SpMV results using \csre{MPI_Allgatherv}.
-This distribution step is the heaviest as far as MPI communication goes.
+then distributed to all processes using the same algorithm as described in Section~\ref{dspmv:dist}
+using \csre{MPI_Allgatherv}.
+This distribution step is the most intensive in the context of MPI communication.
 
-Note that this algorithm may be further optimized as described in~\cite{distCGwRedSync}, but
-since it is only used as a test-bed for benchmarking implementation in \csre{dim} these are not
+Note that this algorithm may be further optimized as described in~\cite{distCGwRedSync} but
+since it is only used as a test-bed for benchmarking implementation in \csre{dim}, these are not
 implemented.
 
 \chapter{Building dim}
@@ -2293,7 +2296,7 @@ after it is built by running:
 
 \section{Available executables}
 
-\csre{dim} build produces multiple executables. Benchmarks which were used to produce data for this thesis as
+\csre{dim} build produces multiple executables. Benchmarks which were used to produce data for this thesis, as
 well as \csre{dim_cli}, a command-line utility with multiple subcommands for downloading/converting and
 working with sparse matrices in general. Only the CLI will be explained as the benchmarks map well to
 graphs in this thesis, so they should be pretty self-explanatory.
@@ -2323,8 +2326,8 @@ when \csre{dim} is installed as a SLURM module.
     # will produce matrix.csr5.h5
 \end{minted}
 
-\csre{compare_results} takes a path to HDF5 file (or two files), with result vectors and compares them.
-This command is mainly useful for checking the results are correct and stable across implementations.
+\csre{compare_results} takes a path to HDF5 file (or two files) with result vectors and compares them.
+This command is mainly useful for validating that results are correct and stable across implementations.
 
 \begin{minted}{bash}
     # compare two result vectors.
