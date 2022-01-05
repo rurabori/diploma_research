@@ -886,6 +886,9 @@ another type if storage for a bigger matrix is required.
     \caption{Pseudo-code for structure holding CSR5 matrix}
 \end{figure}
 
+\vfil
+\pagebreak 
+
 \section{CSR5 info}
 
 \csre{csr5_info} structure contains CSR5 specific information, introduced in~\ref{csr5Intro}.
@@ -1179,6 +1182,12 @@ measured by the number of elements loaded in a second.
 
 \subsection{Matrix Market storage format}
 
+\begin{figure}[htp]
+    \centering
+    \includegraphics[scale=0.6]{static/mmef_loading.pdf}
+    \caption{Loading times of MMEF}
+\end{figure}
+
 Matrix Market exchange format is designed to be easy to parse. It provides a library to parse
 the header and matrix dimensions~\cite{mmC}.
 The numerical entries need to be parsed manually, for which most implementations use variations of \texttt{scanf}.
@@ -1191,13 +1200,7 @@ shorten the iteration times the process of benchmarking, an implementation using
 was created. With an average throughput of \num{6068194} elements/s it resulted in 1.34x speed up, which was
 still a major development bottleneck.
 
-\begin{figure}[!h]
-    \centering
-    \includegraphics[scale=0.7]{static/mmef_loading.pdf}
-    \caption{Loading times of MMEF}
-\end{figure}
 
-% TODO: maybe cite matlab and PETSc.
 \subsection{Matlab compatible HDF5 sparse matrix storage}
 
 \colorlet{hdtsc}{red!60!yellow}
