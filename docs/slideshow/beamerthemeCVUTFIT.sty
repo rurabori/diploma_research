@@ -1,0 +1,68 @@
+% LaTeX Beamer theme based on Czech Technical University visual identity
+% and its Faculty of Information Technology common colour scheme
+% based on Beamer theme infolines and color theme whale
+% 
+% Copyright 2007 by Till Tantau
+% Modified 2019 by Ondrej Guth (ondrej.guth@fit.cvut.cz)
+%
+% This file may be distributed and/or modified
+%
+% 1. under the LaTeX Project Public License and/or
+% 2. under the GNU Public License.
+%
+% See the file doc/licenses/LICENSE of LaTeX Beamer for more details.
+% 
+% % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % 
+% IMPORTANT
+% This color theme is not part of LaTeX Beamer.
+% This color theme is not an official scheme of neither CTU nor FIT.
+% % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % 
+
+% % % % % % % % % % % % 
+% Requirements: CTU logos: files logo_FIT.pdf, logo_FIT_negativ.pdf, and symbol_cvut_konturova_verze_cb.pdf,
+% available from https://cvut.cz.
+% May be inserted using the following code:
+% 
+% \pgfdeclareimage[height=0.8cm]{logocvut}{logo_FIT}
+% \pgfdeclareimage[height=0.8cm]{logocvutneg}{logo_FIT_negativ}
+% \pgfdeclareimage[width=.7\textwidth]{symbolcvut}{symbol_cvut_konturova_verze_cb}
+% 
+% % % % % % % % % % % % 
+
+\mode<presentation>
+
+\usefonttheme{structurebold}
+\useinnertheme{rectangles}
+\useoutertheme{infolines}
+\usecolortheme{CVUTFIT}
+
+\titlegraphic{\pgfuseimage{symbolcvut}}
+
+\setbeamertemplate{frametitle}
+{
+    \nointerlineskip
+    \begin{beamercolorbox}[sep=0.1cm,ht=1.8em,wd=\paperwidth]{frametitle}
+        \strut\insertframetitle\strut\hfill\raisebox{-6pt}{\pgfuseimage{logocvutneg}}
+    \end{beamercolorbox}%
+    
+}
+
+\setbeamertemplate{headline}
+{
+  \leavevmode%
+  \hbox{%
+  \begin{beamercolorbox}[wd=.5\paperwidth,ht=2.65ex,dp=1.5ex,right]{section in head/foot}%
+    \usebeamerfont{section in head/foot}\insertsectionhead\hspace*{2ex}
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[wd=.5\paperwidth,ht=2.65ex,dp=1.5ex,left]{subsection in head/foot}%
+    \usebeamerfont{subsection in head/foot}\hspace*{2ex}\insertsubsectionhead
+  \end{beamercolorbox}}%
+  \vskip3pt%
+}
+
+\setbeamersize{text margin left=1em,text margin right=1em}
+
+% \setmainfont{Technika-Light}
+
+\mode
+<all>

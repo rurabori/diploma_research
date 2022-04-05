@@ -13,5 +13,12 @@ tmp
 !/docs/paper/ref.bib
 !/docs/paper/.latexmkrc
 
+/docs/slideshow/*
+!/docs/slideshow/*.sty
+!/docs/slideshow/static
+!/docs/slideshow/slideshow.tex
+!/docs/slideshow/ref.bib
+!/docs/slideshow/.latexmkrc
+
 /scripts/data_analysis/*.png
 /scripts/data_analysis/*.pdf
