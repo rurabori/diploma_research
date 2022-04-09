@@ -271,9 +271,9 @@ struct csr5
 
     enum class spmv_strategy
     {
-        //! @brief adresses output vector directly.
+        //! @brief addresses output vector directly.
         absolute,
-        //! @brief adresses output vector relatively to where first tile starts.
+        //! @brief addresses output vector relatively to where first tile starts.
         partial
     };
 
@@ -341,11 +341,11 @@ struct csr5
 
         auto set_tile_descriptor_y_and_segsum_offsets() -> void {
             iterate_tiles([&](auto tile_id, auto row_start, auto row_stop) {
+                const auto num_set = static_cast<UnsignedType>(tile_desc[tile_id].set_scansum_and_y_offsets());
+
                 // skip tiles which have all elements in the same row (they are fast tracked).
                 if (row_start == row_stop)
                     return;
-
-                const auto num_set = static_cast<UnsignedType>(tile_desc[tile_id].set_scansum_and_y_offsets());
 
                 const auto has_empty_rows = tile_ptr[tile_id].is_dirty();
                 if (has_empty_rows) {
