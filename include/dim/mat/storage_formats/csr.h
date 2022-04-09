@@ -5,8 +5,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <numeric>
+#include <omp.h>
+#include <span>
 #include <vector>
 
+#include <dim/keyval_iterator.h>
 #include <dim/mat/storage_formats/base.h>
 #include <dim/mat/storage_formats/coo.h>
 #include <dim/memory/aligned_allocator.h>
@@ -60,6 +63,15 @@ struct csr
             retval.col_indices[offset] = col;
             retval.values[offset] = value;
         });
+
+#pragma omp parallel for
+        for (size_t idx = 1; idx < retval.row_start_offsets.size(); ++idx) {
+            const auto row_start = retval.row_start_offsets[idx - 1];
+            const auto row_end = retval.row_start_offsets[idx];
+
+            keyval_sort(std::span{retval.col_indices}.subspan(row_start, row_end - row_start),
+                        std::span{retval.values}.subspan(row_start, row_end - row_start));
+        }
 
         return retval;
     }
