@@ -7,6 +7,6 @@ if(${system_scientific_libs})
 
   target_link_libraries(dim_tp_hdf5 INTERFACE PkgConfig::HDF5)
 else()
-  find_package(HDF5 REQUIRED CONFIG)
-  target_link_libraries(dim_tp_hdf5 INTERFACE HDF5::HDF5)
+  find_package(hdf5 REQUIRED CONFIG)
+  target_link_libraries(dim_tp_hdf5 INTERFACE hdf5::hdf5)
 endif()

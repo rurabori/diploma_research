@@ -1,4 +1,5 @@
 find_package(doctest REQUIRED)
+include(doctest)
 
 brr_add_executable(unit_tests)
 target_link_libraries(unit_tests PRIVATE doctest::doctest dim::io dim::mat

@@ -1,4 +1,5 @@
-from conans import ConanFile, CMake, tools, errors
+from conans import ConanFile, tools, errors
+from conan.tools.cmake import CMake
 import os
 
 
@@ -7,7 +8,7 @@ class CSPConan(ConanFile):
     author = "Boris Rúra boris.rura@avast.com"
     settings = "os", "compiler", "build_type", "arch"
 
-    generators = "virtualenv", "cmake_find_package_multi"
+    generators = "virtualenv", "CMakeDeps"
 
     scm = {"type": "git", "subfolder": ".", "url": "auto", "revision": "auto"}
 
@@ -16,10 +17,11 @@ class CSPConan(ConanFile):
         "enable_petsc_benchmark": [True, False],
     }
 
-    default_options = {"system_scientific_libs": False, "enable_petsc_benchmark": False}
+    default_options = {"system_scientific_libs": False,
+                       "enable_petsc_benchmark": False}
 
     requires = [
-        "doctest/2.4.6",
+        "doctest/2.4.8",
         "fmt/8.0.1",
         "tclap/1.2.4",
         "magic_enum/0.7.3",
