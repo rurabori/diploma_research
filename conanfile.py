@@ -35,6 +35,7 @@ class CSPConan(ConanFile):
         "benchmark/1.6.0",
         "nlohmann_json/3.10.4",
         "opencv/4.5.3",
+        "zlib/1.2.12"
     ]
 
     def requirements(self):
