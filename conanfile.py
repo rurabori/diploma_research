@@ -35,7 +35,6 @@ class CSPConan(ConanFile):
         "benchmark/1.6.0",
         "nlohmann_json/3.10.4",
         "opencv/4.5.3",
-        "zlib/1.2.12"
     ]
 
     def requirements(self):
@@ -46,6 +45,7 @@ class CSPConan(ConanFile):
             self.requires("petsc/3.16.0@rurabori/stable")
 
         self.requires("hdf5/1.12.0@rurabori/stable")
+        self.requires("zlib/1.2.12")
 
     def _configure_cmake(self):
         cmake = CMake(self)
