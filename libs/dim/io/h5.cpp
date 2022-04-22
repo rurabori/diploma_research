@@ -43,15 +43,15 @@ auto dataset_props_t::as_checked_plist(size_t dataset_size) const -> plist_t {
 }
 
 auto store(group_view_t group, const dim::mat::csr5<double>& csr5, const csr5_storage_props_t& props) -> void {
-    write_attribute_2(group, "column_count", csr5.dimensions.cols);
+    write_attribute(group, "column_count", csr5.dimensions.cols);
 
-    write_dataset_2(group, "vals", csr5.vals, props.vals);
-    write_dataset_2(group, "col_idx", csr5.col_idx, props.col_idx);
-    write_dataset_2(group, "row_ptr", csr5.row_ptr, props.row_ptr);
-    write_dataset_2(group, "tile_ptr", csr5.csr5_info.tile_ptr, props.tile_ptr);
-    write_dataset_2(group, "tile_desc", csr5.csr5_info.tile_desc, props.tile_desc);
-    write_dataset_2(group, "tile_desc_offset_ptr", csr5.csr5_info.tile_desc_offset_ptr, props.tile_desc_offset_ptr);
-    write_dataset_2(group, "tile_desc_offset", csr5.csr5_info.tile_desc_offset, props.tile_desc_offset);
+    write_dataset(group, "vals", csr5.vals, props.vals);
+    write_dataset(group, "col_idx", csr5.col_idx, props.col_idx);
+    write_dataset(group, "row_ptr", csr5.row_ptr, props.row_ptr);
+    write_dataset(group, "tile_ptr", csr5.csr5_info.tile_ptr, props.tile_ptr);
+    write_dataset(group, "tile_desc", csr5.csr5_info.tile_desc, props.tile_desc);
+    write_dataset(group, "tile_desc_offset_ptr", csr5.csr5_info.tile_desc_offset_ptr, props.tile_desc_offset_ptr);
+    write_dataset(group, "tile_desc_offset", csr5.csr5_info.tile_desc_offset, props.tile_desc_offset);
 }
 
 auto load_csr5(group_view_t group) -> dim::mat::csr5<double> {

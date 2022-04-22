@@ -47,7 +47,7 @@ struct matrix_storage_props_t
 
 template<std::ranges::contiguous_range DataType, typename MemType = std::ranges::range_value_t<DataType>,
          h5::type_translator Translator = type_translator_t<MemType>>
-auto write_dataset_2(location_view_t loc, const std::string& name, DataType&& data, plist_view_t prop_list) -> void {
+auto write_dataset(location_view_t loc, const std::string& name, DataType&& data, plist_view_t prop_list) -> void {
     const auto dataspace = dataspace_t::create(std::size(data));
 
     loc.create_dataset(name, Translator::on_disk(), dataspace, plist_t::defaulted(), prop_list)
@@ -55,24 +55,24 @@ auto write_dataset_2(location_view_t loc, const std::string& name, DataType&& da
 }
 
 template<std::ranges::contiguous_range DataType>
-auto write_dataset_2(location_view_t loc, const std::string& name, DataType&& data, const dataset_props_t& prop_list)
+auto write_dataset(location_view_t loc, const std::string& name, DataType&& data, const dataset_props_t& prop_list)
   -> void {
-    write_dataset_2(loc, name, std::forward<DataType>(data), prop_list.as_checked_plist(std::size(data)));
+    write_dataset(loc, name, std::forward<DataType>(data), prop_list.as_checked_plist(std::size(data)));
 }
 
 template<std::integral DataType, h5::type_translator Translator = type_translator_t<DataType>>
-auto write_attribute_2(group_view_t group, const std::string& name, DataType data) -> void {
+auto write_attribute(group_view_t group, const std::string& name, DataType data) -> void {
     group.create_attribute(name, Translator::on_disk(), dataspace_t::create(H5S_SCALAR)).write(data);
 }
 
 template<template<typename> typename Storage>
 void write_matlab_compatible(group_view_t group, const mat::csr<double, Storage>& matrix,
                              const matrix_storage_props_t& storage_props = {}) {
-    write_dataset_2(group, "data", matrix.values, storage_props.values);
-    write_dataset_2(group, "ir", matrix.col_indices, storage_props.col_idx);
-    write_dataset_2(group, "jc", matrix.row_start_offsets, storage_props.row_start_offsets);
+    write_dataset(group, "data", matrix.values, storage_props.values);
+    write_dataset(group, "ir", matrix.col_indices, storage_props.col_idx);
+    write_dataset(group, "jc", matrix.row_start_offsets, storage_props.row_start_offsets);
 
-    write_attribute_2(group, "MATLAB_sparse", matrix.dimensions.cols);
+    write_attribute(group, "MATLAB_sparse", matrix.dimensions.cols);
 }
 
 template<template<typename> typename Storage = mat::cache_aligned_vector>

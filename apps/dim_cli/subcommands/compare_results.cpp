@@ -5,7 +5,6 @@
 #include <spdlog/spdlog.h>
 
 namespace h5 = dim::io::h5;
-using dim::io::h5::read_vector;
 
 auto compare_results(const dim_cli::compare_results_t& args) -> int {
     constexpr auto nearly_equal = [](auto l, auto r) { return std::abs(l - r) <= (0.01 * std::abs(r)); };
