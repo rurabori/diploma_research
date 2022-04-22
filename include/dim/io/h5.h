@@ -34,6 +34,8 @@ struct dataset_props_t
     std::optional<uint32_t> compression_level{};
 
     explicit operator plist_t() const;
+
+    [[nodiscard]] auto as_checked_plist(size_t dataset_size) const -> plist_t;
 };
 
 namespace detail {
@@ -114,7 +116,7 @@ auto write_dataset_2(location_view_t loc, const std::string& name, DataType&& da
 template<std::ranges::contiguous_range DataType>
 auto write_dataset_2(location_view_t loc, const std::string& name, DataType&& data, const dataset_props_t& prop_list)
   -> void {
-    write_dataset_2(loc, name, std::forward<DataType>(data), static_cast<plist_t>(prop_list));
+    write_dataset_2(loc, name, std::forward<DataType>(data), prop_list.as_checked_plist(std::size(data)));
 }
 
 template<std::integral DataType, h5::type_translator Translator = type_translator_t<DataType>>

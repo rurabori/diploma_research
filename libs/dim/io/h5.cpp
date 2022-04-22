@@ -31,9 +31,9 @@ struct type_translator_t<csr5_t::tile_ptr_type>
     static auto on_disk() noexcept -> decltype(auto) { return underlying_translator_t::on_disk(); }
 };
 
-dataset_props_t::operator plist_t() const {
+auto dataset_props_t::as_checked_plist(size_t dataset_size) const -> plist_t {
     auto result = plist_t::create(H5P_DATASET_CREATE);
-    if (chunk_size)
+    if (chunk_size && chunk_size < static_cast<hsize_t>(dataset_size))
         ::H5Pset_chunk(result.get_id(), 1, std::addressof(*chunk_size));
 
     if (compression_level)
