@@ -14,7 +14,7 @@ auto compare_results(const dim_cli::compare_results_t& args) -> int {
         auto group = in.open_group(group_name);
 
         return std::pair{fmt::format("{}:{}{}", path.filename().native(), group_name, dataset_name),
-                         read_vector(group.get_id(), dataset_name)};
+                         group.open_dataset(dataset_name).template read<std::vector<double>>()};
     };
 
     const auto [lhs_id, lhs] = load_vec_and_info(args.input_file, *args.lhs_group, *args.lhs_dataset);

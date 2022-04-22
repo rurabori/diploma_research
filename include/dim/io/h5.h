@@ -38,65 +38,6 @@ struct dataset_props_t
     [[nodiscard]] auto as_checked_plist(size_t dataset_size) const -> plist_t;
 };
 
-namespace detail {
-    template<typename /*std::ranges::contiguous_range*/ Ty>
-    void write_dataset(location_view_t group, const std::string& name, const Ty& data, type_view_t input_type,
-                       type_view_t storage_type, std::span<const hsize_t> dims, plist_view_t prop_list) {
-        auto dataspace = dataspace_t::create(dims);
-        auto dataset = group.create_dataset(name, storage_type, dataspace, plist_t::defaulted(), prop_list);
-        dataset.write(std::data(data), input_type);
-    }
-
-    template<typename /*std::ranges::contiguous_range*/ Ty>
-    void write_dataset(location_view_t group, const std::string& name, const Ty& data, type_view_t input_type,
-                       type_view_t storage_type, const dataset_props_t& dataset_props) {
-        hsize_t dims[1] = {std::size(data)};
-
-        write_dataset(group, name, data, type_view_t{input_type}, type_view_t{storage_type}, dims,
-                      static_cast<plist_t>(dataset_props));
-    }
-
-    template<typename Ty>
-    void write_scalar_datatype(group_view_t group, const std::string& name, const Ty& value, type_view_t input_type,
-                               type_view_t storage_type) {
-        auto space = dataspace_t::create(H5S_SCALAR);
-        auto attribute = group.create_attribute(name, storage_type, space);
-
-        attribute.write(&value, input_type);
-    }
-
-    template<typename StorageTy>
-    auto read_dataset(group_view_t group, const std::string& name, type_view_t storage_type, type_view_t memory_type) {
-        auto dataset = group.open_dataset(name);
-
-        if (dataset.get_type() != storage_type)
-            throw std::invalid_argument{"Expecting a different storage type."};
-
-        auto space = dataset.get_dataspace();
-
-        StorageTy retval;
-        retval.resize(space.get_dim());
-        dataset.read(std::data(retval), memory_type);
-
-        return retval;
-    }
-
-    template<typename Ty>
-    auto read_scalar_datatype(group_view_t group, const std::string& name, type_view_t storage_type,
-                              type_view_t memory_type) {
-        auto attr = group.open_attribute(name);
-
-        if (attr.get_type() != storage_type)
-            throw std::invalid_argument{"Expecting a different storage type."};
-
-        Ty retval{};
-        attr.read(&retval, memory_type);
-
-        return retval;
-    }
-
-} // namespace detail
-
 struct matrix_storage_props_t
 {
     dataset_props_t values;
@@ -172,8 +113,6 @@ auto store(group_view_t group, const mat::csr5<double>& csr5, const csr5_storage
 auto load_csr5(group_view_t group) -> mat::csr5<double>;
 
 auto load_csr5(const std::filesystem::path& path, const std::string& group_name) -> mat::csr5<double>;
-
-auto read_vector(group_view_t group, const std::string& dataset_name) -> std::vector<double>;
 
 auto is_hdf5(const std::filesystem::path& path) -> bool;
 

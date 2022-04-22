@@ -73,10 +73,6 @@ auto load_csr5(group_view_t group) -> dim::mat::csr5<double> {
     return retval;
 }
 
-auto read_vector(group_view_t group, const std::string& dataset_name) -> std::vector<double> {
-    return detail::read_dataset<std::vector<double>>(group, dataset_name, H5T_IEEE_F64LE, H5T_NATIVE_DOUBLE);
-}
-
 auto is_hdf5(const std::filesystem::path& path) -> bool {
     constexpr std::byte magic[8] = {std::byte{0x89}, std::byte{'H'},  std::byte{'D'},  std::byte{'F'},
                                     std::byte{'\r'}, std::byte{'\n'}, std::byte{0x1a}, std::byte{'\n'}};
