@@ -3,8 +3,8 @@ find_package(structopt REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(magic_enum REQUIRED)
 find_package(CURL REQUIRED)
-find_package(libarchive REQUIRED CONFIG)
-find_package(scnlib REQUIRED CONFIG)
+find_package(LibArchive REQUIRED CONFIG)
+find_package(scn REQUIRED CONFIG)
 find_package(yaml-cpp REQUIRED CONFIG)
 find_package(Threads REQUIRED)
 find_package(OpenCV REQUIRED CONFIG)
@@ -20,10 +20,10 @@ target_link_libraries(
           spdlog::spdlog
           magic_enum::magic_enum
           CURL::libcurl
-          libarchive::libarchive
-          scnlib::scnlib
+          LibArchive::LibArchive
+          scn::scn
           Threads::Threads
-          yaml-cpp::yaml-cpp
+          yaml-cpp
           opencv::opencv)
 
 install(TARGETS dim_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
