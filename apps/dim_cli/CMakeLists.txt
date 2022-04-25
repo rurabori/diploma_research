@@ -23,7 +23,7 @@ target_link_libraries(
           LibArchive::LibArchive
           scn::scn
           Threads::Threads
-          yaml-cpp::yaml-cpp
+          yaml-cpp
           opencv::opencv)
 
 install(TARGETS dim_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
