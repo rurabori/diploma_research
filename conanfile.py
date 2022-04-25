@@ -59,6 +59,7 @@ class CSPConan(ConanFile):
         self.options["opencv"].with_quirc = False
         self.options["opencv"].with_tiff = False
         self.options["opencv"].with_ffmpeg = False
+        self.options["opencv"].with_ade = False
 
         if self.settings.compiler == "Visual Studio":
             del self.options.fPIC
