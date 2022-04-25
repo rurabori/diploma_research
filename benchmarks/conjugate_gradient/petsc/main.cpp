@@ -89,7 +89,6 @@ auto load_partial(const arguments& args) {
     return mat;
 }
 
-auto vec_norm(Vec vec) -> PetscReal { return petsc_call<PetscReal, VecNorm>(vec, NORM_2); }
 auto vec_mul(Vec lhs, Vec rhs) -> PetscReal { return petsc_call<PetscScalar, VecDot>(lhs, rhs); }
 
 using second = dim::bench::second;
@@ -185,8 +184,6 @@ auto petsc_main(const arguments& args) -> void {
     auto x = vec_t::retain(petsc_call<Vec, VecDuplicate>(As));
     petsc_try VecSet(x, 0.);
 
-    const auto norm_b = vec_norm(s);
-
     auto* const loc_index_set
       = petsc_call<IS, ISCreateStride>(PETSC_COMM_WORLD, As_size, static_cast<PetscInt>(dim::mpi::rank()) * As_size, 1);
 
@@ -197,8 +194,6 @@ auto petsc_main(const arguments& args) -> void {
     cg_stats.total = section([&] {
         for (size_t iter = 0; iter < 100; ++iter) {
             spdlog::info("running iteration {}", iter);
-            if (const auto norm_r = std::sqrt(r_r); norm_r / norm_b <= 1.e-8)
-                break;
 
             cg_stats.steps.spmv += section([&] { petsc_try MatMult(A, s, As); });
 

@@ -27,8 +27,7 @@ struct arguments_t
 {
     fs::path input_file;
     std::optional<std::string> group_name{"A"};
-    std::optional<double> threshold{0.1};
-    std::optional<size_t> max_iters{100};
+    std::optional<size_t> num_iters{100};
 };
 STRUCTOPT(arguments_t, input_file);
 
@@ -95,19 +94,14 @@ int main_impl(const arguments_t& args) {
     auto x = dim::vec(element_count, 0.);
 
     auto r_r = dot(r, r);
-    const auto norm_b = std::sqrt(r_r);
 
     auto As = dim::vec(element_count, 0.);
     auto calibrator = matrix.create_calibrator();
 
     auto cg_stats = cg_stats_t{};
     const auto cg_sw = stopwatch{};
-    for (size_t i = 0; i < *args.max_iters; ++i) {
+    for (size_t i = 0; i < *args.num_iters; ++i) {
         spdlog::info("running iteration {}", i);
-
-        // end condition.
-        if (std::sqrt(r_r) / norm_b <= *args.threshold)
-            break;
 
         // temp = A*s
         cg_stats.steps.spmv += section([&] { matrix.spmv({.x = s.raw(), .y = As.raw(), .calibrator = calibrator}); });
@@ -132,7 +126,7 @@ int main_impl(const arguments_t& args) {
         // sk+1 = rk+1 + beta * sk;
         cg_stats.steps.s += section([&] { s.aypx(r, beta); });
     }
-    cg_stats.num_iters = *args.max_iters;
+    cg_stats.num_iters = *args.num_iters;
     cg_stats.total = cg_sw.elapsed();
     const auto global_time = global_sw.elapsed();
 
