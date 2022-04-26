@@ -29,6 +29,9 @@ jobs:
 
       - uses: seanmiddleditch/gha-setup-ninja@master
 
+      - name: Install MPI
+        run: sudo apt-get install mpi-default-dev
+
       - name: Add conan remotes
         run: >
           pip3 install --upgrade conan &&
