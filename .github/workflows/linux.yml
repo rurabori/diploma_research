@@ -13,37 +13,19 @@ env:
   BUILD_TYPE: Release
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - image: rurabori/diploma:ubuntu-20.04
-            cc: clang-13
-            cxx: clang++-13
-            pkg_config_path: "" # empty for now, if we make ubuntu builds of PETSc we might need this.
-            additional_cmake_options: -DCMAKE_CXX_CLANG_TIDY="clang-tidy-13"
-            artifact_name: ubuntu-20.04
-
-          - image: rurabori/diploma:debian-10
-            cc: clang-13
-            cxx: clang++-13
-            pkg_config_path: /usr/lib/petsc/lib/pkgconfig
-            additional_cmake_options: -DCMAKE_TOOLCHAIN_FILE="cmake/toolchains/debian-10-llvm-13-libcpp.cmake"
-            artifact_name: debian-10
-
+  gcc:
     runs-on: ubuntu-latest
-    container:
-      image: ${{matrix.image}}
 
     env:
-      CC: ${{matrix.cc}}
-      CXX: ${{matrix.cxx}}
-      CUDACXX: /usr/local/cuda/bin/nvcc
       CONAN_USER_HOME: ${{github.workspace}}
-      PKG_CONFIG_PATH: ${{matrix.pkg_config_path}}
 
     steps:
       - uses: actions/checkout@v2
+
+      - name: "Install GCC"
+        uses: egor-tensin/setup-gcc@v1
+        with:
+          version: 11
 
       - name: Add conan remotes
         run: >
@@ -53,8 +35,11 @@ jobs:
           conan remote add rurabori-conan https://rurabori.jfrog.io/artifactory/api/conan/rurabori-conan &&
           conan user -p ${{ secrets.ARTIFACTORY_CONAN_TOKEN }} -r rurabori-conan ${{ secrets.ARTIFACTORY_USERNAME }}
 
+      - name: "Install GCC"
+        uses: egor-tensin/setup-gcc@v1
+        with:
+          version: 11
 
-      # TODO: switch this to conan presets + cmakepresets eventually.
       - name: Cache Conan
         uses: actions/cache@v2
         with:
@@ -63,7 +48,10 @@ jobs:
 
       - name: Configure CMake
         working-directory: ${{github.workspace}}
-        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_INSTALL_PREFIX="${{github.workspace}}/install"  ${{matrix.additional_cmake_options}}  -G "Ninja"
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_INSTALL_PREFIX="${{github.workspace}}/install" -G "Ninja"
+
+      - name: Upload conan packages to artifactory
+        run: conan upload '*' --confirm --all --parallel -r rurabori-conan
 
       - name: Build
         run: cmake --build ${{github.workspace}}/build
@@ -78,6 +66,6 @@ jobs:
         uses: ./.github/actions/artifactory_upload
         with:
           input_file_path: ${{ github.workspace }}/build/dim-*-Linux.zip
-          storage_path: dim/${{ matrix.artifact_name }}/${{ github.run_id }}/dim.zip
-          username:  ${{ secrets.ARTIFACTORY_USERNAME }}
+          storage_path: dim/ubuntu/${{ github.run_id }}/dim.zip
+          username: ${{ secrets.ARTIFACTORY_USERNAME }}
           password: ${{ secrets.ARTIFACTORY_GENERIC_TOKEN }}
