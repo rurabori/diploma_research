@@ -27,6 +27,8 @@ jobs:
         with:
           version: 11
 
+      - uses: seanmiddleditch/gha-setup-ninja@master
+
       - name: Add conan remotes
         run: >
           pip3 install --upgrade conan &&
@@ -34,11 +36,6 @@ jobs:
           conan config set general.revisions_enabled=1 &&
           conan remote add rurabori-conan https://rurabori.jfrog.io/artifactory/api/conan/rurabori-conan &&
           conan user -p ${{ secrets.ARTIFACTORY_CONAN_TOKEN }} -r rurabori-conan ${{ secrets.ARTIFACTORY_USERNAME }}
-
-      - name: "Install GCC"
-        uses: egor-tensin/setup-gcc@v1
-        with:
-          version: 11
 
       - name: Cache Conan
         uses: actions/cache@v2
