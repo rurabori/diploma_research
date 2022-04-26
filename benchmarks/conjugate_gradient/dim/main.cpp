@@ -28,8 +28,7 @@ struct arguments_t
 {
     std::filesystem::path input_file;
     std::optional<std::string> group_name{"A"};
-    std::optional<double> threshold{0.1};
-    std::optional<size_t> max_iters{100};
+    std::optional<size_t> num_iters{100};
 };
 STRUCTOPT(arguments_t, input_file);
 
@@ -44,8 +43,6 @@ auto mpi_reduce(std::span<const double> a, std::span<const double> b) -> double 
 }
 
 auto mpi_reduce(std::span<const double> a) -> double { return mpi_reduce(a, a); }
-
-auto mpi_magnitude(std::span<const double> b) -> double { return std::sqrt(mpi_reduce(b, b)); }
 
 using stopwatch = dim::bench::stopwatch;
 using dim::bench::section;
@@ -135,9 +132,6 @@ auto main_impl(const arguments_t& args) -> int {
     auto s_out = s.subview(output_range.first_row, row_count);
     auto s_own = s.subview(owning_range.first_row, owning_range.count());
 
-    // norm_b = b.magnitude()
-    const auto norm_b = mpi_magnitude(r.raw());
-
     // the output vector for spmv.
     auto As = dim::vec<double>(row_count);
     // and a view into it conditionally skipping first element.
@@ -150,12 +144,8 @@ auto main_impl(const arguments_t& args) -> int {
 
     auto cg_stats = cg_stats_t{};
     const auto cg_sw = stopwatch{};
-    for (size_t i = 0; i < *args.max_iters; ++i) {
+    for (size_t i = 0; i < *args.num_iters; ++i) {
         spdlog::info("running iteration {}", i);
-
-        // end condition.
-        if (std::sqrt(r_r) / norm_b <= *args.threshold)
-            break;
 
         // temp = A*s
         cg_stats.steps.spmv += section(
@@ -191,7 +181,7 @@ auto main_impl(const arguments_t& args) -> int {
         cg_stats.steps.s_dist += section([&] { sync.result_sync.sync(s.raw()); });
     }
     cg_stats.total = cg_sw.elapsed();
-    cg_stats.num_iters = *args.max_iters;
+    cg_stats.num_iters = *args.num_iters;
     const auto global_time = global_sw.elapsed();
 
     std::ofstream{fmt::format("stats_{:02}.json", dim::mpi::rank())} << std::setw(4)
