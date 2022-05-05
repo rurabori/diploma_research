@@ -16,7 +16,6 @@
 #include <omp.h>
 
 #include <algorithm>
-#include <execution>
 #include <fstream>
 #include <numeric>
 
