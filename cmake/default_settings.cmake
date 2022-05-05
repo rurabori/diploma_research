@@ -40,6 +40,12 @@ include(${CMAKE_CURRENT_LIST_DIR}/runtime.cmake)
 # sets of different warnings for compilers.
 include(${CMAKE_CURRENT_LIST_DIR}/warnings.cmake)
 
+function(brr_interface_target_init target)
+  set_target_warnings("${target}")
+  set_runtime(TARGET "${target}")
+  set_property(TARGET "${target}" PROPERTY INTERFACE_POSITION_INDEPENDENT_CODE ON)
+endfunction()
+
 function(brr_target_init target)
   set_target_warnings("${target}")
   set_runtime(TARGET "${target}")
