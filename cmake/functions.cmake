@@ -69,7 +69,7 @@ function(brr_add_library target_name type)
   if("${type}" STREQUAL "INTERFACE")
     add_library(${target_name} INTERFACE)
 
-    brr_target_init(${target_name})
+    brr_interface_target_init(${target_name})
 
     glob_dir(${PROJECT_SOURCE_DIR}/include/${target_name})
 
