@@ -32,6 +32,9 @@ jobs:
       - name: Install MPI
         run: sudo apt-get install mpi-default-dev
 
+      - name: Install oneTBB
+        run: sudo apt-get install libtbb-dev
+
       - name: Add conan remotes
         run: >
           pip3 install --upgrade conan &&
