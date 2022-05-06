@@ -23,7 +23,6 @@ class CSPConan(ConanFile):
     requires = [
         "doctest/2.4.8",
         "fmt/8.0.1",
-        "tclap/1.2.4",
         "magic_enum/0.7.3",
         "stx/1.0.1",
         "scnlib/0.4",
