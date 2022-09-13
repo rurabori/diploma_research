@@ -15,8 +15,8 @@ set(CMAKE_CXX_STANDARD
     20
     CACHE STRING "C++ standard")
 
-# so that we get AVX (TODO: CMakePreset or toolchain should probably set this.)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mavx -mavx2 ")
+# TODO: CMakePreset or toolchain should probably set this.
+add_compile_options($<$<CONFIG:Release>:-Ofast> -march=native -mtune=native)
 
 # Generate compile_commands.json to make it easier to work with clang based
 # tools
