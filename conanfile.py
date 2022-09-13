@@ -24,7 +24,6 @@ class CSPConan(ConanFile):
         "doctest/2.4.8",
         "fmt/8.0.1",
         "magic_enum/0.7.3",
-        "stx/1.0.1",
         "scnlib/0.4",
         "spdlog/1.9.2",
         "structopt/0.1.2",
